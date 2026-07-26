@@ -200,9 +200,9 @@ const SchoolExamConfigModal: React.FC<SchoolExamConfigModalProps> = ({ onClose, 
         setCodeMarks({ ...DEFAULT_CODE_MARKS });
       }
 
-      // Auto-select P01/P02 for restricted mediums
+      // Auto-select P01/P02 for Malayalam medium
       mediums.forEach((medium: string) => {
-        if (!['Tamil', 'English'].includes(medium) && (totStudents[medium] || 0) > 0) {
+        if (medium === 'Malayalam' && (totStudents[medium] || 0) > 0) {
           getSubjectsForMedium(medium, data.languagesByMedium || {}).forEach(s => {
             const category = (s.category || '').toUpperCase();
             const paperType = (s.paperType || s.code || s.shortName || '').toUpperCase();
@@ -409,13 +409,16 @@ const SchoolExamConfigModal: React.FC<SchoolExamConfigModalProps> = ({ onClose, 
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {activeTabSubjects.map(sub => {
-                      const isSelected = selectedSubjectIds.has(sub.id);
-                      const isRestrictedMedium = !['Tamil', 'English'].includes(activeMediumTab);
-                      const paperType = (sub.paperType || sub.code || sub.shortName || '').toUpperCase();
-                      const category = (sub.category || '').toUpperCase();
-                      const isP01P02 = paperType === 'P01' || paperType === 'P02' || category === 'FIRST_LANGUAGE';
-                      const isDisabled = isRestrictedMedium && !isP01P02;
+{activeTabSubjects.map(sub => {
+                        const isSelected = selectedSubjectIds.has(sub.id);
+                        const isMalayalamMedium = activeMediumTab === 'Malayalam';
+                        const paperType = (sub.paperType || sub.code || sub.shortName || '').toUpperCase();
+                        const category = (sub.category || '').toUpperCase();
+                        const isP01P02 = paperType === 'P01' || paperType === 'P02' || category === 'FIRST_LANGUAGE';
+                        const isCore = ['P05', 'P06', 'P07', 'P08', 'P09', 'P10'].includes(paperType) || category === 'CORE';
+                        const isP03P04 = paperType === 'P03' || paperType === 'P04' || category === 'SECOND_LANGUAGE' || category === 'THIRD_LANGUAGE';
+                        // For Malayalam medium: only P01, P02, and Core (P05-P10) allowed. P03/P04 disabled (managed from student side)
+                        const isDisabled = isMalayalamMedium && isP03P04;
 
                       return (
                         <div 

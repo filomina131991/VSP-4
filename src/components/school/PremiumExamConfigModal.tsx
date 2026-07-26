@@ -15,6 +15,8 @@ interface Subject {
   shortName: string;
   code?: string;
   medium?: string;
+  category?: string;
+  paperType?: string;
   displayOrder?: number;
   groups?: { name: string; maxMarks: number; maxQuestions: number; total: number }[];
 }
@@ -186,6 +188,35 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
         }
       });
 
+      const checkAndUncheck0CountLangs = (list: Subject[]) => {
+        list.forEach((s: Subject) => {
+          const id = (s._id || s.id || '').toString();
+          if (!id) return;
+          const pCodeMatch = String(s.code || s.shortName || s.name || '').toUpperCase().match(/\bP0[1-4]\b/);
+          const isLang = s.category === 'FIRST_LANGUAGE' || s.category === 'SECOND_LANGUAGE' || s.category === 'THIRD_LANGUAGE' || pCodeMatch || s.paperType === 'FIRST_LANGUAGE' || s.paperType === 'SECOND_LANGUAGE' || s.paperType === 'THIRD_LANGUAGE';
+          if (isLang) {
+            let totalLangStudents = 0;
+            allMediums.forEach((med: string) => {
+              const medMap = data.subjectIdCounts?.[med] || {};
+              if (medMap[id] !== undefined) {
+                totalLangStudents += medMap[id];
+              }
+            });
+            if (totalLangStudents === 0) {
+              initSel.delete(id);
+            }
+          }
+        });
+      };
+
+      allMediums.forEach((med: string) => {
+        const group = procSubjects[med];
+        if (group) {
+          checkAndUncheck0CountLangs([...(group.p01 || []), ...(group.p02 || []), ...(group.p03 || []), ...(group.p04 || []), ...(group.core || [])]);
+        }
+      });
+      checkAndUncheck0CountLangs([...(commSubs.p03 || []), ...(commSubs.p04 || []), ...(commSubs.core || [])]);
+
       setSelectedIds(initSel);
       setInitialSelected(new Set(initSel));
     } catch {
@@ -224,22 +255,24 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
 
     const codeMatch = combined.match(/\bP(\d{2})\b/);
     if (codeMatch) {
-      const pCode = `P${codeMatch[1]}`;
-      const medCounts = subjectStudentCounts[mediumTab];
-      if (medCounts && medCounts[pCode] !== undefined) return medCounts[pCode];
-      const isCore = parseInt(codeMatch[1]) >= 5 && parseInt(codeMatch[1]) <= 10;
-      if (isCore) return totalStudentsByMedium[mediumTab] || 0;
+      const pNum = parseInt(codeMatch[1], 10);
+      const isCore = pNum >= 5 && pNum <= 10;
+      if (isCore) {
+        const pCode = `P${codeMatch[1]}`;
+        const medCounts = subjectStudentCounts[mediumTab];
+        if (medCounts && medCounts[pCode] !== undefined) return medCounts[pCode];
+        return totalStudentsByMedium[mediumTab] || 0;
+      }
     }
 
     let count = 0;
     Object.entries(studentCounts).forEach(([k, v]) => {
-      const kUp = k.toUpperCase();
-      if (kUp === name || kUp === combined || kUp.includes(name.replace(/\s*[-–]\s*P\d+/, '').trim())) count += v;
+      const kUp = k.toUpperCase().trim();
+      if (kUp === name || (short && kUp === short)) count += v;
     });
     return count;
   };
 
-  
   const handleOpenMarkGroups = (e: React.MouseEvent, sub: any) => {
     e.stopPropagation();
     const subId = sub._id || sub.id || '';
@@ -258,18 +291,18 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
   });
   const handleRemoveGroup = (idx: number) => setEditingGroups(prev => prev.filter((_, i) => i !== idx));
 
-  const handleGroupChange = (idx: number, field: string, value: string | number) => {
-    setEditingGroups(prev => prev.map((g, i) => {
-      if (i !== idx) return g;
-      const updated = { ...g, [field]: value };
+  const handleGroupChange = (idx: number, field: string, val: string | number | boolean) => {
+    setEditingGroups(prev => {
+      const next = [...prev];
+      const grp = { ...next[idx], [field]: val };
       if (field === 'maxMarks' || field === 'maxQuestions') {
-        updated.total = updated.maxMarks * updated.maxQuestions;
-        if (field === 'maxMarks') {
-          updated.name = `${updated.maxMarks} Marks`;
-        }
+        const m = Number(field === 'maxMarks' ? val : grp.maxMarks) || 0;
+        const q = Number(field === 'maxQuestions' ? val : grp.maxQuestions) || 0;
+        grp.total = m * q;
       }
-      return updated;
-    }));
+      next[idx] = grp;
+      return next;
+    });
   };
 
   const handleSaveMarkGroups = async () => {
@@ -463,7 +496,8 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
 
   if (!isOpen) return null;
 
-  const isRestrictedMedium = !['Tamil', 'English'].includes(activeMediumTab);
+  // Only Malayalam medium is restricted (P01, P02 only + Core)
+  const isMalayalamMedium = activeMediumTab === 'Malayalam';
 
   const isMarkGroupConfigured = (subId: string) => {
     const groups = markGroupConfigs[subId];
@@ -483,7 +517,11 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
     const sCount = getSubjectStudentCount(sub, activeMediumTab);
     const dCount = getDivisionsForMedium();
     const isZeroStudentMedium = (totalStudentsByMedium[activeMediumTab] || 0) === 0;
-    const isDisabled = (isRestrictedMedium && category !== 'p01' && category !== 'p02') || isZeroStudentMedium;
+    const pCodeMatch = String(sub.code || sub.shortName || sub.name || '').toUpperCase().match(/\bP0[1-4]\b/);
+    const isCoreSubject = category === 'core';
+    const isLangCat = category === 'p01' || category === 'p02' || category === 'p03' || category === 'p04' || sub.category === 'FIRST_LANGUAGE' || sub.category === 'SECOND_LANGUAGE' || sub.category === 'THIRD_LANGUAGE' || pCodeMatch || sub.paperType === 'FIRST_LANGUAGE' || sub.paperType === 'SECOND_LANGUAGE' || sub.paperType === 'THIRD_LANGUAGE';
+    // For Malayalam medium: only P01 and P02 enabled. P03, P04 disabled (managed from student side). P05-P10 (Core) always enabled.
+    const isDisabled = (isMalayalamMedium && (category === 'p03' || category === 'p04')) || isZeroStudentMedium || (isLangCat && sCount === 0);
 
     return (
       <div
@@ -510,7 +548,7 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
                 ? 'bg-indigo-600 border-indigo-600 text-white cursor-pointer' 
                 : 'border-2 border-gray-300 bg-white cursor-pointer hover:border-gray-400'
           }`}>
-             {(isSelected || (isDisabled && isSelected)) && <Check size={14} strokeWidth={3} />}
+             {(isSelected && !isDisabled) && <Check size={14} strokeWidth={3} />}
           </div>
           
           <div className="flex flex-col min-w-0">

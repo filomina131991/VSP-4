@@ -1008,7 +1008,21 @@ const DashboardPage: React.FC = () => {
               </div>
               <div className={`space-y-2.5 ${!showAllSubjects ? 'max-h-[180px] overflow-hidden' : ''}`}>
                 {(() => {
-                  const subs = (schoolAnalysis?.subjectWise || []).slice().sort((a: any, b: any) => b.passPercentage - a.passPercentage);
+                  const getSubjectSortKey = (code: string) => {
+                    const c = (code || '').toUpperCase();
+                    if (c.includes('P01') || c === 'LAN I' || c === 'AT' || c.includes(' AT') || c.includes('(AT)')) return 'P01';
+                    if (c.includes('P02') || c === 'LAN II' || c === 'BT' || c.includes(' BT') || c.includes('(BT)')) return 'P02';
+                    if (c.includes('P03') || c === 'ENG') return 'P03';
+                    if (c.includes('P04') || c === 'HIN') return 'P04';
+                    if (c.includes('P05') || c === 'SS') return 'P05';
+                    if (c.includes('P06') || c === 'PHY') return 'P06';
+                    if (c.includes('P07') || c === 'CHE') return 'P07';
+                    if (c.includes('P08') || c === 'BIO') return 'P08';
+                    if (c.includes('P09') || c === 'MAT') return 'P09';
+                    if (c.includes('P10') || c === 'IT') return 'P10';
+                    return c;
+                  };
+                  const subs = (schoolAnalysis?.subjectWise || []).slice().sort((a: any, b: any) => getSubjectSortKey(a.shortCode || '').localeCompare(getSubjectSortKey(b.shortCode || '')));
                   const visibleSubs = showAllSubjects ? subs : subs.slice(0, 5);
                   if (subs.length === 0) return <div className="text-center py-6 text-gray-300 text-[11px] font-bold uppercase">No data</div>;
                   return visibleSubs.map((sub: any, i: number) => (
@@ -1023,7 +1037,21 @@ const DashboardPage: React.FC = () => {
                 })()}
               </div>
               {(() => {
-                const subs = (schoolAnalysis?.subjectWise || []).sort((a: any, b: any) => b.passPercentage - a.passPercentage);
+                const getSubjectSortKey2 = (code: string) => {
+                  const c = (code || '').toUpperCase();
+                  if (c.includes('P01') || c === 'LAN I' || c === 'AT' || c.includes(' AT') || c.includes('(AT)')) return 'P01';
+                  if (c.includes('P02') || c === 'LAN II' || c === 'BT' || c.includes(' BT') || c.includes('(BT)')) return 'P02';
+                  if (c.includes('P03') || c === 'ENG') return 'P03';
+                  if (c.includes('P04') || c === 'HIN') return 'P04';
+                  if (c.includes('P05') || c === 'SS') return 'P05';
+                  if (c.includes('P06') || c === 'PHY') return 'P06';
+                  if (c.includes('P07') || c === 'CHE') return 'P07';
+                  if (c.includes('P08') || c === 'BIO') return 'P08';
+                  if (c.includes('P09') || c === 'MAT') return 'P09';
+                  if (c.includes('P10') || c === 'IT') return 'P10';
+                  return c;
+                };
+                const subs = (schoolAnalysis?.subjectWise || []).sort((a: any, b: any) => getSubjectSortKey2(a.shortCode || '').localeCompare(getSubjectSortKey2(b.shortCode || '')));
                 if (subs.length <= 5) return null;
                 return (
                   <button
@@ -1283,7 +1311,21 @@ const DashboardPage: React.FC = () => {
               {(() => {
                 const subs = schoolAnalysis?.subjectWise || [];
                 if (subs.length === 0) return <div className="text-center py-8 text-gray-400 text-[11px] font-bold uppercase">No subject data available</div>;
-                const sorted = [...subs].sort((a: any, b: any) => (a.shortCode || '').localeCompare(b.shortCode || ''));
+                const getSubjectSortKey3 = (code: string) => {
+                  const c = (code || '').toUpperCase();
+                  if (c.includes('P01') || c === 'LAN I' || c === 'AT' || c.includes(' AT') || c.includes('(AT)')) return 'P01';
+                  if (c.includes('P02') || c === 'LAN II' || c === 'BT' || c.includes(' BT') || c.includes('(BT)')) return 'P02';
+                  if (c.includes('P03') || c === 'ENG') return 'P03';
+                  if (c.includes('P04') || c === 'HIN') return 'P04';
+                  if (c.includes('P05') || c === 'SS') return 'P05';
+                  if (c.includes('P06') || c === 'PHY') return 'P06';
+                  if (c.includes('P07') || c === 'CHE') return 'P07';
+                  if (c.includes('P08') || c === 'BIO') return 'P08';
+                  if (c.includes('P09') || c === 'MAT') return 'P09';
+                  if (c.includes('P10') || c === 'IT') return 'P10';
+                  return c;
+                };
+                const sorted = [...subs].sort((a: any, b: any) => getSubjectSortKey3(a.shortCode || '').localeCompare(getSubjectSortKey3(b.shortCode || '')));
                 const totals = sorted.reduce((acc: any, s: any) => ({
                   appeared: acc.appeared + (s.appeared || 0), passCount: acc.passCount + (s.passCount || 0), failCount: acc.failCount + (s.failCount || 0),
                   absentCount: acc.absentCount + (s.absentCount || 0), totalStudents: acc.totalStudents + (s.totalStudents || 0), aPlus: acc.aPlus + (s.grades?.['A+'] || 0),

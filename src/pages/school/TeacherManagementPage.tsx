@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { useData } from '../../context/DataContext';
+import { useData, useSchoolMediums, useSchoolSubjects } from '../../context/DataContext';
 import { apiClient } from '../../lib/apiClient';
+import { resolveMediumId } from '../../lib/mediumUtils';
 import Modal from '../../components/common/Modal';
 import Dropdown from '../../components/common/Dropdown';
 import { Plus, Search, Edit2, Trash2, Users, ChevronDown, Check } from 'lucide-react';
@@ -13,45 +14,52 @@ import Swal from 'sweetalert2';
 
 const DESIGNATIONS = ['HST English', 'HST Hindi', 'HST Malayalam', 'HST Tamil', 'HST Physical Science', 'HST Natural Science', 'HST Mathematics', 'HST Social Science', 'HST Arabic', 'HST Urdu', 'HST Sanskrit'];
 
-const getDesignationSubjectCategories = (desig: string): { keywords: string[]; categories: string[] } => {
-  const dUpper = (desig || '').toUpperCase();
-  if (dUpper.includes('TAMIL')) return { keywords: ['TAMIL AT', 'TAMIL BT'], categories: ['FIRST_LANGUAGE'] };
-  if (dUpper.includes('ENGLISH')) return { keywords: ['ENGLISH'], categories: [] };
-  if (dUpper.includes('ARABIC')) return { keywords: ['ARABIC'], categories: [] };
-  if (dUpper.includes('URDU')) return { keywords: ['URDU'], categories: [] };
-  if (dUpper.includes('HINDI')) return { keywords: ['HINDI'], categories: [] };
-  if (dUpper.includes('SANSKRIT')) return { keywords: ['SANSKRIT'], categories: [] };
-  if (dUpper.includes('MALAYALAM')) return { keywords: ['MALAYALAM AT', 'MALAYALAM BT'], categories: ['FIRST_LANGUAGE'] };
-  if (dUpper.includes('PHYSICAL SCIENCE')) return { keywords: ['PHYSICS', 'CHEMISTRY'], categories: ['CORE'] };
-  if (dUpper.includes('NATURAL SCIENCE')) return { keywords: ['BIOLOGY'], categories: ['CORE'] };
-  if (dUpper.includes('SOCIAL SCIENCE')) return { keywords: ['SOCIAL SCIENCE'], categories: ['CORE'] };
-  if (dUpper.includes('MATHEMATICS')) return { keywords: ['MATHEMATICS'], categories: ['CORE'] };
-  return { keywords: [], categories: [] };
-};
-
 const isSubjectEligibleForDesignation = (subjectName: string, designation: string): boolean => {
-  const { keywords, categories } = getDesignationSubjectCategories(designation);
   const sUpper = (subjectName || '').toUpperCase();
-  if (keywords.some(kw => sUpper.includes(kw))) return true;
-  if (categories.length > 0) {
-    const categoryKeywords: Record<string, string[]> = {
-      'FIRST_LANGUAGE': ['TAMIL', 'MALAYALAM', 'ENGLISH', 'HINDI', 'ARABIC', 'URDU', 'SANSKRIT'],
-      'CORE': ['MATHEMATICS', 'SCIENCE', 'SOCIAL', 'PHYSICS', 'CHEMISTRY', 'BIOLOGY'],
-    };
-    for (const cat of categories) {
-      if ((categoryKeywords[cat] || []).some(kw => sUpper.includes(kw))) return true;
-    }
-  }
-  return false;
+  const dUpper = (designation || '').toUpperCase();
+
+  if (dUpper.includes('ENGLISH')) return sUpper.includes('ENGLISH') || sUpper.includes('P03');
+  if (dUpper.includes('HINDI')) return sUpper.includes('HINDI') || sUpper.includes('P04');
+  if (dUpper.includes('MALAYALAM')) return sUpper.includes('MALAYALAM') || ((sUpper.includes('P01') || sUpper.includes('P02') || sUpper.includes('AT') || sUpper.includes('BT')) && sUpper.includes('MAL'));
+  if (dUpper.includes('TAMIL')) return sUpper.includes('TAMIL') || ((sUpper.includes('P01') || sUpper.includes('P02') || sUpper.includes('AT') || sUpper.includes('BT')) && sUpper.includes('TAM'));
+  if (dUpper.includes('PHYSICAL SCIENCE')) return sUpper.includes('PHYSICS') || sUpper.includes('CHEMISTRY') || sUpper.includes('P06') || sUpper.includes('P07') || sUpper.includes('PHYSICAL SCIENCE');
+  if (dUpper.includes('NATURAL SCIENCE')) return sUpper.includes('BIOLOGY') || sUpper.includes('P08') || sUpper.includes('NATURAL SCIENCE');
+  if (dUpper.includes('MATHEMATICS') || dUpper.includes('MATHS')) return sUpper.includes('MATHEMATICS') || sUpper.includes('MATHS') || sUpper.includes('P09');
+  if (dUpper.includes('SOCIAL SCIENCE') || dUpper.includes('SOCIAL')) return sUpper.includes('SOCIAL') || sUpper.includes('P05');
+  if (dUpper.includes('ARABIC')) return sUpper.includes('ARABIC');
+  if (dUpper.includes('URDU')) return sUpper.includes('URDU');
+  if (dUpper.includes('SANSKRIT')) return sUpper.includes('SANSKRIT');
+
+  return true;
 };
 
 
 export default function TeacherManagementPage() {
   const { user } = useAuth();
+  const { subjects: dmSubjects, mediums: dmMediums } = useData();
+  const schoolMediums = useSchoolMediums();
+  const schoolSubjects = useSchoolSubjects();
+
+  const eligibleMediums = React.useMemo(() => {
+    if (schoolMediums && schoolMediums.length > 0) {
+      return schoolMediums.filter(m => m.active !== false);
+    }
+    if (user?.mediums && user.mediums.length > 0) {
+      const userMedSet = new Set(user.mediums.map((m: string) => m.toLowerCase()));
+      const matched = dmMediums.filter(m => m.active !== false && (
+        userMedSet.has(m.name?.toLowerCase()) ||
+        userMedSet.has(m.shortName?.toLowerCase()) ||
+        userMedSet.has(m.code?.toLowerCase()) ||
+        userMedSet.has((m as any).id?.toLowerCase())
+      ));
+      if (matched.length > 0) return matched;
+    }
+    return dmMediums.filter(m => m.active !== false);
+  }, [schoolMediums, user?.mediums, dmMediums]);
   const [teachers, setTeachers] = useState<any[]>([]);
   const [stats, setStats] = useState<any[]>([]);
   const [availableClasses, setAvailableClasses] = useState<string[]>([]);
-  const [classHierarchy, setClassHierarchy] = useState<any>({});
+  const [classDivisionsData, setClassDivisionsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Modal State
@@ -73,18 +81,18 @@ export default function TeacherManagementPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [tRes, sRes, cRes, hierRes] = await Promise.all([
+      const [tRes, sRes, cRes] = await Promise.all([
         apiClient.get('/school/teachers'),
         apiClient.get('/school/teachers/stats'),
-        apiClient.get('/school/classes-divisions'),
-        apiClient.get('/school/class-hierarchy')
+        apiClient.get('/school/classes-divisions')
       ]);
       setTeachers(tRes.data);
       setStats(sRes.data);
-      const formattedClasses = cRes.data.map((c: any) => `${c.className}${c.division || ''}`);
+      const cData = cRes.data || [];
+      setClassDivisionsData(cData);
+      const formattedClasses = cData.map((c: any) => `${c.className}${c.division || ''}`);
       const filteredClasses = formattedClasses.filter((c: string) => /^(8|9|10|11|12)/.test(c));
       setAvailableClasses(filteredClasses);
-      setClassHierarchy(hierRes.data);
     } catch (error) {
       toast.error('Failed to load teachers');
     } finally {
@@ -221,41 +229,55 @@ export default function TeacherManagementPage() {
 
   const openEditModal = (teacher: any) => {
     setEditingId(teacher._id);
-    let assignments = teacher.teacherAssignments || [];
-    
-    // Fallback if legacy arrays exist but no assignments: Create permutations (Not perfect, but best effort)
-    if (assignments.length === 0 && teacher.mediums?.length) {
+
+    let sourceAssignments = teacher.teacherAssignments || [];
+    let assignments: Array<{ medium: string, className: string, subject: string }>;
+
+    if (sourceAssignments.length === 0 && teacher.mediums?.length) {
+      assignments = [];
       teacher.mediums.forEach((m: string) => {
         (teacher.assignedSubjects || []).forEach((c: string) => {
           (teacher.teachingSubjects || []).forEach((s: string) => {
-             assignments.push({ medium: m, className: c, subject: s });
+            assignments.push({ medium: m, className: c, subject: s });
           });
         });
       });
+    } else {
+      assignments = JSON.parse(JSON.stringify(sourceAssignments));
     }
 
-    // Normalize subject names against current classHierarchy
-    // Ensures saved subject matches the latest subject names from student data
-    if (Object.keys(classHierarchy).length > 0) {
-      assignments = assignments.map((a: any) => {
-        if (!a.className || !a.medium || !a.subject) return a;
-        const parsed = a.className.match(/^(\d+)(.*)$/);
-        const c = parsed ? parsed[1] : '';
-        const d = parsed ? parsed[2].toUpperCase() : '';
-        const classData = (classHierarchy[c] && classHierarchy[c][d]) ? classHierarchy[c][d] : {};
-        const subjectsForMed = classData[a.medium] || [];
-        const uniqueSubjects = Array.from(new Set(subjectsForMed.map((s: string) => s.toUpperCase())));
-        const currentSubject = a.subject.toUpperCase();
-        if (uniqueSubjects.includes(currentSubject)) return a;
-        const getCode = (s: string) => { const m = s.match(/^(P\d+)/i); return m ? m[1].toUpperCase() : s; };
-        const currCode = getCode(currentSubject);
-        const matched = uniqueSubjects.find((s: string) => {
-          if (currCode.startsWith('P') && getCode(s) === currCode) return true;
-          return s.includes(currentSubject) || currentSubject.includes(s);
-        });
-        return matched ? { ...a, subject: matched } : a;
-      });
-    }
+    // Normalize subject names and medium names against Data Management subjects and mediums
+    assignments = assignments.map((a: any) => {
+      let normMedium = a.medium || '';
+      if (normMedium) {
+        const matchedMed = dmMediums.find((m: any) => 
+          m.name?.toLowerCase() === normMedium.toLowerCase() || 
+          m.shortName?.toLowerCase() === normMedium.toLowerCase() || 
+          m.code?.toLowerCase() === normMedium.toLowerCase() || 
+          m.id === normMedium
+        );
+        if (matchedMed) normMedium = matchedMed.name;
+      }
+
+      let normSubject = a.subject || '';
+      if (normSubject) {
+        const matchedSub = dmSubjects.find((s: any) => 
+          s.name?.toLowerCase() === normSubject.toLowerCase() || 
+          s.shortName?.toLowerCase() === normSubject.toLowerCase() || 
+          s.code?.toLowerCase() === normSubject.toLowerCase() || 
+          (s.shortName && normSubject.toUpperCase() === s.shortName.toUpperCase()) ||
+          s.name?.toUpperCase() === normSubject.toUpperCase()
+        );
+        if (matchedSub) {
+          normSubject = matchedSub.name;
+        } else {
+          const partial = dmSubjects.find((s: any) => s.name?.toUpperCase().includes(normSubject.toUpperCase()) || normSubject.toUpperCase().includes(s.name?.toUpperCase() || '___'));
+          if (partial) normSubject = partial.name;
+        }
+      }
+
+      return { ...a, medium: normMedium, subject: normSubject };
+    });
 
     setFormData({
       name: teacher.name,
@@ -372,26 +394,7 @@ export default function TeacherManagementPage() {
                         </button>
                       </td>
                       <td className="p-4 text-right">
-                        <button onClick={() => {
-                          setEditingId(t._id);
-                          let assignments = t.teacherAssignments || [];
-                          if (assignments.length === 0 && t.mediums?.length) {
-                            t.mediums.forEach((m: string) => {
-                              (t.assignedSubjects || []).forEach((c: string) => {
-                                (t.teachingSubjects || []).forEach((s: string) => {
-                                   assignments.push({ medium: m, className: c, subject: s.toUpperCase() });
-                                });
-                              });
-                            });
-                          }
-                          setFormData({
-                            name: t.name,
-                            penNumber: t.penNumber,
-                            designation: t.designation || DESIGNATIONS[0],
-                            teacherAssignments: assignments
-                          });
-                          setShowModal(true);
-                        }} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded mr-2">
+                        <button onClick={() => openEditModal(t)} className="p-1.5 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded mr-2">
                           <Edit2 size={16} />
                         </button>
                         <button onClick={() => handleDelete(t._id)} className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded">
@@ -460,9 +463,9 @@ export default function TeacherManagementPage() {
                   </button>
                 </div>
                 
-                {/* Medium Tabs for Assignments */}
-                <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 mb-4 overflow-x-auto pb-1">
-                  {['All', ...(user?.mediums || [])].map(tab => (
+                 {/* Medium Tabs for Assignments */}
+                 <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700 mb-4 overflow-x-auto pb-1">
+                   {['All', ...eligibleMediums.map(m => m.name)].map(tab => (
                     <button
                       key={tab}
                       type="button"
@@ -488,29 +491,10 @@ export default function TeacherManagementPage() {
                         }
 
                         let isSubjectIneligible = false;
-                        let displaySubject = assign.subject ? assign.subject.toUpperCase() : '';
 
-                        if (assign.className && assign.medium) {
-                          const parsed = assign.className.match(/^(\d+)(.*)$/);
-                          const c = parsed ? parsed[1] : '';
-                          const d = parsed ? parsed[2].toUpperCase() : '';
-                          const classData = (classHierarchy[c] && classHierarchy[c][d]) ? classHierarchy[c][d] : {};
-                          const subjectsForMed = classData[assign.medium] || [];
-                          const uniqueSubjects = Array.from(new Set(subjectsForMed.map((s: string) => s.toUpperCase())));
-                          
-                          if (displaySubject && !uniqueSubjects.includes(displaySubject)) {
-                            const getCode = (s: string) => { const m = s.match(/^(P\d+)/i); return m ? m[1].toUpperCase() : s; };
-                            const currCode = getCode(displaySubject);
-                            const matched = uniqueSubjects.find((s: string) => {
-                              if (currCode.startsWith('P') && getCode(s) === currCode) return true;
-                              return s.includes(displaySubject) || displaySubject.includes(s);
-                            });
-                            if (matched) displaySubject = matched;
-                          }
-                        }
-
-                        if (displaySubject) {
-                          isSubjectIneligible = !isSubjectEligibleForDesignation(displaySubject, formData.designation);
+                        if (assign.subject) {
+                          const stateSubject = assign.subject.toUpperCase();
+                          isSubjectIneligible = !isSubjectEligibleForDesignation(stateSubject, formData.designation);
                         }
 
                         return (
@@ -524,14 +508,7 @@ export default function TeacherManagementPage() {
                                 onChange={(e) => handleUpdateAssignment(idx, 'className', e.target.value)}
                               >
                                 <option value="" disabled>Select Class</option>
-                                {availableClasses.filter(cStr => {
-                                  if (activeAssignTab === 'All') return true;
-                                  const parsed = cStr.match(/^(\d+)(.*)$/);
-                                  const c = parsed ? parsed[1] : '';
-                                  const d = parsed ? parsed[2].toUpperCase() : '';
-                                  const classData = (classHierarchy[c] && classHierarchy[c][d]) ? classHierarchy[c][d] : {};
-                                  return Object.keys(classData).includes(activeAssignTab);
-                                }).map(c => <option key={c} value={c}>Class {c}</option>)}
+                                {availableClasses.map(c => <option key={c} value={c}>Class {c}</option>)}
                               </select>
                             </div>
                             <div className="flex-1">
@@ -544,12 +521,20 @@ export default function TeacherManagementPage() {
                               >
                                 <option value="" disabled>Select Medium</option>
                                 {(() => {
-                                  const parsed = assign.className ? assign.className.match(/^(\d+)(.*)$/) : null;
-                                  const c = parsed ? parsed[1] : '';
-                                  const d = parsed ? parsed[2].toUpperCase() : '';
-                                  const classData = (classHierarchy[c] && classHierarchy[c][d]) ? classHierarchy[c][d] : {};
-                                  return Object.keys(classData)
+                                  const selectedClassDiv = classDivisionsData.find(c => `${c.className}${c.division || ''}` === assign.className);
+                                  const activeMediumNames = eligibleMediums.map(m => m.name);
+                                  const uniqueMediums = Array.from(new Set(activeMediumNames));
+                                  return uniqueMediums
                                     .filter(m => activeAssignTab === 'All' || m === activeAssignTab)
+                                    .filter(m => {
+                                      if (!selectedClassDiv || !selectedClassDiv.mediums || selectedClassDiv.mediums.length === 0) return true;
+                                      const mId = resolveMediumId(m, dmMediums);
+                                      return selectedClassDiv.mediums.some((cm: string) => {
+                                        if (cm.toLowerCase() === m.toLowerCase()) return true;
+                                        const cmId = resolveMediumId(cm, dmMediums);
+                                        return (cmId && mId && cmId === mId) || cm.toLowerCase().includes(m.toLowerCase()) || m.toLowerCase().includes(cm.toLowerCase());
+                                      });
+                                    })
                                     .map(m => <option key={m} value={m}>{m}</option>);
                                 })()}
                               </select>
@@ -562,57 +547,68 @@ export default function TeacherManagementPage() {
                                     ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500' 
                                     : 'border-gray-300 dark:border-gray-600'
                                 }`}
-                                value={displaySubject}
-                                onChange={(e) => handleUpdateAssignment(idx, 'subject', e.target.value)}
-                                disabled={!assign.medium}
-                              >
+                                 value={assign.subject}
+                                 onChange={(e) => handleUpdateAssignment(idx, 'subject', e.target.value)}
+                                 disabled={!assign.medium}
+                               >
                                 <option value="" disabled>Select Subject</option>
                                 {(() => {
-                                  const parsed = assign.className ? assign.className.match(/^(\d+)(.*)$/) : null;
-                                  const c = parsed ? parsed[1] : '';
-                                  const d = parsed ? parsed[2].toUpperCase() : '';
-                                  const classData = (classHierarchy[c] && classHierarchy[c][d]) ? classHierarchy[c][d] : {};
-                                  const subjectsForMed = classData[assign.medium] || [];
-                                  const uniqueSubjects = Array.from(
-                                    new Set(subjectsForMed.map((s: string) => s.toUpperCase()))
-                                  );
+                                  const selectedClassDiv = classDivisionsData.find(c => `${c.className}${c.division || ''}` === assign.className);
+                                  const assignMedId = resolveMediumId(assign.medium, dmMediums);
+                                  const subjectsForMedium = dmSubjects
+                                    .filter(s => {
+                                      if (s.active === false) return false;
+                                      if (!assign.medium) return true;
+                                      
+                                      const sMedId = resolveMediumId(s.mediumId || s.medium || s.mediumName || '', dmMediums);
+                                      if (sMedId && assignMedId && sMedId !== assignMedId) {
+                                        return false;
+                                      }
+                                      
+                                      if (selectedClassDiv && selectedClassDiv.subjects && selectedClassDiv.subjects.length > 0) {
+                                        const subNameUpper = `${s.name || ''} ${s.shortName || ''}`.toUpperCase();
+                                        const langKeywords = ['TAMIL', 'ENGLISH', 'MALAYALAM', 'KANNADA', 'URDU', 'ARABIC', 'SANSKRIT', 'HINDI', 'TELUGU'];
+                                        const matchedLang = langKeywords.find(kw => subNameUpper.includes(kw));
+                                        if (matchedLang) {
+                                          const isTaughtInClass = selectedClassDiv.subjects.some((sub: string) => (sub || '').toUpperCase().includes(matchedLang));
+                                          if (!isTaughtInClass) {
+                                            const isTaughtInSchool = schoolSubjects && schoolSubjects.some(sub => (sub || '').toUpperCase().includes(matchedLang));
+                                            if (!isTaughtInSchool) return false;
+                                          }
+                                        }
+                                      } else if (schoolSubjects && schoolSubjects.length > 0) {
+                                        const subNameUpper = `${s.name || ''} ${s.shortName || ''}`.toUpperCase();
+                                        const langKeywords = ['TAMIL', 'ENGLISH', 'MALAYALAM', 'KANNADA', 'URDU', 'ARABIC', 'SANSKRIT', 'HINDI', 'TELUGU'];
+                                        const matchedLang = langKeywords.find(kw => subNameUpper.includes(kw));
+                                        if (matchedLang) {
+                                          const isTaughtInSchool = schoolSubjects.some(sub => (sub || '').toUpperCase().includes(matchedLang));
+                                          if (!isTaughtInSchool) return false;
+                                        }
+                                      }
+                                      
+                                      return true;
+                                    })
+                                    .map(s => s.name);
+                                  const uniqueSubjects = Array.from(new Set(subjectsForMedium));
 
                                   const eligible: string[] = [];
                                   const others: string[] = [];
 
-                                  uniqueSubjects.forEach((sUpper: string) => {
-                                    if (isSubjectEligibleForDesignation(sUpper, formData.designation)) {
-                                      eligible.push(sUpper);
+                                  uniqueSubjects.forEach((subName: string) => {
+                                    if (isSubjectEligibleForDesignation(subName, formData.designation)) {
+                                      eligible.push(subName);
                                     } else {
-                                      others.push(sUpper);
+                                      others.push(subName);
                                     }
-                                  });
-
-                                  // Sort 'others' by P01 to P10
-                                  others.sort((a, b) => {
-                                    const matchA = a.match(/P(\d+)/);
-                                    const matchB = b.match(/P(\d+)/);
-                                    const numA = matchA ? parseInt(matchA[1], 10) : 999;
-                                    const numB = matchB ? parseInt(matchB[1], 10) : 999;
-                                    return numA - numB;
-                                  });
-
-                                  // Sort 'eligible' by P01 to P10
-                                  eligible.sort((a, b) => {
-                                    const matchA = a.match(/P(\d+)/);
-                                    const matchB = b.match(/P(\d+)/);
-                                    const numA = matchA ? parseInt(matchA[1], 10) : 999;
-                                    const numB = matchB ? parseInt(matchB[1], 10) : 999;
-                                    return numA - numB;
                                   });
 
                                   return (
                                     <>
-                                      <optgroup label="Eligible Subjects">
+                                      <optgroup label="Eligible Subject Suggestions">
                                         {eligible.length > 0 ? (
                                           eligible.map((s) => <option key={s} value={s} className="font-bold text-indigo-700 dark:text-indigo-400">{s}</option>)
                                         ) : (
-                                          <option disabled className="text-red-500">Not suitable for your designation</option>
+                                          <option disabled>{others.length > 0 ? 'None matching this designation' : 'No subjects available for this medium'}</option>
                                         )}
                                       </optgroup>
                                       {others.length > 0 && (

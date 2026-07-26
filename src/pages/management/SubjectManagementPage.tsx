@@ -150,17 +150,39 @@ const SubjectManagementPage: React.FC = () => {
       });
     });
 
+    const extractPCode = (sub: any): string => {
+      const fields = [sub.paperType, sub.code, sub.shortName, sub.name];
+      for (const f of fields) {
+        if (!f) continue;
+        const m = String(f).toUpperCase().match(/\b(P\d{2})\b/);
+        if (m) return m[1];
+      }
+      return '';
+    };
+
+    const sortSubjectsByCode = (a: any, b: any) => {
+      if ((a.displayOrder || 0) !== (b.displayOrder || 0)) {
+        return (a.displayOrder || 0) - (b.displayOrder || 0);
+      }
+      const pA = extractPCode(a);
+      const pB = extractPCode(b);
+      const numA = pA ? parseInt(pA.slice(1), 10) : 999;
+      const numB = pB ? parseInt(pB.slice(1), 10) : 999;
+      if (numA !== numB) return numA - numB;
+      return (a.shortName || a.code || a.name || '').localeCompare(b.shortName || b.code || b.name || '');
+    };
+
     return Object.values(groups)
       .sort((a, b) => (a.medium.displayOrder || 0) - (b.medium.displayOrder || 0))
       .map(g => ({
         ...g,
         mediumName: g.medium.name,
         mediumCode: g.medium.code,
-        p01: g.p01.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)),
-        p02: g.p02.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)),
-        p03: g.p03.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)),
-        p04: g.p04.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)),
-        core: g.core.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+        p01: g.p01.sort(sortSubjectsByCode),
+        p02: g.p02.sort(sortSubjectsByCode),
+        p03: g.p03.sort(sortSubjectsByCode),
+        p04: g.p04.sort(sortSubjectsByCode),
+        core: g.core.sort(sortSubjectsByCode)
       }));
   }, [subjects, effectiveMediums]);
 

@@ -10,7 +10,7 @@ const SchoolProfilePage: React.FC = () => {
   const { user, updateUser } = useAuth();
   const { mediums } = useData();
   const navigate = useNavigate();
-  const AVAILABLE_MEDIUMS = mediums.length > 0 ? mediums.map(m => m.shortName) : ['Tamil', 'English', 'Malayalam', 'Kannada'];
+  const availableMediums = mediums.filter(m => m.active !== false).map(m => m.shortName);
 
   // Resolve any stored medium value (slug/id/code/name) → canonical shortName
   const normalizeMediums = (raw: string[]): string[] => {
@@ -30,8 +30,7 @@ const SchoolProfilePage: React.FC = () => {
       // Match by full name e.g. "Tamil Medium"
       const byName = mediums.find(m => m.name && m.name.toLowerCase() === v.toLowerCase());
       if (byName) return byName.shortName;
-      // Keep only if it's a valid AVAILABLE_MEDIUM
-      return AVAILABLE_MEDIUMS.includes(v) ? v : null;
+      return null;
     }).filter(Boolean) as string[];
   };
 
@@ -247,7 +246,7 @@ const SchoolProfilePage: React.FC = () => {
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">School Mediums</label>
             <p className="text-[10px] text-gray-400 font-bold -mt-1 ml-1">Select the mediums available in this school. These will be used across Exam Configuration, Student Management, and Teacher Management.</p>
             <div className="flex flex-wrap gap-2">
-              {AVAILABLE_MEDIUMS.map(medium => {
+              {availableMediums.map(medium => {
                 const isSelected = profileData.mediums.includes(medium);
                 return (
                   <button
@@ -274,6 +273,11 @@ const SchoolProfilePage: React.FC = () => {
                   </button>
                 );
               })}
+              {availableMediums.length === 0 && (
+                <div className="px-4 py-3 rounded-xl border border-dashed border-gray-300 dark:border-[#30363d] text-[11px] font-bold text-gray-500 dark:text-gray-400">
+                  No active mediums available. Add mediums in master data first.
+                </div>
+              )}
             </div>
             {profileData.mediums.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-2">

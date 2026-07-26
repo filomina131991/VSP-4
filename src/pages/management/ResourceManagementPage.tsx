@@ -108,9 +108,12 @@ const ResourceManagementPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedMedium, setSelectedMedium] = useState(() => {
+    // Only use user's first medium if they have mediums assigned
     if (user?.mediums && Array.isArray(user.mediums) && user.mediums.length > 0) {
-      return user.mediums[0];
+      const firstMedium = user.mediums[0];
+      return availableMediums.includes(firstMedium) ? firstMedium : availableMediums[0];
     }
+    // For non-admin, non-teacher users, check if 'ALL' is in available mediums (not likely)
     return 'ALL';
   });
   const [selectedSubject, setSelectedSubject] = useState('ALL');
@@ -129,9 +132,15 @@ const ResourceManagementPage: React.FC = () => {
   const [uploadForm, setUploadForm] = useState(() => {
     const initialMedium = user?.mediums && Array.isArray(user.mediums) && user.mediums.length > 0
       ? user.mediums[0]
-      : 'English';
+      : availableMediums.length > 0
+        ? availableMediums[0]
+        : 'English';
     const allowed = getFilteredSubjectsForUpload(initialMedium, user);
-    const initialSubject = allowed[0]?.name || getAvailableSubjects(initialMedium)[0]?.name || '';
+    const initialSubject = allowed.length > 0
+      ? allowed[0].name
+      : getAvailableSubjects(initialMedium).length > 0
+        ? getAvailableSubjects(initialMedium)[0].name
+        : '';
 
     return {
       title: '',
@@ -147,12 +156,18 @@ const ResourceManagementPage: React.FC = () => {
     };
   });
 
-  const resetUploadForm = () => {
+    const resetUploadForm = () => {
     const initialMedium = user?.mediums && Array.isArray(user.mediums) && user.mediums.length > 0
       ? user.mediums[0]
-      : 'English';
+      : availableMediums.length > 0
+        ? availableMediums[0]
+        : 'English';
     const allowed = getFilteredSubjectsForUpload(initialMedium, user);
-    const initialSubject = allowed[0]?.name || getAvailableSubjects(initialMedium)[0]?.name || '';
+    const initialSubject = allowed.length > 0
+      ? allowed[0].name
+      : getAvailableSubjects(initialMedium).length > 0
+        ? getAvailableSubjects(initialMedium)[0].name
+        : '';
 
     setUploadForm({
       title: '',
@@ -180,8 +195,8 @@ const ResourceManagementPage: React.FC = () => {
         }
         const allowed = getFilteredSubjectsForUpload(currentMedium, user);
         let currentSubject = prev.subject;
-        if (!allowed.some(s => s.name === currentSubject)) {
-          currentSubject = allowed[0]?.name || getAvailableSubjects(currentMedium)[0]?.name || '';
+        if (!allowed.some(s => s.name === currentSubject) && currentSubject !== '') {
+          currentSubject = allowed.length > 0 ? allowed[0].name : ''; 
         }
         return {
           ...prev,
@@ -193,8 +208,20 @@ const ResourceManagementPage: React.FC = () => {
       setUploadForm(prev => {
         const allowed = getFilteredSubjectsForUpload(prev.medium, user);
         let currentSubject = prev.subject;
-        if (!allowed.some(s => s.name === currentSubject)) {
-          currentSubject = allowed[0]?.name || getAvailableSubjects(prev.medium)[0]?.name || '';
+        if (!allowed.some(s => s.name === currentSubject) && currentSubject !== '') {
+          currentSubject = allowed.length > 0 ? allowed[0].name : ''; 
+        }
+        return {
+          ...prev,
+          subject: currentSubject
+        };
+      });
+    } else {
+      setUploadForm(prev => {
+        const allowed = getFilteredSubjectsForUpload(prev.medium, user);
+        let currentSubject = prev.subject;
+        if (!allowed.some(s => s.name === currentSubject) && currentSubject !== '') {
+          currentSubject = allowed.length > 0 ? allowed[0].name : ''; 
         }
         return {
           ...prev,
@@ -202,18 +229,18 @@ const ResourceManagementPage: React.FC = () => {
         };
       });
     }
-  }, [user]);
+  }, [user, selectedMedium]);
 
 
 
-  const handleMediumChange = (newMedium: string) => {
-    const newSubjects = getFilteredSubjectsForUpload(newMedium, user);
-    let newSubject = uploadForm.subject;
-    if (!newSubjects.some(s => s.name === newSubject)) {
-      newSubject = newSubjects[0]?.name || '';
-    }
-    setUploadForm(prev => ({ ...prev, medium: newMedium, subject: newSubject }));
-  };
+   const handleMediumChange = (newMedium: string) => {
+     const newSubjects = getFilteredSubjectsForUpload(newMedium, user);
+     let newSubject = uploadForm.subject;
+     if (!newSubjects.some(s => s.name === newSubject) && newSubject !== '') {
+       newSubject = newSubjects.length > 0 ? newSubjects[0].name : ''; 
+     }
+     setUploadForm(prev => ({ ...prev, medium: newMedium, subject: newSubject }));
+   };
 
   const loadResources = async () => {
     setIsLoading(true);

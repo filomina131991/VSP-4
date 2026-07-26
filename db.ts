@@ -689,40 +689,40 @@ export const SchoolSummary = (mongoose.models['SchoolSummary'] || mongoose.model
 async function seedInitialData() {
   if (await Medium.countDocuments() === 0) {
     await Medium.insertMany([
-      { id: 'medium-tm', name: 'Tamil Medium',     code: 'TM', shortName: 'Tamil',     displayOrder: 1 },
-      { id: 'medium-em', name: 'English Medium',    code: 'EM', shortName: 'English',   displayOrder: 2 },
-      { id: 'medium-mm', name: 'Malayalam Medium',  code: 'MM', shortName: 'Malayalam', displayOrder: 3 },
-      { id: 'medium-km', name: 'Kannada Medium',    code: 'KM', shortName: 'Kannada',   displayOrder: 4 },
+      { id: 'medium-tm', name: 'Tamil Medium',     code: 'TM', shortName: 'Tamil',     displayOrder: 1, active: true },
+      { id: 'medium-em', name: 'English Medium',    code: 'EM', shortName: 'English',   displayOrder: 2, active: true },
+      { id: 'medium-mm', name: 'Malayalam Medium',  code: 'MM', shortName: 'Malayalam', displayOrder: 3, active: true },
+      { id: 'medium-km', name: 'Kannada Medium',    code: 'KM', shortName: 'Kannada',   displayOrder: 4, active: true },
     ]);
   }
 
   const subjectList = [
-    { name: 'FIRST LANGUAGE (PAPER I) TAMIL AT - P01', shortName: 'P01', displayOrder: 10 },
-    { name: 'FIRST LANGUAGE (PAPER I) MALAYALAM AT - P01', shortName: 'P01', displayOrder: 12 },
-    { name: 'FIRST LANGUAGE (PAPER I) KANNADA AT - P01', shortName: 'P01', displayOrder: 13 },
-    { name: 'ADDL. ENGLISH - P01', shortName: 'P01', displayOrder: 14 },
-    { name: 'ADDL. HINDI - P01', shortName: 'P01', displayOrder: 15 },
-    { name: 'FIRST LANGUAGE (PAPER I) ARABIC - P01', shortName: 'P01', displayOrder: 16 },
-    { name: 'FIRST LANGUAGE (PAPER I) URDU - P01', shortName: 'P01', displayOrder: 17 },
-    { name: 'FIRST LANGUAGE (PAPER I) SANSKRIT - P01', shortName: 'P01', displayOrder: 18 },
+    { name: 'FIRST LANGUAGE (PAPER I) TAMIL AT - P01', shortName: 'P01', code: 'P01', category: 'FIRST_LANGUAGE', paperType: 'P01', displayOrder: 10, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'FIRST LANGUAGE (PAPER I) MALAYALAM AT - P01', shortName: 'P01', code: 'P01', category: 'FIRST_LANGUAGE', paperType: 'P01', displayOrder: 12, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'FIRST LANGUAGE (PAPER I) KANNADA AT - P01', shortName: 'P01', code: 'P01', category: 'FIRST_LANGUAGE', paperType: 'P01', displayOrder: 13, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'ADDL. ENGLISH - P01', shortName: 'P01', code: 'P01', category: 'FIRST_LANGUAGE', paperType: 'P01', displayOrder: 14, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'ADDL. HINDI - P01', shortName: 'P01', code: 'P01', category: 'FIRST_LANGUAGE', paperType: 'P01', displayOrder: 15, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'FIRST LANGUAGE (PAPER I) ARABIC - P01', shortName: 'P01', code: 'P01', category: 'FIRST_LANGUAGE', paperType: 'P01', displayOrder: 16, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'FIRST LANGUAGE (PAPER I) URDU - P01', shortName: 'P01', code: 'P01', category: 'FIRST_LANGUAGE', paperType: 'P01', displayOrder: 17, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'FIRST LANGUAGE (PAPER I) SANSKRIT - P01', shortName: 'P01', code: 'P01', category: 'FIRST_LANGUAGE', paperType: 'P01', displayOrder: 18, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
     
-    { name: 'FIRST LANGUAGE (PAPER II) TAMIL BT - P02', shortName: 'P02', displayOrder: 21 },
-    { name: 'FIRST LANGUAGE (PAPER II) MALAYALAM BT - P02', shortName: 'P02', displayOrder: 22 },
-    { name: 'FIRST LANGUAGE (PAPER II) KANNADA BT - P02', shortName: 'P02', displayOrder: 23 },
-    { name: 'SPECIAL. ENGLISH - P02', shortName: 'P02', displayOrder: 24 },
-    { name: 'SPECIAL. HINDI - P02', shortName: 'P02', displayOrder: 25 },
-    { name: 'FIRST LANGUAGE (PAPER II) ARABIC - P02', shortName: 'P02', displayOrder: 26 },
-    { name: 'FIRST LANGUAGE (PAPER II) URDU - P02', shortName: 'P02', displayOrder: 27 },
-    { name: 'FIRST LANGUAGE (PAPER II) SANSKRIT - P02', shortName: 'P02', displayOrder: 28 },
+    { name: 'FIRST LANGUAGE (PAPER II) TAMIL BT - P02', shortName: 'P02', code: 'P02', category: 'FIRST_LANGUAGE', paperType: 'P02', displayOrder: 21, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'FIRST LANGUAGE (PAPER II) MALAYALAM BT - P02', shortName: 'P02', code: 'P02', category: 'FIRST_LANGUAGE', paperType: 'P02', displayOrder: 22, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'FIRST LANGUAGE (PAPER II) KANNADA BT - P02', shortName: 'P02', code: 'P02', category: 'FIRST_LANGUAGE', paperType: 'P02', displayOrder: 23, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'SPECIAL. ENGLISH - P02', shortName: 'P02', code: 'P02', category: 'FIRST_LANGUAGE', paperType: 'P02', displayOrder: 24, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'SPECIAL. HINDI - P02', shortName: 'P02', code: 'P02', category: 'FIRST_LANGUAGE', paperType: 'P02', displayOrder: 25, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'FIRST LANGUAGE (PAPER II) ARABIC - P02', shortName: 'P02', code: 'P02', category: 'FIRST_LANGUAGE', paperType: 'P02', displayOrder: 26, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'FIRST LANGUAGE (PAPER II) URDU - P02', shortName: 'P02', code: 'P02', category: 'FIRST_LANGUAGE', paperType: 'P02', displayOrder: 27, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'FIRST LANGUAGE (PAPER II) SANSKRIT - P02', shortName: 'P02', code: 'P02', category: 'FIRST_LANGUAGE', paperType: 'P02', displayOrder: 28, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
 
-    { name: 'ENGLISH (SECOND LANGUAGE) - P03', shortName: 'P03', displayOrder: 30 },
-    { name: 'HINDI (THIRD LANGUAGE) - P04', shortName: 'P04', displayOrder: 40 },
-    { name: 'SOCIAL SCIENCE - P05', shortName: 'P05', displayOrder: 50 },
-    { name: 'PHYSICS - P06', shortName: 'P06', displayOrder: 60 },
-    { name: 'CHEMISTRY - P07', shortName: 'P07', displayOrder: 70 },
-    { name: 'BIOLOGY - P08', shortName: 'P08', displayOrder: 80 },
-    { name: 'MATHEMATICS - P09', shortName: 'P09', displayOrder: 90 },
-    { name: 'INFORMATION TECHNOLOGY - P10', shortName: 'P10', displayOrder: 100 }
+    { name: 'ENGLISH (SECOND LANGUAGE) - P03', shortName: 'P03', code: 'P03', category: 'SECOND_LANGUAGE', paperType: 'P03', displayOrder: 30, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'HINDI (THIRD LANGUAGE) - P04', shortName: 'P04', code: 'P04', category: 'THIRD_LANGUAGE', paperType: 'P04', displayOrder: 40, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'SOCIAL SCIENCE - P05', shortName: 'P05', code: 'P05', category: 'CORE', paperType: 'P05', displayOrder: 50, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'PHYSICS - P06', shortName: 'P06', code: 'P06', category: 'CORE', paperType: 'P06', displayOrder: 60, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'CHEMISTRY - P07', shortName: 'P07', code: 'P07', category: 'CORE', paperType: 'P07', displayOrder: 70, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'BIOLOGY - P08', shortName: 'P08', code: 'P08', category: 'CORE', paperType: 'P08', displayOrder: 80, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'MATHEMATICS - P09', shortName: 'P09', code: 'P09', category: 'CORE', paperType: 'P09', displayOrder: 90, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' },
+    { name: 'INFORMATION TECHNOLOGY - P10', shortName: 'P10', code: 'P10', category: 'CORE', paperType: 'P10', displayOrder: 100, active: true, medium: '', mediumId: '', mediumName: '', languageType: '' }
   ];
 
   if (await Subject.countDocuments() === 0) {
@@ -731,26 +731,26 @@ async function seedInitialData() {
 
   if (await MainDistrict.countDocuments() === 0) {
     await MainDistrict.insertMany([
-      { id: 'main-1', name: 'Palakkad Zone / Main District', code: 'PKD' }
+      { id: 'main-1', name: 'Palakkad Zone / Main District', code: 'PKD', createdAt: new Date(), updatedAt: new Date() }
     ]);
   }
 
   if (await District.countDocuments() === 0) {
     await District.insertMany([
-      { id: 'dist-1',  name: 'Thiruvananthapuram', mainDistrictId: 'main-1' },
-      { id: 'dist-2',  name: 'Kollam',              mainDistrictId: 'main-1' },
-      { id: 'dist-3',  name: 'Pathanamthitta',      mainDistrictId: 'main-1' },
-      { id: 'dist-4',  name: 'Alappuzha',           mainDistrictId: 'main-1' },
-      { id: 'dist-5',  name: 'Kottayam',            mainDistrictId: 'main-1' },
-      { id: 'dist-6',  name: 'Idukki',              mainDistrictId: 'main-1' },
-      { id: 'dist-7',  name: 'Ernakulam',           mainDistrictId: 'main-1' },
-      { id: 'dist-8',  name: 'Thrissur',            mainDistrictId: 'main-1' },
-      { id: 'dist-9',  name: 'Palakkad',            mainDistrictId: 'main-1' },
-      { id: 'dist-10', name: 'Malappuram',          mainDistrictId: 'main-1' },
-      { id: 'dist-11', name: 'Kozhikode',           mainDistrictId: 'main-1' },
-      { id: 'dist-12', name: 'Wayanad',             mainDistrictId: 'main-1' },
-      { id: 'dist-13', name: 'Kannur',              mainDistrictId: 'main-1' },
-      { id: 'dist-14', name: 'Kasaragod',           mainDistrictId: 'main-1' },
+      { id: 'dist-1',  name: 'Thiruvananthapuram', mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-2',  name: 'Kollam',              mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-3',  name: 'Pathanamthitta',      mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-4',  name: 'Alappuzha',           mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-5',  name: 'Kottayam',            mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-6',  name: 'Idukki',              mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-7',  name: 'Ernakulam',           mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-8',  name: 'Thrissur',            mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-9',  name: 'Palakkad',            mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-10', name: 'Malappuram',          mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-11', name: 'Kozhikode',           mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-12', name: 'Wayanad',             mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-13', name: 'Kannur',              mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
+      { id: 'dist-14', name: 'Kasaragod',           mainDistrictId: 'main-1', createdAt: new Date(), updatedAt: new Date() },
     ]);
   }
 

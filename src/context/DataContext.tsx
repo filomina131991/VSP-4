@@ -70,7 +70,9 @@ export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     // Deduplicate concurrent calls
     if (fetchPromiseRef.current) return fetchPromiseRef.current;
     setLoading(true);
-    const p = Promise.all([refreshMediums(), refreshSubjects()]).finally(() => {
+    const p: Promise<void> = (async () => {
+      await Promise.all([refreshMediums(), refreshSubjects()]);
+    })().finally(() => {
       setLoading(false);
       hasLoaded.current = true;
       fetchPromiseRef.current = null;
@@ -176,4 +178,25 @@ export function useSchoolMediums(): Medium[] {
   }, []);
 
   return schoolMediums;
+}
+
+export function useSchoolSubjects(): string[] {
+  const [schoolSubjects, setSchoolSubjects] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!getAccessToken()) return;
+    const load = async () => {
+      try {
+        const res = await apiClient.get('/school/active-subjects');
+        if (Array.isArray(res.data)) {
+          setSchoolSubjects(res.data);
+        }
+      } catch (err: any) {
+        if (err?.response?.status !== 401) console.error('Failed to load school subjects:', err);
+      }
+    };
+    load();
+  }, []);
+
+  return schoolSubjects;
 }

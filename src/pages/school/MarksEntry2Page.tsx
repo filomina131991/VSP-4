@@ -86,6 +86,7 @@ const MarksEntry2Page: React.FC = () => {
   const [isFinalLocked, setIsFinalLocked] = useState<boolean>(false);
   const [allSubjectsCompleted, setAllSubjectsCompleted] = useState<boolean>(false);
   const [schoolTeachers, setSchoolTeachers] = useState<any[]>([]);
+  const [teacherDashboardData, setTeacherDashboardData] = useState<any>(null);
   const [hasDeclaredFinal, setHasDeclaredFinal] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -178,6 +179,7 @@ const MarksEntry2Page: React.FC = () => {
           }
         }
       } else if (user?.role === 'TEACHER' && results[4]) {
+        setTeacherDashboardData(results[4].data);
         const teacherClasses = results[4].data.assignedClasses || [];
         fetchedDbClasses = teacherClasses.map((cStr: string) => {
           const match = cStr.match(/^(\d+|LKG|UKG|PRE-KG)(.*)$/i);
@@ -221,7 +223,9 @@ const MarksEntry2Page: React.FC = () => {
 
   const reloadExamConfig = async (examId: string) => {
     try {
-      const res = await apiClient.get(`/school/exam-config/${examId}`);
+      const res = await apiClient.get(`/school/exam-config/${examId}`, {
+        params: { schoolId: user?.schoolId || user?.id }
+      });
       const savedConfig = res.data.subjects || [];
       setSchoolConfig(savedConfig);
     } catch (err) {
@@ -273,7 +277,12 @@ const MarksEntry2Page: React.FC = () => {
             fetched.forEach((st: any) => { if (st.medium) studentMediums.add(st.medium); });
             const allMediumNames = mediums.length > 0 ? mediums.map(m => m.shortName) : Array.from(studentMediums);
             const resolveMed = (val: string) => mediums.find(m => m.id === val || m.shortName === val || m.code === val.toUpperCase() || m.name === val)?.shortName ?? val;
-            const rawAllowed = user?.role === 'TEACHER' ? ((user as any).mediums || []) : allMediumNames;
+            const teacherMeds = [
+              ...((user as any)?.mediums || []),
+              ...(teacherDashboardData?.mediums || []),
+              ...(teacherDashboardData?.teacherAssignments || []).map((a: any) => a.medium)
+            ].filter(Boolean);
+            const rawAllowed = user?.role === 'TEACHER' && teacherMeds.length > 0 ? Array.from(new Set(teacherMeds)) : allMediumNames;
             const allowedMediums = rawAllowed.map(resolveMed);
             const availableMeds = Array.from(studentMediums).filter(m => allowedMediums.includes(m));
             if (availableMeds.length === 1) {
@@ -358,38 +367,42 @@ const MarksEntry2Page: React.FC = () => {
       });
     }
 
-    if (user?.role === 'TEACHER' && user?.teachingSubjects && Array.isArray(user.teachingSubjects) && user.teachingSubjects.length > 0) {
-      subs = subs.filter(s => {
-        const dbName = (s.name || '').toUpperCase();
-        const dbShort = (s.shortName || '').toUpperCase();
-        let mediumSuffix = '';
-        if (selectedMedium) {
-          const foundMedium = mediums.find(m => m.shortName === selectedMedium || m.name === selectedMedium || m.code === selectedMedium);
-          mediumSuffix = foundMedium ? foundMedium.code : getMediumSuffixByName(selectedMedium, mediums);
-        }
+    if (user?.role === 'TEACHER') {
+      const teacherSubs = [
+        ...(Array.isArray(user?.teachingSubjects) ? user.teachingSubjects : []),
+        ...(Array.isArray(teacherDashboardData?.teachingSubjects) ? teacherDashboardData.teachingSubjects : []),
+        ...(Array.isArray(teacherDashboardData?.teacherAssignments) ? teacherDashboardData.teacherAssignments.map((a: any) => {
+          if (selectedClass && a.className && !a.className.startsWith(selectedClass)) return null;
+          if (selectedMedium && a.medium && a.medium !== selectedMedium && !a.medium.toLowerCase().includes(selectedMedium.toLowerCase())) return null;
+          return a.subject;
+        }).filter(Boolean) : [])
+      ];
 
-        const stripP = (v: string) => v.replace(/\s*-\s*P\d+\b/gi, '').replace(/\s+/g, ' ').trim();
-        const stripMed = (v: string) => v.replace(/\s+(TM|EM|MM|KM)\b$/i, '').replace(/\s+/g, ' ').trim();
-        const normalize = (v: string) => stripMed(stripP(v));
+      if (teacherSubs.length > 0) {
+        subs = subs.filter(s => {
+          const dbName = (s.name || '').toUpperCase();
+          const dbShort = (s.shortName || '').toUpperCase();
+          const stripP = (v: string) => v.replace(/\s*-\s*P\d+\b/gi, '').replace(/\s+/g, ' ').trim();
+          const stripMed = (v: string) => v.replace(/\s+(TM|EM|MM|KM)\b$/i, '').replace(/\s+/g, ' ').trim();
+          const normalize = (v: string) => stripMed(stripP(v));
 
-        return user.teachingSubjects.some((ts: string) => {
-          const taught = ts.toUpperCase();
-          if (mediumSuffix && !taught.endsWith(mediumSuffix) && !taught.includes(mediumSuffix)) return false;
+          return teacherSubs.some((ts: string) => {
+            const taught = ts.toUpperCase();
+            const normTaught = normalize(taught);
+            const normDb = normalize(dbName);
 
-          const normTaught = normalize(taught);
-          const normDb = normalize(dbName);
+            if (normTaught.includes(normDb) || normDb.includes(normTaught)) return true;
+            if (normTaught === normDb) return true;
+            if (dbShort && normTaught.includes(dbShort)) return true;
 
-          if (normTaught.includes(normDb) || normDb.includes(normTaught)) return true;
-          if (normTaught === normDb) return true;
-          if (dbShort && normTaught.includes(dbShort)) return true;
-
-          if (taught.includes('MATHS') && dbName.includes('MATHEMATICS')) return true;
-          if (taught.includes('ENGLISH') && dbName.includes('ENGLISH (SECOND')) return true;
-          if (taught.includes('HINDI') && (dbName.includes('HINDI (THIRD') || dbName.includes('ADDL. HINDI'))) return true;
-          if (taught.includes('SPECIAL ENGLISH') && dbName.includes('SPECIAL. ENGLISH')) return true;
-          return taught.includes(dbName) || dbName.includes(taught);
+            if (taught.includes('MATHS') && dbName.includes('MATHEMATICS')) return true;
+            if (taught.includes('ENGLISH') && dbName.includes('ENGLISH (SECOND')) return true;
+            if (taught.includes('HINDI') && (dbName.includes('HINDI (THIRD') || dbName.includes('ADDL. HINDI'))) return true;
+            if (taught.includes('SPECIAL ENGLISH') && dbName.includes('SPECIAL. ENGLISH')) return true;
+            return taught.includes(dbName) || dbName.includes(taught);
+          });
         });
-      });
+      }
     }
     return subs.sort((a: any, b: any) => {
       const aMatch = (a.shortName || '').match(/P(\d+)/i);
@@ -399,7 +412,7 @@ const MarksEntry2Page: React.FC = () => {
       if (bMatch) return 1;
       return (a.shortName || '').localeCompare(b.shortName || '');
     });
-  }, [subjects, schoolConfig, user, selectedMedium, classStudents, mediums]);
+  }, [subjects, schoolConfig, user, selectedMedium, classStudents, mediums, teacherDashboardData, selectedClass]);
 
 
 
@@ -1305,6 +1318,28 @@ const MarksEntry2Page: React.FC = () => {
   const availableDivisions = useMemo(() => {
     if (!selectedMedium) return [];
 
+    if (user?.role === 'TEACHER') {
+      const teacherDivs = new Set<string>();
+      dbClasses.filter(c => c.className === selectedClass).forEach(c => {
+        if (c.division) teacherDivs.add(c.division.toUpperCase());
+      });
+      (teacherDashboardData?.assignedClasses || []).forEach((cStr: string) => {
+        const match = cStr.match(/^(\d+|LKG|UKG|PRE-KG)(.*)$/i);
+        if (match && match[1] === selectedClass && match[2]?.trim()) {
+          teacherDivs.add(match[2].trim().toUpperCase());
+        }
+      });
+      (teacherDashboardData?.teacherAssignments || []).forEach((a: any) => {
+        const match = (a.className || '').match(/^(\d+|LKG|UKG|PRE-KG)(.*)$/i);
+        if (match && match[1] === selectedClass && match[2]?.trim()) {
+          teacherDivs.add(match[2].trim().toUpperCase());
+        }
+      });
+      if (teacherDivs.size > 0) {
+        return Array.from(teacherDivs).sort();
+      }
+    }
+
     const normSel = selectedMedium.trim().toLowerCase();
     const selMedObj = mediums.find(m => 
       m.id === selectedMedium || 
@@ -1341,7 +1376,13 @@ const MarksEntry2Page: React.FC = () => {
       });
     }
     return Array.from(divs).sort();
-  }, [dbClasses, selectedClass, students, classStudents, selectedMedium, mediums]);
+  }, [dbClasses, selectedClass, students, classStudents, selectedMedium, mediums, user, teacherDashboardData]);
+
+  useEffect(() => {
+    if (user?.role === 'TEACHER' && availableDivisions.length === 1 && selectedDivision !== availableDivisions[0]) {
+      setSelectedDivision(availableDivisions[0]);
+    }
+  }, [availableDivisions, selectedDivision, user?.role]);
 
   const hasValidationErrors = useMemo(() => {
     return displayedStudents.some(s => {
@@ -1636,7 +1677,7 @@ const MarksEntry2Page: React.FC = () => {
         <div className="flex flex-col gap-3 md:gap-4 w-full">
           <div className="flex flex-col w-full bg-white dark:bg-[#161b22] rounded-2xl shadow-sm border border-gray-100 dark:border-[#30363d] transition-all">
             <div className="flex flex-row flex-wrap xl:flex-nowrap items-center gap-2 md:gap-3 p-4 w-full">
-            {((user?.role === 'TEACHER' && (user as any).mediums) || user?.role === 'SCHOOL') && (
+            {(user?.role === 'TEACHER' || user?.role === 'SCHOOL') && (
               <Dropdown
                 minWidth={100}
                 className="flex-shrink"
@@ -1645,9 +1686,14 @@ const MarksEntry2Page: React.FC = () => {
                 value={selectedMedium}
                 onChange={(v) => { setSelectedMedium(v); }}
                 options={(() => {
-                  const allMediumNames = mediums.length > 0 ? mediums.map(m => m.shortName) : ['Tamil', 'English', 'Malayalam', 'Kannada', 'Urdu', 'Arabic'];
+                  const allMediumNames = mediums.filter(m => m.active !== false).map(m => m.shortName);
                   const resolveMed = (val: string) => mediums.find(m => m.id === val || m.shortName === val || m.code === val.toUpperCase() || m.name === val)?.shortName ?? val;
-                  const rawAllowed = user?.role === 'TEACHER' ? ((user as any).mediums || []) : allMediumNames;
+                  const teacherMeds = [
+                    ...((user as any)?.mediums || []),
+                    ...(teacherDashboardData?.mediums || []),
+                    ...(teacherDashboardData?.teacherAssignments || []).map((a: any) => a.medium)
+                  ].filter(Boolean);
+                  const rawAllowed = user?.role === 'TEACHER' && teacherMeds.length > 0 ? Array.from(new Set(teacherMeds)) : allMediumNames;
                   const allowedMediums = rawAllowed.map(resolveMed);
                   const mediumsInClass = new Set(classStudents.map(s => (s.medium || '').toUpperCase()).filter(Boolean));
                   const displayMediums = allowedMediums.filter((m: string) => classStudents.length === 0 || mediumsInClass.size === 0 || mediumsInClass.has(m.toUpperCase()));

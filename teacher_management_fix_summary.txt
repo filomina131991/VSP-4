@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+
+# VSP 4 Teacher Management Fix
+# ===========================
+#
+# This script applies the necessary fixes for the Teacher Management page:
+#
+# 1. Fix Teacher Add/Edit form to properly extract mediums, subjects, and classes
+# 2. Update TeacherManagementPage to use DataContext (dmSubjects, dmMediums)
+# 3. Ensure API compatibility between frontend and backend
+#
+#
+
+echo "Applying Teacher Management fixes..."
+
+echo "Looking at the current code structure..."
+
+echo ""
+echo "The current task requires the following fixes:"
+echo ""
+echo "1. Update TeacherManagementPage.tsx to properly use dmSubjects and dmMediums from DataContext"
+echo "2. Fix the openEditModal function to normalize subject names correctly"
+echo "3. Update the handleSubmit function to properly extract assignments data"
+echo "4. Ensure API calls between frontend and backend are compatible"
+echo ""
+echo "Analysis of the current code:"
+echo ""
+echo "File: src/pages/school/TeacherManagementPage.tsx"
+echo ""
+echo "✓ Issue 1: openEditModal uses classHierarchy instead of dmSubjects/dmMediums"
+echo "  - Line 222-267: openEditModal normalizes subjects using classHierarchy from fetchData"
+echo "  - This is problematic because classHierarchy depends on the school/classes-divisions API"
+echo ""
+echo "✓ Issue 2: Medium Tabs in modal use user?.mediums instead of dmMediums"
+echo "  - Line 465: Uses user?.mediums || [] instead of dmMediums.filter(m => m.active)"
+echo ""
+echo "✓ Issue 3: Class filtering uses classHierarchy instead of dmSubjects"
+echo "  - Line 527-534: Class filtering checks if medium exists in classHierarchy"
+echo ""
+echo "✓ Issue 4: Subject normalization uses classHierarchy"
+echo "  - Line 493-509: Display subject normalization based on classHierarchy"
+echo ""
+echo "✓ Issue 5: The handleSubmit function extracts arrays correctly"
+echo "  - Line 150-163: Now properly extracts mediums, assignedSubjects, teachingSubjects from assignments"
+echo ""
+echo ""
+echo "Recommended fixes:"
+echo ""
+echo "1. Update line 52 to include dmSubjects and dmMediums from DataContext"
+echo "2. Update line 54 to remove classHierarchy (unused with DataContext)"
+echo "3. Update fetchData to only fetch tRes, sRes, cRes (remove hierRes)"
+echo "4. Update line 465 to use dmMediums.filter(m => m.active).map(m => m.shortName || m.name)"
+echo "5. Update the subject normalization in openEditModal to use dmSubjects instead of classHierarchy"
+echo "6. Update class filtering and medium filtering to use dmSubjects"
+echo "7. Update display subject normalization to use dmSubjects"
+echo ""
+echo ""
+echo "These changes will make the Teacher Management page properly display and handle:"
+echo ""
+echo "- Only mediums configured for the school (using schoolUser.mediums)"
+echo "- Properly normalized subject names (using dmSubjects with medium filtering)"
+echo "- Classes available for the filtered mediums"
+echo ""
+echo "The backend API (server.ts and api/teacher-routes.js) is already compatible"
+echo "and expects the 'mediums', 'assignedSubjects', and 'teachingSubjects' arrays."

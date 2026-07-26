@@ -8697,43 +8697,58 @@ app.get("/api/school/exam-config/:examId/dynamic-data", authenticateToken, async
     commonSubjects.p04.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
     commonSubjects.core.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
 
+    const countStudentsForLanguageSub = (sub: any, med: string): number => {
+      const subId = (sub._id || sub.id || '').toString();
+      const subName = ((sub.name || '') as string).toUpperCase().trim();
+      const subShort = ((sub.shortName || '') as string).toUpperCase().trim();
+
+      let count = 0;
+      students.forEach((st: any) => {
+        const stMed = st.medium || '';
+        if (med && stMed !== med) return;
+
+        const ids = [st.firstLangPaper1Id, st.firstLangPaper2Id, st.secondLangId, st.thirdLangId].filter(Boolean).map(String);
+        if (subId && ids.includes(subId)) {
+          count++;
+          return;
+        }
+
+        const names = [st.firstLangPaper1, st.firstLangPaper2, st.secondLang, st.thirdLang].filter(Boolean).map((s: any) => String(s).toUpperCase().trim());
+        if (names.includes(subName) || (subShort && names.includes(subShort))) {
+          count++;
+          return;
+        }
+      });
+      return count;
+    };
+
     // Build subjectIdCounts: maps each subject _id to its student count per medium
     const subjectIdCounts: Record<string, Record<string, number>> = {};
-    for (const med of schoolMediums) {
+    const allKnownMediums = Array.from(new Set([...schoolMediums, ...Object.keys(subjectsByMedium), ...Object.keys(subjectStudentCounts)]));
+    for (const med of allKnownMediums) {
       subjectIdCounts[med] = {};
       const medCounts = subjectStudentCounts[med] || {};
-      const group = subjectsByMedium[med];
-      if (!group) continue;
-      (group.p01 || []).forEach((s: any) => {
-        const sid = (s._id || s.id || '').toString();
-        if (sid) subjectIdCounts[med][sid] = medCounts['P01'] || totalStudentsByMedium[med] || 0;
-      });
-      (group.p02 || []).forEach((s: any) => {
-        const sid = (s._id || s.id || '').toString();
-        if (sid) subjectIdCounts[med][sid] = medCounts['P02'] || totalStudentsByMedium[med] || 0;
-      });
-      (group.p03 || []).forEach((s: any) => {
-        const sid = (s._id || s.id || '').toString();
-        if (sid) subjectIdCounts[med][sid] = medCounts['P03'] || totalStudentsByMedium[med] || 0;
-      });
-      (group.p04 || []).forEach((s: any) => {
-        const sid = (s._id || s.id || '').toString();
-        if (sid) subjectIdCounts[med][sid] = medCounts['P04'] || totalStudentsByMedium[med] || 0;
-      });
-      (group.core || []).forEach((s: any) => {
+      allSubjects.forEach((s: any) => {
         const sid = (s._id || s.id || '').toString();
         if (!sid) return;
-        const subCode = ((s.code || '') as string).toUpperCase().trim();
-        if (subCode && medCounts[subCode] !== undefined) {
-          subjectIdCounts[med][sid] = medCounts[subCode];
+        const cat = categorizeSubjectDynamic(s);
+        const pCode = extractPCodeDynamic(s);
+        const isLang = pCode === 'P01' || pCode === 'P02' || pCode === 'P03' || pCode === 'P04' || cat === 'FIRST_LANGUAGE' || cat === 'SECOND_LANGUAGE' || cat === 'THIRD_LANGUAGE' || String(s.paperType || '').includes('LANGUAGE') || String(s.category || '').includes('LANGUAGE');
+        if (isLang) {
+          subjectIdCounts[med][sid] = countStudentsForLanguageSub(s, med);
         } else {
-          const nameUpper = ((s.name || '') + ' ' + (s.shortName || '')).toUpperCase();
-          const pMatch = nameUpper.match(/\bP(\d{2})\b/);
-          if (pMatch) {
-            const pCode = `P${pMatch[1]}`;
-            subjectIdCounts[med][sid] = medCounts[pCode] || totalStudentsByMedium[med] || 0;
+          const subCode = ((s.code || '') as string).toUpperCase().trim();
+          if (subCode && medCounts[subCode] !== undefined) {
+            subjectIdCounts[med][sid] = medCounts[subCode];
           } else {
-            subjectIdCounts[med][sid] = totalStudentsByMedium[med] || 0;
+            const nameUpper = ((s.name || '') + ' ' + (s.shortName || '')).toUpperCase();
+            const pMatch = nameUpper.match(/\bP(\d{2})\b/);
+            if (pMatch) {
+              const pCodeStr = `P${pMatch[1]}`;
+              subjectIdCounts[med][sid] = medCounts[pCodeStr] || totalStudentsByMedium[med] || 0;
+            } else {
+              subjectIdCounts[med][sid] = totalStudentsByMedium[med] || 0;
+            }
           }
         }
       });

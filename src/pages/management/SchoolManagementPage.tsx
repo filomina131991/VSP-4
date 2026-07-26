@@ -52,7 +52,7 @@ interface School {
 const SchoolManagementPage: React.FC = () => {
   const { user } = useAuth();
   const { mediums } = useData();
-  const availableMediumNames = mediums.length > 0 ? mediums.map((m: any) => m.shortName) : ['Tamil', 'English', 'Malayalam', 'Kannada'];
+  const availableMediumNames = mediums.filter((m: any) => m.active !== false).map((m: any) => m.shortName);
   const [schools, setSchools] = useState<School[]>([]);
   const [mainDistricts, setMainDistricts] = useState<any[]>([]);
   const [districts, setDistricts] = useState<any[]>([]);

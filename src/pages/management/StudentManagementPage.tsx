@@ -124,7 +124,7 @@ const STANDARD_NAMES: Record<string, string> = {
 
 const StudentManagementPage: React.FC = () => {
   const { user } = useAuth();
-  const { mediums } = useData();
+  const { mediums, subjects: dmSubjects } = useData();
   const allMediumNames = useMemo(() => {
     if (mediums.length === 0) return [];
     return mediums.filter(m => m.active !== false).map(m => m.shortName);
@@ -621,12 +621,13 @@ const StudentManagementPage: React.FC = () => {
       if (updates.firstLangPaper2 ?? latestStudent.firstLangPaper2) newSubjects.push(`${updates.firstLangPaper2 ?? latestStudent.firstLangPaper2} ${mediumCode}`.trim());
       newSubjects.push(`${secBase} - P03 ${mediumCode}`);
       newSubjects.push(`${thirdBase} - P04 ${mediumCode}`);
-      newSubjects.push(`SOCIAL SCIENCE - P05 ${mediumCode}`);
-      newSubjects.push(`PHYSICS - P06 ${mediumCode}`);
-      newSubjects.push(`CHEMISTRY - P07 ${mediumCode}`);
-      newSubjects.push(`BIOLOGY - P08 ${mediumCode}`);
-      newSubjects.push(`MATHEMATICS - P09 ${mediumCode}`);
-      newSubjects.push(`INFORMATION TECHNOLOGY - P10 ${mediumCode}`);
+      // Dynamically add core subjects from Data Management
+      const coreSubjects = dmSubjects.filter((s: any) => s.active && s.category === 'CORE');
+      coreSubjects.forEach((s: any) => {
+        const subjectName = (s.name || '').replace(/ - P\d+$/, '').trim();
+        const code = s.shortName || s.code || '';
+        newSubjects.push(`${subjectName} - ${code} ${mediumCode}`);
+      });
       
       updates.secondLang = finalSecondLang;
       updates.thirdLang = finalThirdLang;

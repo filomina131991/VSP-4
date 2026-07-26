@@ -56,6 +56,10 @@ const ResetPasswordPage = () => {
       toast.error('Please enter a new password');
       return;
     }
+    if (password.length < 3) {
+      toast.error('Password must be at least 3 characters long');
+      return;
+    }
     if (password !== confirmPassword) {
       toast.error('Passwords do not match');
       return;
@@ -143,6 +147,7 @@ const ResetPasswordPage = () => {
                         ? "border-slate-800 bg-slate-950/60 text-white placeholder:text-slate-700 focus:border-blue-500" 
                         : "border-slate-200 bg-slate-50/50 text-slate-900 placeholder:text-slate-300 focus:border-blue-500 focus:bg-white"
                     )}
+                    minLength={3}
                     required
                   />
                   <button
@@ -175,6 +180,7 @@ const ResetPasswordPage = () => {
                         ? "border-slate-800 bg-slate-950/60 text-white placeholder:text-slate-700 focus:border-blue-500" 
                         : "border-slate-200 bg-slate-50/50 text-slate-900 placeholder:text-slate-300 focus:border-blue-500 focus:bg-white"
                     )}
+                    minLength={3}
                     required
                   />
                   <button

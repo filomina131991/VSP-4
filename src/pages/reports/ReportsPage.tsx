@@ -117,17 +117,18 @@ const ReportsPage: React.FC = () => {
       return sortSubjects(mapped);
     }
 
-    return [
-      { code: 'P01', label: 'Lan I' },
-      { code: 'P02', label: 'Lan II' },
-      { code: 'P03', label: 'Eng' },
-      { code: 'P04', label: 'Hin' },
-      { code: 'P05', label: 'SS' },
-      { code: 'P06', label: 'Phy' },
-      { code: 'P07', label: 'Che' },
-      { code: 'P08', label: 'Bio' },
-      { code: 'P09', label: 'Mat' }
-    ];
+    // Fallback: build from all active subjects in DB
+    if (subjects.length > 0) {
+      const allFromDb = subjects.map((s: any) => ({
+        code: s.shortName || s.code || s.name,
+        label: s.shortName || s.name || s.code
+      }));
+      if (allFromDb.length > 0) {
+        return sortSubjects(allFromDb);
+      }
+    }
+
+    return [];
   }, [reportData?.exam?.subjects, configuredSubjectIds, subjects]);
 
 
