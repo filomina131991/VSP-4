@@ -1,0 +1,8 @@
+{
+  "name": "Vijayasree Analysis (വിജയശ്രീ Analysis)",
+  "description": "A comprehensive SSLC results analysis platform for KITE (Vijayasree), providing detailed drill-down reports from state to student level, school management, and performance tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
