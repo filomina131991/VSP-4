@@ -164,14 +164,39 @@ const StudentManagementPage: React.FC = () => {
     return { second: "", third: "" };
   };
 
+  const extractPCode = (sObj: any): string => {
+    const fields = [sObj.paperType, sObj.code, sObj.shortName, sObj.name];
+    for (const f of fields) {
+      if (!f) continue;
+      const m = String(f).toUpperCase().match(/\b(P0[1-9]|P10|P\d{2})\b/);
+      if (m) return m[1];
+    }
+    return '';
+  };
+
   const getLanguageOptions = (medium: string, keyword: string) => {
     if (!medium) return [];
     
     return subjects.filter((s: any) => {
       const name = (s.name || '').toUpperCase();
       const shortName = (s.shortName || '').toUpperCase();
+      const code = (s.code || '').toUpperCase();
+      const paperType = (s.paperType || '').toUpperCase();
+      const category = (s.category || '').toUpperCase();
+      const pCode = extractPCode(s);
       
-      const matchesKeyword = name.includes(keyword) || shortName.includes(keyword);
+      let matchesKeyword = false;
+      if (keyword === 'P01') {
+        matchesKeyword = pCode === 'P01' || code === 'P01' || paperType === 'P01' || name.includes('P01') || shortName.includes('P01') || (category === 'FIRST_LANGUAGE' && (name.includes(' AT') || name.includes('PAPER I')));
+      } else if (keyword === 'P02') {
+        matchesKeyword = pCode === 'P02' || code === 'P02' || paperType === 'P02' || name.includes('P02') || shortName.includes('P02') || (category === 'FIRST_LANGUAGE' && (name.includes(' BT') || name.includes('PAPER II')));
+      } else if (keyword === 'P03') {
+        matchesKeyword = pCode === 'P03' || code === 'P03' || paperType === 'P03' || name.includes('P03') || shortName.includes('P03') || category === 'SECOND_LANGUAGE';
+      } else if (keyword === 'P04') {
+        matchesKeyword = pCode === 'P04' || code === 'P04' || paperType === 'P04' || name.includes('P04') || shortName.includes('P04') || category === 'THIRD_LANGUAGE';
+      } else {
+        matchesKeyword = name.includes(keyword) || shortName.includes(keyword) || code.includes(keyword);
+      }
       if (!matchesKeyword) return false;
       
       // Use subject's mediumId for matching when available, fall back to name pattern
@@ -194,6 +219,16 @@ const StudentManagementPage: React.FC = () => {
 
       const studentMedShort = resolveMediumShortName(medium, mediums) || medium;
       return subMediumShort.toLowerCase() === studentMedShort.toLowerCase() || !subMediumShort;
+    }).sort((a: any, b: any) => {
+      const pA = extractPCode(a);
+      const pB = extractPCode(b);
+      const numA = pA ? parseInt(pA.slice(1), 10) : 999;
+      const numB = pB ? parseInt(pB.slice(1), 10) : 999;
+      if (numA !== numB) return numA - numB;
+      if ((a.displayOrder || 0) !== (b.displayOrder || 0)) {
+        return (a.displayOrder || 0) - (b.displayOrder || 0);
+      }
+      return (a.name || '').localeCompare(b.name || '');
     });
   };
   const [selectedClassFilter, setSelectedClassFilter] = useState('ALL');
@@ -1937,10 +1972,10 @@ className="flex items-center justify-between px-8 py-5 cursor-pointer hover:bg-b
                       <th className="py-2.5 px-2 w-32 truncate" title="Reg. No / Name">Reg. No / Name</th>
                       <th className="py-2.5 px-1 text-center w-12">Class</th>
                       <th className="py-2.5 px-1 text-center w-20">Medium</th>
-                      <th className="py-2.5 px-1 text-center w-28">First Lang P1</th>
-                      <th className="py-2.5 px-1 text-center w-28">First Lang P2</th>
-                      <th className="py-2.5 px-1 text-center w-24">Second Lang</th>
-                      <th className="py-2.5 px-1 text-center w-24">Third Lang</th>
+                      <th className="py-2.5 px-1 text-center w-28">First Lang P1 (P01)</th>
+                      <th className="py-2.5 px-1 text-center w-28">First Lang P2 (P02)</th>
+                      <th className="py-2.5 px-1 text-center w-24">Second Lang (P03)</th>
+                      <th className="py-2.5 px-1 text-center w-24">Third Lang (P04)</th>
                       <th className="py-2.5 px-2 text-right w-16 sticky right-0 bg-slate-50 z-10 shadow-[-4px_0_8px_rgba(0,0,0,0.03)]">Actions</th>
                     </tr>
                   </thead>

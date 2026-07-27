@@ -36,7 +36,7 @@ const DataManagementPage: React.FC = () => {
   ] as const;
 
   const availableTabs = useMemo(() => {
-    return allTabs.filter(tab => tab.roles.includes(user?.role || ''));
+    return allTabs.filter(tab => (tab.roles as readonly string[]).includes(user?.role || ''));
   }, [user]);
 
   const [activeTab, setActiveTab] = useState<TabType>(availableTabs[0]?.id as TabType || 'SCHOOLS');

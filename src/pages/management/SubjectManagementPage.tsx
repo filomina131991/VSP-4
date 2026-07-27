@@ -117,28 +117,37 @@ const SubjectManagementPage: React.FC = () => {
       }
 
       if (targetMediumIds.length === 0) {
-        // P01/P02 (FIRST_LANGUAGE) must be medium-specific — skip if no medium resolved.
-        if (category === 'FIRST_LANGUAGE' || paperType === 'P01' || paperType === 'P02') return;
         // Core / Common subject or unrecognized -> applies to ALL mediums
         targetMediumIds = effectiveMediums.map(m => m.id);
       }
 
+      const extractPCode = (sObj: any): string => {
+        const fields = [sObj.paperType, sObj.code, sObj.shortName, sObj.name];
+        for (const f of fields) {
+          if (!f) continue;
+          const m = String(f).toUpperCase().match(/\b(P0[1-9]|P10|P\d{2})\b/);
+          if (m) return m[1];
+        }
+        return '';
+      };
+      const pCode = extractPCode(sub);
+
       targetMediumIds.forEach(medId => {
         if (!groups[medId]) return;
 
-        if (paperType === 'P01' || name.includes('P01') || (category === 'FIRST_LANGUAGE' && (name.includes(' AT') || name.includes('PAPER I')))) {
+        if (pCode === 'P01' || paperType === 'P01' || name.includes('P01') || (category === 'FIRST_LANGUAGE' && (name.includes(' AT') || name.includes('PAPER I')))) {
           if (!groups[medId].p01.some(s => s.id === sub.id || s.name === sub.name)) {
             groups[medId].p01.push(sub);
           }
-        } else if (paperType === 'P02' || name.includes('P02') || (category === 'FIRST_LANGUAGE' && (name.includes(' BT') || name.includes('PAPER II')))) {
+        } else if (pCode === 'P02' || paperType === 'P02' || name.includes('P02') || (category === 'FIRST_LANGUAGE' && (name.includes(' BT') || name.includes('PAPER II')))) {
           if (!groups[medId].p02.some(s => s.id === sub.id || s.name === sub.name)) {
             groups[medId].p02.push(sub);
           }
-        } else if (paperType === 'P03' || name.includes('P03') || category === 'SECOND_LANGUAGE') {
+        } else if (pCode === 'P03' || paperType === 'P03' || name.includes('P03') || category === 'SECOND_LANGUAGE') {
           if (!groups[medId].p03.some(s => s.id === sub.id || s.name === sub.name)) {
             groups[medId].p03.push(sub);
           }
-        } else if (paperType === 'P04' || name.includes('P04') || category === 'THIRD_LANGUAGE') {
+        } else if (pCode === 'P04' || paperType === 'P04' || name.includes('P04') || category === 'THIRD_LANGUAGE') {
           if (!groups[medId].p04.some(s => s.id === sub.id || s.name === sub.name)) {
             groups[medId].p04.push(sub);
           }
@@ -150,25 +159,25 @@ const SubjectManagementPage: React.FC = () => {
       });
     });
 
-    const extractPCode = (sub: any): string => {
+    const extractPCodeForSort = (sub: any): string => {
       const fields = [sub.paperType, sub.code, sub.shortName, sub.name];
       for (const f of fields) {
         if (!f) continue;
-        const m = String(f).toUpperCase().match(/\b(P\d{2})\b/);
+        const m = String(f).toUpperCase().match(/\b(P0[1-9]|P10|P\d{2})\b/);
         if (m) return m[1];
       }
       return '';
     };
 
     const sortSubjectsByCode = (a: any, b: any) => {
-      if ((a.displayOrder || 0) !== (b.displayOrder || 0)) {
-        return (a.displayOrder || 0) - (b.displayOrder || 0);
-      }
-      const pA = extractPCode(a);
-      const pB = extractPCode(b);
+      const pA = extractPCodeForSort(a);
+      const pB = extractPCodeForSort(b);
       const numA = pA ? parseInt(pA.slice(1), 10) : 999;
       const numB = pB ? parseInt(pB.slice(1), 10) : 999;
       if (numA !== numB) return numA - numB;
+      if ((a.displayOrder || 0) !== (b.displayOrder || 0)) {
+        return (a.displayOrder || 0) - (b.displayOrder || 0);
+      }
       return (a.shortName || a.code || a.name || '').localeCompare(b.shortName || b.code || b.name || '');
     };
 
