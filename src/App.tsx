@@ -85,7 +85,11 @@ export default function App() {
                 <Route path="home" element={<DashboardPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route path="notifications" element={<SchoolNotificationsPage />} />
-                <Route path="resources" element={<ResourceManagementPage />} />
+                <Route path="resources" element={
+                  <ProtectedRoute allowedRoles={['WEBMASTER', 'DEO', 'DIET', 'SCHOOL', 'SUBJECT_EXPERT', 'RESOURCE_PERSON']}>
+                    <ResourceManagementPage />
+                  </ProtectedRoute>
+                } />
                 
                 {/* Analysis Modules */}
                 <Route path="subject-analysis" element={

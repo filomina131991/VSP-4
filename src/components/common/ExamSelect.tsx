@@ -91,18 +91,22 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
         type="button"
         onClick={() => { setIsOpen(prev => !prev); setSearchQuery(''); setHighlightedIdx(-1); }}
         onKeyDown={(e) => { if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); setIsOpen(true); } }}
-        className="w-full text-left bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] px-3.5 py-2.5 rounded-xl shadow-sm hover:shadow-md hover:border-gray-300 dark:hover:border-gray-600 transition-all cursor-pointer"
+        className={`w-full text-left px-3.5 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer border ${
+          isConfigured
+            ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-400 dark:border-emerald-600/80 hover:border-emerald-500 shadow-emerald-500/10'
+            : 'bg-white dark:bg-[#161b22] border-gray-200 dark:border-[#30363d] hover:border-gray-300 dark:hover:border-gray-600'
+        }`}
       >
         <div className="flex items-start gap-2">
-          <FileText size={15} className="text-indigo-500 dark:text-indigo-400 shrink-0 mt-0.5" />
+          <FileText size={15} className={`${isConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-500 dark:text-indigo-400'} shrink-0 mt-0.5`} />
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] sm:text-xs font-black uppercase leading-tight text-black dark:text-white break-words" title={selectedExam?.name || placeholder}>
+            <div className={`text-[11px] sm:text-xs font-black uppercase leading-tight break-words ${isConfigured ? 'text-emerald-950 dark:text-emerald-200' : 'text-black dark:text-white'}`} title={selectedExam?.name || placeholder}>
               {selectedExam?.name || placeholder}
             </div>
             {selectedExam && (
               <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                <span className={`inline-block text-[8px] font-black uppercase tracking-wider px-1.5 py-px rounded-full ${isConfigured ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400'}`}>
-                  {isConfigured ? 'Configured' : 'Configure'}
+                <span className={`inline-block text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${isConfigured ? 'bg-emerald-600 text-white shadow-xs' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400'}`}>
+                  {isConfigured ? '✓ Configured' : 'Configure Required'}
                 </span>
                 {selectedExam.academicYear && (
                   <span className="text-[9px] font-bold text-gray-400 dark:text-gray-500">{selectedExam.academicYear}</span>
@@ -114,7 +118,7 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0 mt-0.5">
-            {selectedExamId && <Check size={14} className="text-emerald-500" />}
+            {selectedExamId && <Check size={14} className={isConfigured ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-500"} />}
             <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
           </div>
         </div>
@@ -145,6 +149,7 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
             ) : (filteredExams as any[]).map((ex, idx) => {
               const isSelected = ex.id === selectedExamId;
               const isConfirmed = schoolId ? ex.confirmedSchools?.includes(schoolId) : false;
+              const exConfigured = configuredIds.includes(ex.id);
               return (
                 <div
                   key={ex.id}
@@ -153,14 +158,14 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
                   onClick={() => { onSelect(ex.id); setIsOpen(false); setSearchQuery(''); setHighlightedIdx(-1); }}
                   onMouseEnter={() => setHighlightedIdx(idx)}
                   className={`flex items-start gap-3 px-3.5 py-3 cursor-pointer transition-all ${
-                    idx === highlightedIdx ? 'bg-indigo-50 dark:bg-indigo-950/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                  } ${isSelected ? 'bg-indigo-50/80 dark:bg-indigo-950/20 border-l-2 border-l-indigo-500' : 'border-l-2 border-l-transparent'}`}
+                    idx === highlightedIdx ? (exConfigured ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : 'bg-indigo-50 dark:bg-indigo-950/30') : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                  } ${isSelected ? (exConfigured ? 'bg-emerald-50 dark:bg-emerald-950/30 border-l-4 border-l-emerald-500' : 'bg-indigo-50/80 dark:bg-indigo-950/20 border-l-4 border-l-indigo-500') : 'border-l-4 border-l-transparent'}`}
                 >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isSelected ? 'bg-indigo-100 dark:bg-indigo-900/50' : 'bg-gray-100 dark:bg-gray-800'}`}>
-                    <FileText size={14} className={isSelected ? 'text-indigo-600' : 'text-gray-500'} />
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${exConfigured ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400' : (isSelected ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600' : 'bg-gray-100 dark:bg-gray-800 text-gray-500')}`}>
+                    <FileText size={14} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className={`text-sm font-black uppercase leading-tight break-words ${isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-800 dark:text-gray-200'}`}>
+                    <div className={`text-sm font-black uppercase leading-tight break-words ${exConfigured ? 'text-emerald-900 dark:text-emerald-300' : (isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-800 dark:text-gray-200')}`}>
                       {ex.name}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -173,12 +178,12 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
                     </div>
                   </div>
                   <div className="shrink-0 mt-0.5">
-                    <span className={`inline-block text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                      configuredIds.includes(ex.id)
-                        ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400'
+                    <span className={`inline-block text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+                      exConfigured
+                        ? 'bg-emerald-600 text-white shadow-xs'
                         : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
                     }`}>
-                      {configuredIds.includes(ex.id) ? 'Configured' : 'Configure'}
+                      {exConfigured ? '✓ Configured' : 'Configure Required'}
                     </span>
                   </div>
                 </div>

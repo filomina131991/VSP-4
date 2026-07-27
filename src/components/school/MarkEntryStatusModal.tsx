@@ -3,6 +3,7 @@ import { X, CheckCircle2, AlertCircle, Clock, Users, BookOpen, BarChart3, Loader
 import Modal from '../common/Modal';
 import { apiClient } from '../../lib/apiClient';
 import { useAuth } from '../../context/AuthContext';
+import { sortSubjects, getSubjectShortLabel, getSubjectPCode } from '../../lib/subjectUtils';
 
 interface TeacherInfo {
   name: string;
@@ -16,6 +17,9 @@ interface SubjectStatus {
   subjectId: string;
   subjectName: string;
   shortName: string;
+  code?: string;
+  paperType?: string;
+  displayOrder?: number;
   totalStudents: number;
   marksEntered: number;
   remaining: number;
@@ -217,7 +221,7 @@ const MarkEntryStatusModal: React.FC<MarkEntryStatusModalProps> = ({ isOpen, onC
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-[#30363d]">
-                      {data.subjects.map((subject, idx) => {
+                      {sortSubjects(data.subjects as any).map((subject: any, idx: number) => {
                         const st = statusStyles[subject.status] || statusStyles['Not Yet Started'];
                         return (
                           <tr
@@ -226,9 +230,14 @@ const MarkEntryStatusModal: React.FC<MarkEntryStatusModalProps> = ({ isOpen, onC
                           >
                             <td className="px-4 py-3 text-[11px] font-bold text-gray-400">{idx + 1}</td>
                             <td className="px-4 py-3">
-                              <div>
-                                <span className="text-[11px] font-black text-gray-900 dark:text-white uppercase">{subject.shortName}</span>
-                                <div className="text-[9px] text-gray-400 dark:text-gray-500 font-bold mt-0.5 truncate max-w-[200px]">{subject.subjectName}</div>
+                              <div className="flex items-center gap-2.5">
+                                <span className="inline-flex items-center justify-center min-w-[32px] px-1.5 py-1 text-[10px] font-black uppercase rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 shadow-2xs shrink-0">
+                                  {getSubjectPCode(subject) || `P${String(idx + 1).padStart(2, '0')}`}
+                                </span>
+                                <div className="min-w-0">
+                                  <span className="text-[11px] font-black text-gray-900 dark:text-white uppercase block truncate">{getSubjectShortLabel(subject)}</span>
+                                  <div className="text-[9px] text-gray-400 dark:text-gray-500 font-bold mt-0.5 truncate max-w-[200px]">{subject.subjectName}</div>
+                                </div>
                               </div>
                             </td>
                             <td className="px-4 py-3 text-center">

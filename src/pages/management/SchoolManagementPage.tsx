@@ -72,7 +72,7 @@ const SchoolManagementPage: React.FC = () => {
 
   const [selectedSchools, setSelectedSchools] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingSchool, setEditingSchool] = useState<Partial<School> & { districtId?: string } | null>(null);
+  const [editingSchool, setEditingSchool] = useState<Partial<School> & { districtId?: string; mainDistrictId?: string } | null>(null);
   const [importSummary, setImportSummary] = useState<{
     processed: number;
     successfulCount: number;

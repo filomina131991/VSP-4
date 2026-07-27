@@ -25,6 +25,8 @@ import { cn } from '../../lib/utils';
 import PageLoader from '../../components/common/PageLoader';
 import ExamSelect from '../../components/common/ExamSelect';
 import { getStudentResult } from '../../lib/resultClassification';
+import { sortSubjects as sortSubjectsUtil } from '../../lib/subjectUtils';
+
 
 interface StudentResult {
   studentId: string;
@@ -85,14 +87,7 @@ const ReportsPage: React.FC = () => {
         seen.add(key);
         return true;
       });
-      return unique.sort((a: any, b: any) => {
-        const aMatch = a.code.match(/P(\d+)/i);
-        const bMatch = b.code.match(/P(\d+)/i);
-        if (aMatch && bMatch) return parseInt(aMatch[1]) - parseInt(bMatch[1]);
-        if (aMatch) return -1;
-        if (bMatch) return 1;
-        return a.label.localeCompare(b.label);
-      });
+      return sortSubjectsUtil(unique);
     };
 
     if (configuredSubjectIds.length > 0 && subjects.length > 0) {
@@ -330,7 +325,8 @@ const ReportsPage: React.FC = () => {
     const unsub1 = onRefresh('mediums-updated', () => setRefreshKey(k => k + 1));
     const unsub2 = onRefresh('subjects-updated', () => setRefreshKey(k => k + 1));
     const unsub3 = onRefresh('data-updated', () => setRefreshKey(k => k + 1));
-    return () => { unsub1(); unsub2(); unsub3(); };
+    const unsub4 = onRefresh('students-updated', () => setRefreshKey(k => k + 1));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, []);
 
   // Chart theme colors — fully consistent with light/dark
@@ -690,7 +686,7 @@ const ReportsPage: React.FC = () => {
     });
     filteredSchools.forEach((s: any) => {
       s.students.forEach((student: any) => {
-        const gradesString = Object.entries(student.grades).sort(([a], [b]) => a.localeCompare(b)).map(([sub, g]) => `${sub}:${g}`).join(" | ");
+        const gradesString = Object.entries(student.grades).sort(([a], [b]) => sortSubjectsUtil({ shortCode: a }, { shortCode: b })).map(([sub, g]) => `${sub}:${g}`).join(" | ");
         rows.push([
           idx++,
           s.code,
@@ -1048,7 +1044,7 @@ const ReportsPage: React.FC = () => {
                                               <td className={`px-4 py-2 text-xs font-bold text-gray-900 dark:text-white ${T_BORDER}`}>{student.name}</td>
                                               <td className={`px-4 py-2 text-xs text-gray-700 dark:text-gray-300 ${T_BORDER}`}>{student.gender}</td>
                                               <td className="px-4 py-2 text-xs font-mono flex flex-wrap gap-1.5">
-                                                {Object.entries(student.grades).sort(([a], [b]) => a.localeCompare(b)).map(([subCode, grade]: any) => (
+                                                {Object.entries(student.grades).sort(([a], [b]) => sortSubjectsUtil({ shortCode: a }, { shortCode: b })).map(([subCode, grade]: any) => (
                                                   <span key={subCode} className={cn(
                                                     "px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider",
                                                     grade === 'A+' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' :

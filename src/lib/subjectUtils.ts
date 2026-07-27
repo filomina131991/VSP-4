@@ -41,12 +41,43 @@ export const formatSubjectName = (name: string, shortCode?: string) => {
   return result;
 };
 
-export const getSubjectShortLabel = (sub: { name?: string; shortName?: string }): string => {
+export const getSubjectPCode = (sub: any): string => {
+  if (!sub) return '';
+  const str = String(sub.pCode || sub.code || sub.shortCode || sub.paperType || sub.shortName || sub.name || sub.subjectName || '').toUpperCase();
+  const match = str.match(/\bP(0?[1-9]|10)\b/) || str.match(/P(0?[1-9]|10)/);
+  if (match && match[1]) {
+    const num = parseInt(match[1], 10);
+    if (num >= 1 && num <= 10) {
+      return num <= 9 ? `P0${num}` : `P${num}`;
+    }
+  }
+  
+  const nameStr = String(sub.name || sub.subjectName || sub.shortName || '').toUpperCase().trim();
+  const cat = String(sub.category || '').toUpperCase();
+  
+  if (nameStr.includes('PAPER I') || nameStr.includes(' AT') || nameStr.includes('LAN I') || nameStr.includes('FIRST LANG') || nameStr === 'TAMIL AT' || nameStr === 'MALAYALAM AT' || nameStr.includes('ARABIC (A)') || nameStr.includes('SANSKRIT (A)') || cat === 'FIRST_LANGUAGE') return 'P01';
+  if (nameStr.includes('PAPER II') || nameStr.includes(' BT') || nameStr.includes('LAN II') || nameStr.includes('SPECIAL ENGLISH') || nameStr.includes('SPECIAL HINDI') || nameStr.includes('ARABIC (O)') || nameStr.includes('SANSKRIT (O)') || nameStr.includes('OPTIONAL')) return 'P02';
+  if (nameStr === 'ENGLISH' || nameStr.includes('SECOND LANG') || nameStr === 'ENG' || cat === 'SECOND_LANGUAGE') return 'P03';
+  if (nameStr === 'HINDI' || nameStr.includes('THIRD LANG') || nameStr === 'HIN' || nameStr.includes('GENERAL KNOWLEDGE') || nameStr === 'GK' || cat === 'THIRD_LANGUAGE') return 'P04';
+  if (nameStr.includes('SOCIAL') || nameStr === 'SS' || nameStr === 'SOC') return 'P05';
+  if (nameStr.includes('PHYSIC') || nameStr === 'PHY') return 'P06';
+  if (nameStr.includes('CHEMIS') || nameStr === 'CHE') return 'P07';
+  if (nameStr.includes('BIOLOG') || nameStr === 'BIO' || nameStr.includes('NATURAL')) return 'P08';
+  if (nameStr.includes('MATH') || nameStr === 'MAT' || nameStr.includes('GANITHAM')) return 'P09';
+  if (nameStr.includes('INFO') || nameStr === 'ICT' || nameStr === 'IT' || nameStr.includes('COMPUTER')) return 'P10';
+  
+  return '';
+};
+
+export const getSubjectShortLabel = (sub: any): string => {
   if (!sub) return 'Subject';
   const shortName = (sub.shortName || '').trim();
   if (shortName) return shortName;
-  const formatted = formatSubjectName(sub.name || '');
-  return formatted || sub.name || 'Subject';
+  const formatted = formatSubjectName(sub.name || sub.subjectName || '', getSubjectPCode(sub));
+  if (formatted) return formatted;
+  const pCode = getSubjectPCode(sub);
+  if (pCode) return pCode;
+  return sub.name || sub.subjectName || 'Subject';
 };
 
 export const getCleanSubjectName = (name: string, shortCode?: string): string => {
@@ -103,55 +134,67 @@ export const getCleanSubjectName = (name: string, shortCode?: string): string =>
   return cleanName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 };
 
+import { resolveMedium } from './mediumUtils';
+
+/**
+ * Sort subjects strictly by paper code (P01, P02... P10) first.
+ * If paper codes are equal or absent, sort by displayOrder or name.
+ * Never sort randomly!
+ */
+export function sortSubjects<T = any>(list: T[]): T[];
+export function sortSubjects<T = any>(a: T, b: T): number;
+export function sortSubjects(a: any, b?: any): any {
+  if (Array.isArray(a)) {
+    return [...a].sort((x, y) => sortSubjects(x, y));
+  }
+  if (!b) return 0;
+  
+  const codeA = getSubjectPCode(a);
+  const codeB = getSubjectPCode(b);
+  
+  const getCodeNum = (code: string) => {
+    if (!code) return 999;
+    const m = code.match(/\d+/);
+    return m ? parseInt(m[0], 10) : 999;
+  };
+
+  const numA = getCodeNum(codeA);
+  const numB = getCodeNum(codeB);
+  if (numA !== numB) {
+    return numA - numB;
+  }
+  
+  const orderA = a.displayOrder !== undefined && a.displayOrder !== null ? Number(a.displayOrder) : 0;
+  const orderB = b.displayOrder !== undefined && b.displayOrder !== null ? Number(b.displayOrder) : 0;
+  if (orderA !== orderB && orderA > 0 && orderB > 0) {
+    return orderA - orderB;
+  }
+
+  const nameA = String(a.shortName || a.name || a.subjectName || '').toUpperCase();
+  const nameB = String(b.shortName || b.name || b.subjectName || '').toUpperCase();
+  return nameA.localeCompare(nameB);
+}
+
 export function filterSubjectsByMedium<T extends { mediumId?: string; medium?: string; mediumName?: string; name: string }>(
   subjects: T[],
   mediumInput: string,
   mediums: any[]
 ): T[] {
   if (!mediumInput) return subjects;
-
-  const normSel = mediumInput.trim().toLowerCase();
-  const selMedObj = (mediums || []).find((m: any) => 
-    m.id === mediumInput || 
-    m.shortName?.toLowerCase() === normSel || 
-    m.code?.toLowerCase() === normSel || 
-    m.name?.toLowerCase() === normSel
-  );
-
-  const targetMedId = selMedObj?.id;
-  const targetShortName = selMedObj ? selMedObj.shortName.toLowerCase() : normSel;
-
-  let reqSuffix = '';
-  if (targetShortName === 'tamil') reqSuffix = 'TM';
-  else if (targetShortName === 'english') reqSuffix = 'EM';
-  else if (targetShortName === 'malayalam') reqSuffix = 'MM';
-  else if (targetShortName === 'kannada') reqSuffix = 'KM';
-  else if (targetShortName === 'urdu') reqSuffix = 'UR';
-  else if (targetShortName === 'arabic') reqSuffix = 'AR';
-
-  const allSuffixes = ['TM', 'EM', 'MM', 'KM', 'UR', 'AR', 'HI'];
+  const selMedObj = resolveMedium(mediumInput, mediums);
+  if (!selMedObj) return subjects;
 
   return subjects.filter(s => {
-    if (s.mediumId && targetMedId && String(s.mediumId) === String(targetMedId)) return true;
-
-    const sMedium = (s.medium || s.mediumName || '').trim().toLowerCase();
-    if (sMedium) {
-      if (sMedium === targetShortName || sMedium === reqSuffix.toLowerCase()) return true;
-      if (targetShortName === 'tamil' && (sMedium === 'tm' || sMedium.includes('tamil'))) return true;
-      if (targetShortName === 'english' && (sMedium === 'em' || sMedium.includes('english'))) return true;
-      if (targetShortName === 'malayalam' && (sMedium === 'mm' || sMedium.includes('malayalam'))) return true;
-      if (targetShortName === 'kannada' && (sMedium === 'km' || sMedium.includes('kannada'))) return true;
-      if (targetShortName === 'urdu' && (sMedium === 'ur' || sMedium.includes('urdu'))) return true;
-      if (targetShortName === 'arabic' && (sMedium === 'ar' || sMedium.includes('arabic'))) return true;
-      return false;
+    // 1. Direct mediumId match (the new standard)
+    if (s.mediumId && String(s.mediumId) === String(selMedObj.id)) return true;
+    // 2. Legacy fallback during migration: match against medium ID or code or shortName exactly
+    const sMed = (s.medium || s.mediumName || '').trim();
+    if (sMed && (sMed === selMedObj.id || sMed.toUpperCase() === selMedObj.code.toUpperCase() || sMed.toLowerCase() === selMedObj.shortName.toLowerCase() || sMed.toLowerCase() === selMedObj.name.toLowerCase())) {
+      return true;
     }
-
-    const nameUpper = (s.name || '').trim().toUpperCase();
-    const endingSuffix = allSuffixes.find(suf => nameUpper.endsWith(' ' + suf) || nameUpper.endsWith('-' + suf));
-    if (endingSuffix) {
-      return reqSuffix ? (nameUpper.endsWith(' ' + reqSuffix) || nameUpper.endsWith('-' + reqSuffix)) : true;
-    }
-
-    return true;
+    // If subject has NO medium defined at all (e.g. common paper or unassigned), allow it
+    if (!s.mediumId && !sMed) return true;
+    return false;
   });
 }
+

@@ -2,11 +2,14 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom';
 import { 
   Settings2, BookOpen, X, Search, ChevronDown, ChevronUp, ChevronRight,
-  Users, Check, Trash2, Landmark, ClipboardList, BarChart3, Filter,
-  GraduationCap, Target, Settings, Plus
+  Users, Check, Trash2, Landmark, ClipboardList, BarChart3, RefreshCw,
+  GraduationCap, Target, Settings, Plus, AlertTriangle, AlertCircle
 } from 'lucide-react';
 import { apiClient } from '../../lib/apiClient';
 import toast from 'react-hot-toast';
+import { onRefresh } from '../../lib/eventBus';
+import { sortSubjects } from '../../lib/subjectUtils';
+
 
 interface Subject {
   _id?: string;
@@ -93,10 +96,21 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const searchRef = useRef<HTMLInputElement>(null);
   const [hasMarkGroups, setHasMarkGroups] = useState<boolean>(true);
+  const [validationIssues, setValidationIssues] = useState<{ type: 'error' | 'warning'; message: string; details?: string }[]>([]);
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
-    if (isOpen && examId) loadData();
+    if (isOpen && examId) {
+      loadData();
+      const u1 = onRefresh('students-updated', () => loadData());
+      const u2 = onRefresh('mediums-updated', () => loadData());
+      const u3 = onRefresh('subjects-updated', () => loadData());
+      const u4 = onRefresh('data-updated', () => loadData());
+      return () => { u1(); u2(); u3(); u4(); };
+    }
   }, [isOpen, examId]);
+
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -121,7 +135,10 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
       
       const allMediums = data.mediums?.length > 0 ? data.mediums : [];
       const totStudents = data.totalStudentsByMedium || {};
-      const validMediums = allMediums.filter(m => (totStudents[m] || 0) > 0);
+      const idCounts = data.subjectIdCounts || {};
+      
+      // Step 2: Hide medium tabs with 0 students
+      const validMediums = allMediums.filter((m: string) => (totStudents[m] || 0) > 0);
       setAvailableMediums(validMediums);
       
       // Ensure we have structure for all categories
@@ -136,7 +153,7 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
       setCommonSubjects(commSubs);
       setStudentCounts(data.studentCounts || {});
       setSubjectStudentCounts(data.subjectStudentCounts || {});
-      setSubjectIdCounts(data.subjectIdCounts || {});
+      setSubjectIdCounts(idCounts);
       setMarkGroupConfigs(data.markGroupMap || {});
       setAdminMaxMarks(data.adminMaxMarks || {});
       setDivisionCounts(data.divisionCounts || {});
@@ -148,81 +165,193 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
 
       const saved = configRes.data;
       const initSel = new Set<string>();
-      if (saved?.subjects?.length > 0) {
-        saved.subjects.forEach((s: any) => initSel.add(s.subjectId));
+      if (saved && Array.isArray(saved.subjects) && saved.subjects.length > 0) {
+        saved.subjects.forEach((s: any) => {
+          if (s.subjectId) initSel.add(s.subjectId);
+        });
       } else {
-        allMediums.forEach((med: string) => {
+        // Step 5: If usageCount > 0, language/core subject is checked by default
+        validMediums.forEach((med: string) => {
+          const medCounts = idCounts[med] || {};
+          Object.keys(medCounts).forEach(sid => {
+            if (medCounts[sid] > 0) {
+              initSel.add(sid);
+            }
+          });
+        });
+
+        // Step 6: Core Subjects P05..P10 Default Checked for active mediums when no config exists
+        validMediums.forEach((med: string) => {
           const group = procSubjects[med];
-          if (group) {
-            [...(group.p01 || []), ...(group.p02 || [])].forEach((s: Subject) => {
-              const id = s._id || s.id;
+          if (group && group.core) {
+            group.core.forEach((s: Subject) => {
+              const id = (s._id || s.id || '').toString();
               if (id) initSel.add(id);
             });
           }
         });
-        [...(commSubs.p03 || []), ...(commSubs.p04 || []), ...(commSubs.core || [])].forEach((s: Subject) => {
-          const id = s._id || s.id;
+        (commSubs.core || []).forEach((s: Subject) => {
+          const id = (s._id || s.id || '').toString();
           if (id) initSel.add(id);
         });
-      }
 
-      // Ensure all subjects for any medium with 0 students are unchecked
-      allMediums.forEach((med: string) => {
-        if ((totStudents[med] || 0) === 0) {
-          const group = procSubjects[med];
-          if (group) {
-            const medSubjects = [
-              ...(group.p01 || []),
-              ...(group.p02 || []),
-              ...(group.p03 || []),
-              ...(group.p04 || []),
-              ...(group.core || []),
-              ...(group.practical || []),
-              ...(group.optional || [])
-            ];
-            medSubjects.forEach((s: Subject) => {
-              const id = s._id || s.id;
-              if (id) initSel.delete(id);
+        // Step 4 & 9: Uncheck any subject that has 0 student usage across all valid mediums
+        const uncheckZeroUsage = (list: Subject[]) => {
+          list.forEach((s: Subject) => {
+            const id = (s._id || s.id || '').toString();
+            if (!id) return;
+            let totalUsage = 0;
+            validMediums.forEach((med: string) => {
+              const count = idCounts[med]?.[id] || 0;
+              totalUsage += count;
             });
-          }
-        }
-      });
-
-      const checkAndUncheck0CountLangs = (list: Subject[]) => {
-        list.forEach((s: Subject) => {
-          const id = (s._id || s.id || '').toString();
-          if (!id) return;
-          const pCodeMatch = String(s.code || s.shortName || s.name || '').toUpperCase().match(/\bP0[1-4]\b/);
-          const isLang = s.category === 'FIRST_LANGUAGE' || s.category === 'SECOND_LANGUAGE' || s.category === 'THIRD_LANGUAGE' || pCodeMatch || s.paperType === 'FIRST_LANGUAGE' || s.paperType === 'SECOND_LANGUAGE' || s.paperType === 'THIRD_LANGUAGE';
-          if (isLang) {
-            let totalLangStudents = 0;
-            allMediums.forEach((med: string) => {
-              const medMap = data.subjectIdCounts?.[med] || {};
-              if (medMap[id] !== undefined) {
-                totalLangStudents += medMap[id];
-              }
-            });
-            if (totalLangStudents === 0) {
+            if (totalUsage === 0 && s.category !== 'core') {
               initSel.delete(id);
             }
+          });
+        };
+
+        validMediums.forEach((med: string) => {
+          const group = procSubjects[med];
+          if (group) {
+            uncheckZeroUsage([...(group.p01 || []), ...(group.p02 || []), ...(group.p03 || []), ...(group.p04 || []), ...(group.practical || []), ...(group.optional || [])]);
           }
         });
-      };
-
-      allMediums.forEach((med: string) => {
-        const group = procSubjects[med];
-        if (group) {
-          checkAndUncheck0CountLangs([...(group.p01 || []), ...(group.p02 || []), ...(group.p03 || []), ...(group.p04 || []), ...(group.core || [])]);
-        }
-      });
-      checkAndUncheck0CountLangs([...(commSubs.p03 || []), ...(commSubs.p04 || []), ...(commSubs.core || [])]);
+        uncheckZeroUsage([...(commSubs.p03 || []), ...(commSubs.p04 || [])]);
+      }
 
       setSelectedIds(initSel);
       setInitialSelected(new Set(initSel));
+
+      if (data.validationReport && data.validationReport.length > 0) {
+        setValidationIssues(data.validationReport.map((msg: string) => ({
+          type: 'warning' as const,
+          message: 'Data Mapping Diagnostic',
+          details: msg
+        })));
+      } else {
+        setValidationIssues([]);
+      }
     } catch {
       toast.error('Failed to load exam data');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleRefreshFromStudentManagement = async () => {
+    setIsRefreshing(true);
+    try {
+      const dynamicRes = await apiClient.get(`/school/exam-config/${examId}/dynamic-data`);
+      const data = dynamicRes.data;
+      if (data.exam && typeof data.exam.hasMarkGroups !== 'undefined') setHasMarkGroups(data.exam.hasMarkGroups);
+
+      const allMediums = data.mediums?.length > 0 ? data.mediums : [];
+      const totStudents = data.totalStudentsByMedium || {};
+      const idCounts = data.subjectIdCounts || {};
+
+      const validMediums = allMediums.filter((m: string) => (totStudents[m] || 0) > 0);
+      setAvailableMediums(validMediums);
+
+      const procSubjects = data.subjectsByMedium || {};
+      Object.keys(procSubjects).forEach(m => {
+        if (!procSubjects[m].practical) procSubjects[m].practical = [];
+        if (!procSubjects[m].optional) procSubjects[m].optional = [];
+      });
+      setSubjectsByMedium(procSubjects);
+
+      const commSubs = data.commonSubjects || { p03: [], p04: [], core: [] };
+      setCommonSubjects(commSubs);
+      setStudentCounts(data.studentCounts || {});
+      setSubjectStudentCounts(data.subjectStudentCounts || {});
+      setSubjectIdCounts(idCounts);
+      setMarkGroupConfigs(data.markGroupMap || {});
+      setAdminMaxMarks(data.adminMaxMarks || {});
+      setDivisionCounts(data.divisionCounts || {});
+      setTotalStudentsByMedium(totStudents);
+      setTotalStudents(data.totalStudents || 0);
+
+      if (validMediums.length > 0 && (!activeMediumTab || !validMediums.includes(activeMediumTab))) {
+        setActiveMediumTab(validMediums[0]);
+      }
+
+      setSelectedIds((prevSelected) => {
+        const newSel = new Set(prevSelected);
+
+        // 1. Check any language/subject with usageCount > 0 in Student Management
+        validMediums.forEach((med: string) => {
+          const medCounts = idCounts[med] || {};
+          Object.keys(medCounts).forEach((sid) => {
+            if (medCounts[sid] > 0) {
+              newSel.add(sid);
+            }
+          });
+        });
+
+        // 2. Ensure Core subjects P05..P10 for active mediums are included
+        validMediums.forEach((med: string) => {
+          const group = procSubjects[med];
+          if (group && group.core) {
+            group.core.forEach((s: Subject) => {
+              const id = (s._id || s.id || '').toString();
+              if (id) newSel.add(id);
+            });
+          }
+        });
+        (commSubs.core || []).forEach((s: Subject) => {
+          const id = (s._id || s.id || '').toString();
+          if (id) newSel.add(id);
+        });
+
+        // 3. Uncheck non-core subjects that have 0 student usage across all valid mediums
+        const uncheckZeroUsage = (list: Subject[]) => {
+          list.forEach((s: Subject) => {
+            const id = (s._id || s.id || '').toString();
+            if (!id) return;
+            let totalUsage = 0;
+            validMediums.forEach((med: string) => {
+              const count = idCounts[med]?.[id] || 0;
+              totalUsage += count;
+            });
+            if (totalUsage === 0 && s.category !== 'core') {
+              newSel.delete(id);
+            }
+          });
+        };
+
+        validMediums.forEach((med: string) => {
+          const group = procSubjects[med];
+          if (group) {
+            uncheckZeroUsage([
+              ...(group.p01 || []),
+              ...(group.p02 || []),
+              ...(group.p03 || []),
+              ...(group.p04 || []),
+              ...(group.practical || []),
+              ...(group.optional || []),
+            ]);
+          }
+        });
+        uncheckZeroUsage([...(commSubs.p03 || []), ...(commSubs.p04 || [])]);
+
+        return newSel;
+      });
+
+      if (data.validationReport && data.validationReport.length > 0) {
+        setValidationIssues(data.validationReport.map((msg: string) => ({
+          type: 'warning' as const,
+          message: 'Data Mapping Diagnostic',
+          details: msg
+        })));
+      } else {
+        setValidationIssues([]);
+      }
+
+      toast.success('Synced with Student Management! Language/Core subjects & student counts verified.');
+    } catch {
+      toast.error('Failed to refresh data from Student Management');
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -247,30 +376,10 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
   const getSubjectStudentCount = (sub: Subject, mediumTab: string): number => {
     const subId = (sub._id || sub.id || '').toString();
     const medIdCounts = subjectIdCounts[mediumTab];
-    if (medIdCounts && subId && medIdCounts[subId] !== undefined) return medIdCounts[subId];
-
-    const short = (sub.shortName || '').toUpperCase();
-    const name = (sub.name || '').toUpperCase();
-    const combined = (short + ' ' + name).trim();
-
-    const codeMatch = combined.match(/\bP(\d{2})\b/);
-    if (codeMatch) {
-      const pNum = parseInt(codeMatch[1], 10);
-      const isCore = pNum >= 5 && pNum <= 10;
-      if (isCore) {
-        const pCode = `P${codeMatch[1]}`;
-        const medCounts = subjectStudentCounts[mediumTab];
-        if (medCounts && medCounts[pCode] !== undefined) return medCounts[pCode];
-        return totalStudentsByMedium[mediumTab] || 0;
-      }
+    if (medIdCounts && subId && medIdCounts[subId] !== undefined) {
+      return medIdCounts[subId];
     }
-
-    let count = 0;
-    Object.entries(studentCounts).forEach(([k, v]) => {
-      const kUp = k.toUpperCase().trim();
-      if (kUp === name || (short && kUp === short)) count += v;
-    });
-    return count;
+    return 0;
   };
 
   const handleOpenMarkGroups = (e: React.MouseEvent, sub: any) => {
@@ -344,13 +453,98 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
     if (!examId) return;
     setIsSaving(true);
     try {
-      await apiClient.post('/school/exam-config', { examId, subjects: [] });
-      setSelectedIds(new Set());
-      setMarkGroupConfigs({});
-      toast.success('Subjects cleared successfully');
-      onSave([]);
+      const coreIds = new Set<string>();
+      availableMediums.forEach(med => {
+        const group = subjectsByMedium[med];
+        if (group) {
+          (group.core || []).forEach((s: Subject) => {
+            const id = (s._id || s.id || '').toString();
+            if (id) coreIds.add(id);
+          });
+        }
+      });
+      (commonSubjects.core || []).forEach((s: Subject) => {
+        const id = (s._id || s.id || '').toString();
+        if (id) coreIds.add(id);
+      });
+
+      const subjectsArray = Array.from(coreIds).map(subId => {
+        let groups = markGroupConfigs[subId] || [{ name: '1 Marks', maxMarks: 1, maxQuestions: 1, total: 1 }];
+        return { subjectId: subId, groups };
+      });
+      await apiClient.post('/school/exam-config', { examId, subjects: subjectsArray });
+      setSelectedIds(coreIds);
+      toast.success('Cleared non-core subjects successfully');
+      onSave(subjectsArray);
     } catch {
       toast.error('Failed to clear subjects');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const runValidation = () => {
+    const issues: { type: 'error' | 'warning'; message: string; details?: string }[] = [];
+    
+    // Check mediums
+    availableMediums.forEach(med => {
+      const studentsInMed = totalStudentsByMedium[med] || 0;
+      if (studentsInMed > 0 && !med) {
+        issues.push({ type: 'error', message: `Missing Medium Reference`, details: `${studentsInMed} students assigned to an unknown medium.` });
+      }
+    });
+
+    // Check selected subjects paper codes and student assignments
+    const selectedCodes = new Set<string>();
+    selectedIds.forEach(subId => {
+      let foundSub: Subject | null = null;
+      Object.values(subjectsByMedium).forEach(group => {
+        [...(group.p01 || []), ...(group.p02 || []), ...(group.p03 || []), ...(group.p04 || []), ...(group.core || [])].forEach(s => {
+          if ((s._id || s.id) === subId) foundSub = s;
+        });
+      });
+      if (!foundSub) {
+        [...(commonSubjects.p03 || []), ...(commonSubjects.p04 || []), ...(commonSubjects.core || [])].forEach(s => {
+          if ((s._id || s.id) === subId) foundSub = s;
+        });
+      }
+
+      if (foundSub) {
+        const code = (foundSub.code || foundSub.shortName || '').toUpperCase();
+        const pMatch = code.match(/\bP(0[1-9]|10)\b/);
+        if (!pMatch && foundSub.category === 'core') {
+          issues.push({ type: 'error', message: `Invalid Paper Code`, details: `Core subject "${foundSub.name}" missing standard paper code (P05-P10).` });
+        }
+        const medKey = foundSub.medium || activeMediumTab;
+        const dupKey = `${medKey}-${code}`;
+        if (code && pMatch && !['P01', 'P02', 'P03', 'P04'].includes(pMatch[0])) {
+          if (selectedCodes.has(dupKey)) {
+            issues.push({ type: 'warning', message: `Multiple Subjects for Paper Code`, details: `Paper code ${code} is assigned more than once for medium ${medKey}.` });
+          }
+          selectedCodes.add(dupKey);
+        }
+      } else {
+        issues.push({ type: 'error', message: `Missing Subject Reference`, details: `Subject ID ${subId} selected but not found in Data Management.` });
+      }
+    });
+
+    return issues;
+  };
+
+  const proceedSave = async () => {
+    setIsSaving(true);
+    try {
+      const validSubjectsToSave = Array.from(selectedIds);
+      const subjectsArray = validSubjectsToSave.map(subId => {
+        let groups = markGroupConfigs[subId] || [{ name: '1 Marks', maxMarks: 1, maxQuestions: 1, total: 1 }];
+        return { subjectId: subId, groups };
+      });
+      await apiClient.post('/school/exam-config', { examId, subjects: subjectsArray });
+      toast.success('Configuration saved successfully');
+      onSave(subjectsArray);
+      onClose();
+    } catch {
+      toast.error('Failed to save configuration');
     } finally {
       setIsSaving(false);
     }
@@ -361,60 +555,50 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
       toast.error('Please select at least one subject');
       return;
     }
-    setIsSaving(true);
-    try {
-      const subjectsArray = Array.from(selectedIds).map(subId => {
-        let groups = markGroupConfigs[subId] || [{ name: '1 Marks', maxMarks: 1, maxQuestions: 1, total: 1 }];
-        return { subjectId: subId, groups };
-      });
-      await apiClient.post('/school/exam-config', { examId, subjects: subjectsArray });
-      toast.success('Configuration saved');
-      onSave(subjectsArray);
-      onClose();
-    } catch {
-      toast.error('Failed to save');
-    } finally {
-      setIsSaving(false);
+    const issues = runValidation();
+    if (issues.length > 0) {
+      setValidationIssues(issues);
+      setShowValidationModal(true);
+      if (issues.some(i => i.type === 'error')) {
+        return;
+      }
     }
-  };
-
-  const sortSubjectsByShortName = (list: Subject[]): Subject[] => {
-    return [...list].sort((a, b) => {
-      const aMatch = (a.shortName || '').match(/P(\d+)/i);
-      const bMatch = (b.shortName || '').match(/P(\d+)/i);
-      if (aMatch && bMatch) return parseInt(aMatch[1]) - parseInt(bMatch[1]);
-      if (aMatch) return -1;
-      if (bMatch) return 1;
-      return (a.name || '').localeCompare(b.name || '');
-    });
+    await proceedSave();
   };
 
   const activeTabData = useMemo(() => {
     if (!activeMediumTab || !subjectsByMedium[activeMediumTab]) {
-      return { p01: [], p02: [], p03: commonSubjects.p03 || [], p04: commonSubjects.p04 || [], core: commonSubjects.core || [], practical: [], optional: [] };
+      return { p01: [], p02: [], p03: sortSubjects(commonSubjects.p03 || [] as any) as any, p04: sortSubjects(commonSubjects.p04 || [] as any) as any, core: sortSubjects(commonSubjects.core || [] as any) as any, practical: [], optional: [] };
     }
     const group = subjectsByMedium[activeMediumTab];
     return {
-      p01: sortSubjectsByShortName(group.p01 || []),
-      p02: sortSubjectsByShortName(group.p02 || []),
-      p03: sortSubjectsByShortName([...(group.p03 || []), ...(commonSubjects.p03 || [])]),
-      p04: sortSubjectsByShortName([...(group.p04 || []), ...(commonSubjects.p04 || [])]),
-      core: sortSubjectsByShortName([...(group.core || []), ...(commonSubjects.core || [])]),
-      practical: sortSubjectsByShortName(group.practical || []),
-      optional: sortSubjectsByShortName(group.optional || [])
+      p01: sortSubjects((group.p01 || []) as any) as any,
+      p02: sortSubjects((group.p02 || []) as any) as any,
+      p03: sortSubjects([...(group.p03 || []), ...(commonSubjects.p03 || [])] as any) as any,
+      p04: sortSubjects([...(group.p04 || []), ...(commonSubjects.p04 || [])] as any) as any,
+      core: sortSubjects([...(group.core || []), ...(commonSubjects.core || [])] as any) as any,
+      practical: sortSubjects((group.practical || []) as any) as any,
+      optional: sortSubjects((group.optional || []) as any) as any
     };
   }, [activeMediumTab, subjectsByMedium, commonSubjects]);
 
   const filterSubjectList = (list: Subject[]) => {
-    return sortSubjectsByShortName(list.filter(s => {
+    return sortSubjects(list.filter(s => {
       const name = (s.name || '').toUpperCase();
       const short = (s.shortName || '').toUpperCase();
       if (searchQuery && !name.includes(searchQuery.toUpperCase()) && !short.includes(searchQuery.toUpperCase())) return false;
       if (activeFilter === 'Selected' && !selectedIds.has(s._id || s.id || '')) return false;
       if (activeFilter === 'Unselected' && selectedIds.has(s._id || s.id || '')) return false;
+      
+      // Step 4: If usageCount == 0, hide language subject card from DOM, but never hide Core subjects
+      const isCoreSubject = s.category === 'core' || String(s.code || s.shortName || s.name || '').toUpperCase().match(/\bP0[5-9]\b|\bP10\b/);
+      if (!isCoreSubject && getSubjectStudentCount(s, activeMediumTab) === 0) {
+        return false;
+      }
       return true;
-    }));
+    }) as any) as any;
   };
+
 
   const filteredP01 = useMemo(() => filterSubjectList(activeTabData.p01), [activeTabData, searchQuery, activeFilter, selectedIds]);
   const filteredP02 = useMemo(() => filterSubjectList(activeTabData.p02), [activeTabData, searchQuery, activeFilter, selectedIds]);
@@ -423,9 +607,23 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
   const filteredCore = useMemo(() => filterSubjectList(activeTabData.core), [activeTabData, searchQuery, activeFilter, selectedIds]);
 
   const getMediumTabCount = (med: string): number => {
-    const g = subjectsByMedium[med];
-    const mediumCount = g ? (g.p01?.length || 0) + (g.p02?.length || 0) + (g.p03?.length || 0) + (g.p04?.length || 0) + (g.core?.length || 0) + (g.practical?.length || 0) + (g.optional?.length || 0) : 0;
-    return mediumCount + (commonSubjects.p03?.length || 0) + (commonSubjects.p04?.length || 0) + (commonSubjects.core?.length || 0);
+    const g: any = subjectsByMedium[med] || {};
+    const allMedSubs = [
+      ...(g.p01 || []),
+      ...(g.p02 || []),
+      ...(g.p03 || []),
+      ...(g.p04 || []),
+      ...(g.core || []),
+      ...(g.practical || []),
+      ...(g.optional || []),
+      ...(commonSubjects.p03 || []),
+      ...(commonSubjects.p04 || []),
+      ...(commonSubjects.core || [])
+    ];
+    return allMedSubs.filter((s: Subject) => {
+      const isCoreSubject = s.category === 'core' || String(s.code || s.shortName || s.name || '').toUpperCase().match(/\bP0[5-9]\b|\bP10\b/);
+      return isCoreSubject || getSubjectStudentCount(s, med) > 0;
+    }).length;
   };
 
   const getDivisionsForMedium = (): number => {
@@ -496,9 +694,6 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Only Malayalam medium is restricted (P01, P02 only + Core)
-  const isMalayalamMedium = activeMediumTab === 'Malayalam';
-
   const isMarkGroupConfigured = (subId: string) => {
     const groups = markGroupConfigs[subId];
     if (!groups || !Array.isArray(groups) || groups.length === 0) return false;
@@ -517,20 +712,18 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
     const sCount = getSubjectStudentCount(sub, activeMediumTab);
     const dCount = getDivisionsForMedium();
     const isZeroStudentMedium = (totalStudentsByMedium[activeMediumTab] || 0) === 0;
-    const pCodeMatch = String(sub.code || sub.shortName || sub.name || '').toUpperCase().match(/\bP0[1-4]\b/);
-    const isCoreSubject = category === 'core';
-    const isLangCat = category === 'p01' || category === 'p02' || category === 'p03' || category === 'p04' || sub.category === 'FIRST_LANGUAGE' || sub.category === 'SECOND_LANGUAGE' || sub.category === 'THIRD_LANGUAGE' || pCodeMatch || sub.paperType === 'FIRST_LANGUAGE' || sub.paperType === 'SECOND_LANGUAGE' || sub.paperType === 'THIRD_LANGUAGE';
-    // For Malayalam medium: only P01 and P02 enabled. P03, P04 disabled (managed from student side). P05-P10 (Core) always enabled.
-    const isDisabled = (isMalayalamMedium && (category === 'p03' || category === 'p04')) || isZeroStudentMedium || (isLangCat && sCount === 0);
+    const isCoreSubject = category === 'core' || String(sub.code || sub.shortName || sub.name || '').toUpperCase().match(/\bP0[5-9]\b|\bP10\b/);
+    // Core subjects (P05-P10) are always Visible, Enabled, and Checked by default, but freely configured/set by user
+    const isDisabled = !isCoreSubject && (isZeroStudentMedium || sCount === 0);
 
     return (
       <div
-        
+        onClick={() => !isDisabled && toggleSubject(subId)}
         className={`p-4 rounded-xl border-2 flex flex-col gap-3 transition-all duration-200 ${
           isDisabled 
-            ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
+            ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed hidden'
             : isSelected 
-              ? 'border-indigo-600 bg-indigo-50/30 shadow-sm' 
+              ? 'border-indigo-600 bg-indigo-50/30 shadow-sm cursor-pointer' 
               : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm cursor-pointer'
         }`}
       >
@@ -547,8 +740,9 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
               : isSelected 
                 ? 'bg-indigo-600 border-indigo-600 text-white cursor-pointer' 
                 : 'border-2 border-gray-300 bg-white cursor-pointer hover:border-gray-400'
-          }`}>
-             {(isSelected && !isDisabled) && <Check size={14} strokeWidth={3} />}
+          }`}
+          >
+             {isSelected && !isDisabled && <Check size={14} strokeWidth={3} />}
           </div>
           
           <div className="flex flex-col min-w-0">
@@ -671,8 +865,14 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
             </button>
           ))}
           <div className="h-6 w-px bg-gray-300 mx-1"></div>
-          <button className="p-2 rounded-full border border-gray-200 hover:bg-gray-100 bg-white transition-all text-gray-600 shadow-sm">
-            <Filter size={18} />
+          <button 
+            onClick={handleRefreshFromStudentManagement}
+            disabled={isRefreshing}
+            title="Verify and synchronize languages, core subjects, and recalculate student counts directly from Student Management"
+            className="flex items-center gap-2 px-4 py-1.5 rounded-full border border-indigo-200 hover:bg-indigo-50 bg-indigo-50/80 text-indigo-700 transition-all font-bold text-xs shadow-sm disabled:opacity-60 cursor-pointer"
+          >
+            <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-indigo-600' : 'text-indigo-600'} />
+            <span>Sync with Student Management</span>
           </button>
         </div>
       </div>
@@ -988,6 +1188,58 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
         </div>
       )}
       
+      {showValidationModal && (
+        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-gray-900/60 p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl p-6 border border-gray-100 flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-red-50 text-red-600 rounded-2xl">
+                  <AlertTriangle size={24} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-gray-900 uppercase tracking-tight">Validation Report</h3>
+                  <p className="text-xs text-gray-500 font-medium">Please resolve the following issues before saving</p>
+                </div>
+              </div>
+              <button onClick={() => setShowValidationModal(false)} className="p-2 rounded-full hover:bg-gray-100 text-gray-500">
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="my-4 space-y-3 overflow-y-auto custom-scrollbar flex-1 pr-1">
+              {validationIssues.map((issue, idx) => (
+                <div key={idx} className={`p-4 rounded-2xl border flex items-start gap-3 ${
+                  issue.type === 'error' ? 'bg-red-50/50 border-red-200 text-red-900' : 'bg-amber-50/50 border-amber-200 text-amber-900'
+                }`}>
+                  <AlertCircle className={`flex-shrink-0 mt-0.5 ${issue.type === 'error' ? 'text-red-600' : 'text-amber-600'}`} size={18} />
+                  <div>
+                    <h4 className="text-sm font-bold">{issue.message}</h4>
+                    {issue.details && <p className="text-xs mt-1 font-medium opacity-90">{issue.details}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowValidationModal(false)}
+                className="px-6 py-2.5 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-xl font-bold text-sm transition-colors"
+              >
+                Close Report
+              </button>
+              {!validationIssues.some(i => i.type === 'error') && (
+                <button
+                  onClick={() => { setShowValidationModal(false); proceedSave(); }}
+                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-md transition-colors"
+                >
+                  Proceed Anyway
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 
@@ -995,3 +1247,4 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
 };
 
 export default PremiumExamConfigModal;
+

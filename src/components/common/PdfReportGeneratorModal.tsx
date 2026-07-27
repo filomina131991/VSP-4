@@ -733,7 +733,7 @@ const PdfReportGeneratorModal: React.FC<PdfReportGeneratorModalProps> = ({
                       const studentsList = reportData?.students || [];
                       const uniqueSubjectCodes = Array.from(new Set(
                         studentsList.flatMap((st: any) => Object.keys(st.grades || {}))
-                      )).sort();
+                      )).sort() as string[];
 
                       const sortedStudents = [...studentsList].sort((a: any, b: any) => {
                         const divA = a.division || 'Z';

@@ -191,7 +191,6 @@ const DashboardLayout: React.FC = () => {
     TEACHER: [
       { label: 'Analysis Dashboard', path: '/dashboard', icon: LayoutDashboard },
       { label: 'Marks Entry', path: '/dashboard/marks', icon: FileEdit },
-      { label: 'Resources Hub', path: '/dashboard/resources', icon: FolderOpen },
       { label: 'Question Repository', path: '/dashboard/repository', icon: BookOpen },
     ]
   };
@@ -448,22 +447,32 @@ const DashboardLayout: React.FC = () => {
               </button>
               
               {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[#161b22] rounded-2xl shadow-xl border border-gray-100 dark:border-[#30363d] overflow-hidden z-50 animate-scale-in origin-top-right">
+                <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-[#161b22] rounded-2xl shadow-xl border border-gray-100 dark:border-[#30363d] overflow-hidden z-50 animate-scale-in origin-top-right">
                   <div className="p-4 border-b border-gray-50 dark:border-[#30363d] flex flex-col bg-slate-50/50 dark:bg-[#1f242c]">
-                    <span className="font-bold text-gray-900 dark:text-white text-sm truncate">{user?.displayName}</span>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{user?.role}</span>
+                    <span className="font-black text-gray-900 dark:text-white text-sm truncate">{user?.displayName || user?.name || user?.username}</span>
+                    <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mt-0.5">{user?.role}</span>
+                    {(user?.phone || user?.email) ? (
+                      <div className="mt-2 pt-2 border-t border-gray-200/60 dark:border-gray-700/60 text-xs font-bold text-gray-600 dark:text-gray-300 space-y-1">
+                        {user?.phone && <div className="truncate flex items-center gap-1.5"><span className="text-gray-400 font-normal">📱</span> {user.phone}</div>}
+                        {user?.email && <div className="truncate flex items-center gap-1.5"><span className="text-gray-400 font-normal">✉️</span> {user.email}</div>}
+                      </div>
+                    ) : (user?.role === 'TEACHER' || user?.role === 'SCHOOL') ? (
+                      <div className="mt-2 text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800 flex items-center gap-1">
+                        <span>⚠️ Mobile / Email Missing</span>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="p-2 space-y-1">
-                    {user?.role === 'SCHOOL' && (
+                    {(user?.role === 'SCHOOL' || user?.role === 'TEACHER') && (
                       <button 
                         onClick={() => {
                           setShowUserMenu(false);
-                          navigate('/dashboard/school-profile');
+                          navigate(user?.role === 'TEACHER' ? '/dashboard/teacher-profile' : '/dashboard/school-profile');
                         }}
-                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#21262d] rounded-xl transition-colors"
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#21262d] rounded-xl transition-colors font-bold"
                       >
-                        <User size={16} className="text-gray-400" />
-                        <span className="font-medium">Profile</span>
+                        <User size={16} className="text-indigo-500" />
+                        <span>Profile Page</span>
                       </button>
                     )}
                     <button 
@@ -471,10 +480,10 @@ const DashboardLayout: React.FC = () => {
                         setShowUserMenu(false);
                         navigate('/dashboard/settings');
                       }}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#21262d] rounded-xl transition-colors"
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#21262d] rounded-xl transition-colors font-bold"
                     >
                       <Settings size={16} className="text-gray-400" />
-                      <span className="font-medium">Settings</span>
+                      <span>Settings</span>
                     </button>
                     <button 
                       onClick={() => {

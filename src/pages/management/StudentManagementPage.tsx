@@ -24,6 +24,7 @@ import { useData } from '../../context/DataContext';
 import { autoCorrectRow, validateRow, ParsedStudentRow, ValidationError } from '../../lib/studentImportUtils';
 import { resolveMediumCode, resolveMediumShortName } from '../../lib/mediumUtils';
 import { apiClient } from '../../lib/apiClient';
+import { emitRefresh } from '../../lib/eventBus';
 import Modal from '../../components/common/Modal';
 import Dropdown from '../../components/common/Dropdown';
 import toast from 'react-hot-toast';
@@ -408,6 +409,8 @@ const StudentManagementPage: React.FC = () => {
       toast.success(res.data.message);
       setShowPromoteModal(false);
       loadStudents();
+      emitRefresh('students-updated');
+      emitRefresh('data-updated');
     } catch (err: any) {
       console.error(err);
       toast.error(err.response?.data?.message || 'Failed to promote students');
@@ -558,6 +561,8 @@ const StudentManagementPage: React.FC = () => {
         setStudents(prev => [...prev, res.data]);
         toast.success('New candidate profile saved');
       }
+      emitRefresh('students-updated');
+      emitRefresh('data-updated');
 
       setShowAddEditModal(false);
       setStudentForm(initialFormState);
@@ -619,6 +624,8 @@ const StudentManagementPage: React.FC = () => {
         await apiClient.delete(`/management/students/${stud.id}`);
         setStudents(prev => prev.filter(s => s.id !== stud.id));
         toast.success('Student deleted successfully');
+        emitRefresh('students-updated');
+        emitRefresh('data-updated');
       } catch (err) {
         toast.error('Failed to delete student');
       }
@@ -677,6 +684,8 @@ const StudentManagementPage: React.FC = () => {
       if (res.data && res.data.id) {
         setStudents(prev => prev.map(s => s.id === latestStudent.id ? { ...s, ...updates } : s));
         toast.success('Updated successfully');
+        emitRefresh('students-updated');
+        emitRefresh('data-updated');
       }
     } catch (err) {
       toast.error('Failed to update student language details');
@@ -718,6 +727,8 @@ const StudentManagementPage: React.FC = () => {
         toast.success(`Successfully updated medium to ${medium}`);
         
         loadStudents();
+        emitRefresh('students-updated');
+        emitRefresh('data-updated');
       } catch (err) {
         toast.error('Failed to perform bulk medium update');
       }
@@ -1146,6 +1157,8 @@ const StudentManagementPage: React.FC = () => {
       }
 
       await loadStudents();
+      emitRefresh('students-updated');
+      emitRefresh('data-updated');
 
       if (targetStandard && targetDivision) {
         setCurrentView('STUDENTS');
@@ -1258,6 +1271,8 @@ const StudentManagementPage: React.FC = () => {
       toast.dismiss(loadToast);
       toast.success('Division renamed successfully');
       loadStudents();
+      emitRefresh('students-updated');
+      emitRefresh('data-updated');
     } catch (err) {
       console.error(err);
       toast.dismiss(loadToast);
@@ -1327,6 +1342,8 @@ const StudentManagementPage: React.FC = () => {
       toast.dismiss(loadToast);
       toast.success('Division deleted successfully');
       loadStudents();
+      emitRefresh('students-updated');
+      emitRefresh('data-updated');
     } catch (err) {
       console.error(err);
       toast.dismiss(loadToast);
@@ -1463,8 +1480,14 @@ const StudentManagementPage: React.FC = () => {
       const p2 = (s.firstLangPaper2 || '').trim();
       if (p1) langCounts[p1] = (langCounts[p1] || 0) + 1;
       if (p2) langCounts[p2] = (langCounts[p2] || 0) + 1;
-      if ((s.secondLang || '').trim()) langCounts[s.secondLang.toUpperCase() + ' - P03'] = (langCounts[s.secondLang.toUpperCase() + ' - P03'] || 0) + 1;
-      if ((s.thirdLang || '').trim()) langCounts[s.thirdLang.toUpperCase() + ' - P04'] = (langCounts[s.thirdLang.toUpperCase() + ' - P04'] || 0) + 1;
+      if ((s.secondLang || '').trim()) {
+        const s2 = (s.secondLang || '').trim();
+        langCounts[s2] = (langCounts[s2] || 0) + 1;
+      }
+      if ((s.thirdLang || '').trim()) {
+        const s3 = (s.thirdLang || '').trim();
+        langCounts[s3] = (langCounts[s3] || 0) + 1;
+      }
 
       const allLangs = `${p1} ${p2} ${s.secondLang || ''} ${s.thirdLang || ''}`.toUpperCase();
       if (med === 'Tamil') {

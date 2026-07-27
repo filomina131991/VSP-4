@@ -12,8 +12,13 @@ import { MarksEntryBulkGrid } from './MarksEntryBulkGrid';
 import PageLoader from '../../components/common/PageLoader';
 import ExamSelect from '../../components/common/ExamSelect';
 import Dropdown from '../../components/common/Dropdown';
-import { getSubjectShortLabel } from '../../lib/subjectUtils';
+import { getSubjectShortLabel, sortSubjects } from '../../lib/subjectUtils';
+
 import PremiumExamConfigModal from '../../components/school/PremiumExamConfigModal';
+import { draftStore, DraftKeyParams, DraftMetadata, StudentMarkDraftRecord, SyncStatusState, ConflictedRow } from '../../lib/draftStore';
+import MarksEntrySyncStatus from '../../components/school/MarksEntrySyncStatus';
+import DraftRecoveryModal from '../../components/school/DraftRecoveryModal';
+import ConflictResolutionModal from '../../components/school/ConflictResolutionModal';
 
 
 interface Student {
@@ -101,6 +106,41 @@ const MarksEntry2Page: React.FC = () => {
   const [subjectWorkflowStatuses, setSubjectWorkflowStatuses] = useState<Record<string, string>>({});
   const [rejectedInputs, setRejectedInputs] = useState<Set<string>>(new Set());
 
+  // Offline Draft & Sync Status State
+  const [syncStatus, setSyncStatus] = useState<SyncStatusState>('DRAFT_SAVED_LOCALLY');
+  const [lastSavedTime, setLastSavedTime] = useState<number | null>(null);
+  const [initialDbTimestamp, setInitialDbTimestamp] = useState<number>(0);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+
+  // Recovery Modal State
+  const [recoveryModalOpen, setRecoveryModalOpen] = useState<boolean>(false);
+  const [recoveryMetadata, setRecoveryMetadata] = useState<DraftMetadata | null>(null);
+  const [recoveryRecords, setRecoveryRecords] = useState<Record<string, Record<string, StudentMarkDraftRecord>>>({});
+  const [activeRecoverySubId, setActiveRecoverySubId] = useState<string>('');
+
+  // Conflict Resolution Modal State
+  const [conflictModalOpen, setConflictModalOpen] = useState<boolean>(false);
+  const [conflictedRows, setConflictedRows] = useState<ConflictedRow[]>([]);
+  const [pendingSaveConfirm, setPendingSaveConfirm] = useState<boolean>(false);
+  const [pendingSubjectToConfirm, setPendingSubjectToConfirm] = useState<any>(null);
+
+  const getDraftParams = (subId: string): DraftKeyParams => {
+    const examObj = exams.find(e => e.id === selectedExamId);
+    const subObj = availableSubjects.find(s => s.id === subId) || subjects.find(s => s.id === subId);
+    return {
+      schoolId: user?.schoolId || user?.id || 'all',
+      academicYear: (examObj as any)?.academicYear || '2025-2026',
+      examId: selectedExamId,
+      mediumId: selectedMedium || 'ALL',
+      className: selectedClass,
+      division: selectedDivision || 'ALL',
+      subjectId: subId,
+      teacherId: user?.id || 'anonymous',
+      examName: (examObj as any)?.name || selectedExamId,
+      subjectName: (subObj as any)?.name || subId,
+    };
+  };
+
   useEffect(() => {
     localStorage.setItem('marksEntrySortPreference', sortOption);
   }, [sortOption]);
@@ -109,22 +149,7 @@ const MarksEntry2Page: React.FC = () => {
     loadInitialData();
   }, []);
 
-  const teacherAlertShownRef = useRef(false);
 
-  useEffect(() => {
-    if (user?.role === 'TEACHER' && selectedSubjectIds.length > 0 && !isLoading && !teacherAlertShownRef.current) {
-      Swal.fire({
-        title: 'Marking Absentees',
-        text: "Please use the 'Absent' checkbox for students who are absent. This will automatically mark them as 'Ab'.",
-        icon: 'info',
-        confirmButtonText: 'OK',
-        confirmButtonColor: '#4f46e5',
-        showClass: { popup: 'animate__animated animate__fadeInDown' },
-        hideClass: { popup: 'animate__animated animate__fadeOutUp' }
-      });
-      teacherAlertShownRef.current = true;
-    }
-  }, [user, selectedSubjectIds, isLoading]);
 
   const [dbClasses, setDbClasses] = useState<{ className: string; division: string }[]>([]);
 
@@ -152,14 +177,7 @@ const MarksEntry2Page: React.FC = () => {
       setConfiguredExamIds(configuredIds);
       setExams(examsRes.data || []);
 
-      const sortedSubjects = subjectsRes.data.sort((a: any, b: any) => {
-        const aMatch = (a.shortName || '').match(/P(\d+)/i);
-        const bMatch = (b.shortName || '').match(/P(\d+)/i);
-        if (aMatch && bMatch) return parseInt(aMatch[1]) - parseInt(bMatch[1]);
-        if (aMatch) return -1;
-        if (bMatch) return 1;
-        return (a.shortName || '').localeCompare(b.shortName || '');
-      });
+      const sortedSubjects = sortSubjects(subjectsRes.data || []);
       setSubjects(sortedSubjects);
       setGradeConfig(gradesRes.data);
 
@@ -304,7 +322,7 @@ const MarksEntry2Page: React.FC = () => {
   }, [selectedMedium]);
 
   const availableSubjects = useMemo(() => {
-    const allowedIds = schoolConfig.filter((s: any) => s.groups && s.groups.length > 0).map((s: any) => s.subjectId);
+    const allowedIds = schoolConfig.map((s: any) => s.subjectId);
     let subs = schoolConfig.length > 0
       ? subjects.filter(s => allowedIds.includes(s.id))
       : [];
@@ -334,6 +352,10 @@ const MarksEntry2Page: React.FC = () => {
         const nameUpper = (s.name || '').trim().toUpperCase();
         const shortUpper = (s.shortName || '').trim().toUpperCase();
         const sMedium = (s.medium || '').trim().toUpperCase();
+
+        if (s.mediumId && selMedObj && (String(s.mediumId) === String(selMedObj.id) || String(s.mediumId) === String(selMedObj._id))) {
+          return true;
+        }
 
         if (sMedium) {
           if (sMedium.toLowerCase() === targetShortName || sMedium.toLowerCase() === reqSuffix.toLowerCase()) return true;
@@ -404,14 +426,7 @@ const MarksEntry2Page: React.FC = () => {
         });
       }
     }
-    return subs.sort((a: any, b: any) => {
-      const aMatch = (a.shortName || '').match(/P(\d+)/i);
-      const bMatch = (b.shortName || '').match(/P(\d+)/i);
-      if (aMatch && bMatch) return parseInt(aMatch[1]) - parseInt(bMatch[1]);
-      if (aMatch) return -1;
-      if (bMatch) return 1;
-      return (a.shortName || '').localeCompare(b.shortName || '');
-    });
+    return sortSubjects(subs);
   }, [subjects, schoolConfig, user, selectedMedium, classStudents, mediums, teacherDashboardData, selectedClass]);
 
 
@@ -555,6 +570,7 @@ const MarksEntry2Page: React.FC = () => {
 
   const loadStudentsAndMarks = async () => {
     setIsLoading(true);
+    setHasUnsavedChanges(false);
     try {
       const studentsRes = await apiClient.get(`/management/students`, {
         params: { schoolId: user?.schoolId || user?.id, className: selectedClass }
@@ -564,9 +580,42 @@ const MarksEntry2Page: React.FC = () => {
 
       if (isBulkMode) {
         const marksReq = await apiClient.get(`/marks/batch-all`, { params: { examId: selectedExamId, schoolId: user?.schoolId || user?.id, className: selectedClass } });
-        setBulkMarks(marksReq.data.marks || marksReq.data);
+        const fetchedBulk = marksReq.data.marks || marksReq.data || [];
+        setBulkMarks(fetchedBulk);
         setAllSubjectsCompleted(marksReq.data.allCompleted || false);
         setIsFinalLocked(marksReq.data.isFinalLocked || false);
+
+        let bulkTs = 0;
+        if (Array.isArray(fetchedBulk)) {
+          fetchedBulk.forEach((m: any) => {
+            if (m.updatedAt) bulkTs = Math.max(bulkTs, new Date(m.updatedAt).getTime());
+          });
+        }
+        setInitialDbTimestamp(bulkTs);
+
+        const unsavedBySub: Record<string, Record<string, StudentMarkDraftRecord>> = {};
+        let latestMeta: DraftMetadata | null = null;
+        const subjectsToCheck = availableSubjects.length > 0 ? availableSubjects.map(s => s.id) : selectedSubjectIds;
+        for (const subId of subjectsToCheck) {
+          const params = getDraftParams(subId);
+          const draft = draftStore.findDraft(params, bulkTs);
+          if (draft && draft.metadata && Object.keys(draft.records).length > 0) {
+            unsavedBySub[subId] = draft.records;
+            if (!latestMeta || draft.metadata.lastSavedTime > latestMeta.lastSavedTime) {
+              latestMeta = draft.metadata;
+            }
+          }
+        }
+        if (Object.keys(unsavedBySub).length > 0 && latestMeta && !showExamConfigModal) {
+          setRecoveryMetadata(latestMeta);
+          setRecoveryRecords(unsavedBySub);
+          setActiveRecoverySubId(Object.keys(unsavedBySub)[0] || '');
+          setRecoveryModalOpen(true);
+          setSyncStatus('UNSAVED_CHANGES');
+          setLastSavedTime(latestMeta.lastSavedTime);
+        } else {
+          setSyncStatus('DRAFT_SAVED_LOCALLY');
+        }
       } else {
         const newMarksData: Record<string, Record<string, SubjectMarkData>> = {};
         fetchedStudents.forEach((st: Student) => {
@@ -605,6 +654,7 @@ const MarksEntry2Page: React.FC = () => {
                 if (m.locked) loadedLock = true;
                 if (m.finalLocked) loadedFinalLock = true;
                 if (newMarksData[m.studentId] && newMarksData[m.studentId][subId]) {
+                  (newMarksData[m.studentId][subId] as any).updatedAt = m.updatedAt || m.createdAt || new Date(0);
                   if (m.grade === 'Ab') newMarksData[m.studentId][subId].isAbsent = true;
                   if (m.markGroups && m.markGroups.length > 0) {
                     newMarksData[m.studentId][subId].markGroups = newMarksData[m.studentId][subId].markGroups.map(g => {
@@ -636,6 +686,39 @@ const MarksEntry2Page: React.FC = () => {
           }
         });
         setStudentAbsentMap(absentMap);
+
+        let latestDbTs = 0;
+        Object.values(newMarksData).forEach(studObj => {
+          Object.values(studObj).forEach(subObj => {
+            if ((subObj as any).updatedAt) {
+              latestDbTs = Math.max(latestDbTs, new Date((subObj as any).updatedAt).getTime());
+            }
+          });
+        });
+        setInitialDbTimestamp(latestDbTs);
+
+        const unsavedBySub: Record<string, Record<string, StudentMarkDraftRecord>> = {};
+        let latestMeta: DraftMetadata | null = null;
+        for (const subId of selectedSubjectIds) {
+          const params = getDraftParams(subId);
+          const draft = draftStore.findDraft(params, latestDbTs);
+          if (draft && draft.metadata && Object.keys(draft.records).length > 0) {
+            unsavedBySub[subId] = draft.records;
+            if (!latestMeta || draft.metadata.lastSavedTime > latestMeta.lastSavedTime) {
+              latestMeta = draft.metadata;
+            }
+          }
+        }
+        if (Object.keys(unsavedBySub).length > 0 && latestMeta && !showExamConfigModal) {
+          setRecoveryMetadata(latestMeta);
+          setRecoveryRecords(unsavedBySub);
+          setActiveRecoverySubId(Object.keys(unsavedBySub)[0] || '');
+          setRecoveryModalOpen(true);
+          setSyncStatus('UNSAVED_CHANGES');
+          setLastSavedTime(latestMeta.lastSavedTime);
+        } else {
+          setSyncStatus('DRAFT_SAVED_LOCALLY');
+        }
 
         let allInputsRecheck = true;
         if (fetchedStudents.length === 0 || availableSubjects.length === 0) {
@@ -704,24 +787,47 @@ const MarksEntry2Page: React.FC = () => {
       }, 2000);
     }
 
-    setMarksData(prev => ({
-      ...prev,
-      [studentId]: {
-        ...prev[studentId],
-        [subjectId]: {
-          ...prev[studentId][subjectId],
-          markGroups: prev[studentId][subjectId].markGroups.map(g => {
-            if (g.name === groupName) {
-              if (safeValue === '*') return { ...g, marksObtained: '*' as any };
-              let num = Number(safeValue);
-              if (num < 0) num = 0;
-              return { ...g, marksObtained: safeValue === '' ? '' : num };
-            }
-            return g;
-          })
+    setMarksData(prev => {
+      const updatedGroups = prev[studentId][subjectId].markGroups.map(g => {
+        if (g.name === groupName) {
+          if (safeValue === '*') return { ...g, marksObtained: '*' as any };
+          let num = Number(safeValue);
+          if (num < 0) num = 0;
+          return { ...g, marksObtained: safeValue === '' ? '' : num };
         }
-      }
-    }));
+        return g;
+      });
+      const updatedSub = {
+        ...prev[studentId][subjectId],
+        markGroups: updatedGroups
+      };
+
+      setSyncStatus('SYNC_PENDING');
+      setHasUnsavedChanges(true);
+      draftStore.saveStudentMarkDebounced(
+        getDraftParams(subjectId),
+        studentId,
+        {
+          markGroups: updatedGroups,
+          isAbsent: !!updatedSub.isAbsent,
+          marks: updatedGroups.reduce((acc, g) => acc + (Number(g.marksObtained) || 0), 0)
+        },
+        initialDbTimestamp,
+        1,
+        () => {
+          setSyncStatus('DRAFT_SAVED_LOCALLY');
+          setLastSavedTime(Date.now());
+        }
+      );
+
+      return {
+        ...prev,
+        [studentId]: {
+          ...prev[studentId],
+          [subjectId]: updatedSub
+        }
+      };
+    });
 
     if (isInvalid) {
       setTimeout(() => {
@@ -855,6 +961,7 @@ const MarksEntry2Page: React.FC = () => {
     if (isFinalLocked) return;
     const newAbsent = !studentAbsentMap[studentId];
     setStudentAbsentMap(prev => ({ ...prev, [studentId]: newAbsent }));
+    setHasUnsavedChanges(true);
     setMarksData(prev => {
       const studentData = prev[studentId];
       if (!studentData) return prev;
@@ -863,11 +970,28 @@ const MarksEntry2Page: React.FC = () => {
         if (lockedSubjects.includes(subId)) {
           updated[subId] = studentData[subId];
         } else {
+          const newGroups = studentData[subId].markGroups.map(g => ({ ...g, marksObtained: newAbsent ? '' : g.marksObtained }));
           updated[subId] = {
             ...studentData[subId],
             isAbsent: newAbsent,
-            markGroups: studentData[subId].markGroups.map(g => ({ ...g, marksObtained: newAbsent ? '' : g.marksObtained }))
+            markGroups: newGroups
           };
+          setSyncStatus('SYNC_PENDING');
+          draftStore.saveStudentMarkDebounced(
+            getDraftParams(subId),
+            studentId,
+            {
+              markGroups: newGroups,
+              isAbsent: newAbsent,
+              grade: newAbsent ? 'AB' : ''
+            },
+            initialDbTimestamp,
+            1,
+            () => {
+              setSyncStatus('DRAFT_SAVED_LOCALLY');
+              setLastSavedTime(Date.now());
+            }
+          );
         }
       });
       return { ...prev, [studentId]: updated };
@@ -876,8 +1000,139 @@ const MarksEntry2Page: React.FC = () => {
 
 
 
-  const handleSave = async (confirmSubmit: boolean = false) => {
+  const handleRestoreDraft = () => {
+    if (!recoveryMetadata || Object.keys(recoveryRecords).length === 0) return;
+
+    if (isBulkMode) {
+      const updatedBulk = Array.isArray(bulkMarks) ? [...bulkMarks] : [];
+      Object.entries(recoveryRecords).forEach(([subId, records]) => {
+        Object.entries(records).forEach(([studentId, rec]) => {
+          const idx = updatedBulk.findIndex((m: any) => m.studentId === studentId && m.subjectId === subId);
+          const gradeVal = rec.isAbsent ? 'Ab' : (rec.grade !== undefined && rec.grade !== null ? rec.grade : (rec.marks !== undefined && rec.marks !== null ? rec.marks.toString() : ''));
+          const newEntry = {
+            studentId,
+            subjectId: subId,
+            mark: rec.marks !== undefined && rec.marks !== null ? rec.marks : undefined,
+            grade: gradeVal,
+            isAbsent: !!rec.isAbsent
+          };
+          if (idx >= 0) updatedBulk[idx] = { ...updatedBulk[idx], ...newEntry };
+          else updatedBulk.push(newEntry);
+        });
+      });
+      setBulkMarks(updatedBulk);
+    } else {
+      setMarksData(prev => {
+        const next = { ...prev };
+        Object.entries(recoveryRecords).forEach(([subId, records]) => {
+          Object.entries(records).forEach(([studentId, rec]) => {
+            const studentPrev = next[studentId] ? { ...next[studentId] } : {};
+            const defaultGroups = getGroupsForSubject(subId).map(g => ({
+              name: g.name,
+              maxQuestions: g.maxQuestions,
+              maxMarks: g.maxMarks,
+              total: g.total,
+              marksObtained: ''
+            }));
+            const currentSub = studentPrev[subId] ? { ...studentPrev[subId] } : { isAbsent: false, markGroups: defaultGroups };
+            currentSub.isAbsent = !!rec.isAbsent;
+            currentSub.totalObtained = rec.marks !== undefined && rec.marks !== null ? Number(rec.marks) : undefined;
+            if (rec.markGroups && rec.markGroups.length > 0) {
+              currentSub.markGroups = rec.markGroups;
+            }
+            studentPrev[subId] = currentSub;
+            next[studentId] = studentPrev;
+          });
+        });
+        return next;
+      });
+
+      setStudentAbsentMap(prev => {
+        const next = { ...prev };
+        Object.entries(recoveryRecords).forEach(([subId, records]) => {
+          Object.entries(records).forEach(([studentId, rec]) => {
+            if (rec.isAbsent) next[studentId] = true;
+            else delete next[studentId];
+          });
+        });
+        return next;
+      });
+    }
+
+    setRecoveryModalOpen(false);
+    setSyncStatus('DRAFT_SAVED_LOCALLY');
+    setHasUnsavedChanges(true);
+    toast.success('Unsaved draft restored successfully from local storage');
+  };
+
+  const handleDiscardDraft = () => {
+    Object.keys(recoveryRecords).forEach(subId => {
+      draftStore.clearDraft(getDraftParams(subId));
+    });
+    setRecoveryModalOpen(false);
+    setSyncStatus('DRAFT_SAVED_LOCALLY');
+    toast.success('Local draft discarded');
+  };
+
+  const handleCellDraftSave = (studentId: string, subjectId: string, val: string) => {
+    setSyncStatus('SYNC_PENDING');
+    setHasUnsavedChanges(true);
+    const isAbs = val.toLowerCase() === 'ab';
+    const numMark = !isAbs && !isNaN(Number(val)) && val !== '' ? Number(val) : undefined;
+    
+    draftStore.saveStudentMarkDebounced(
+      getDraftParams(subjectId),
+      studentId,
+      {
+        grade: isAbs ? 'Ab' : val,
+        marks: numMark,
+        isAbsent: isAbs,
+        markGroups: []
+      },
+      initialDbTimestamp,
+      1,
+      () => {
+        setSyncStatus('DRAFT_SAVED_LOCALLY');
+        setLastSavedTime(Date.now());
+      }
+    );
+  };
+
+  const handleKeepLocal = () => {
+    setPendingSaveConfirm(true);
+    setConflictModalOpen(false);
+    if (pendingSubjectToConfirm) {
+      handleSave(pendingSubjectToConfirm.confirmSubmit, true);
+    }
+  };
+
+  const handleReloadServer = () => {
+    if (pendingSubjectToConfirm?.subId) {
+      draftStore.clearDraft(getDraftParams(pendingSubjectToConfirm.subId));
+    }
+    setConflictModalOpen(false);
+    setPendingSaveConfirm(false);
+    loadStudentsAndMarks();
+    toast('Reloaded latest server marks', { icon: 'ℹ️' });
+  };
+
+  const handleMerge = () => {
+    setPendingSaveConfirm(true);
+    setConflictModalOpen(false);
+    if (pendingSubjectToConfirm) {
+      handleSave(pendingSubjectToConfirm.confirmSubmit, true);
+      toast.success('Merged local changes onto latest server records');
+    }
+  };
+
+  const handleSave = async (confirmSubmit: boolean = false, skipConflictCheck: boolean = false) => {
     if (!selectedExamId || selectedSubjectIds.length === 0) return;
+
+    if (!navigator.onLine) {
+      toast.error('Upload failed due to offline status. Your marks remain safely stored locally on this device.', { duration: 5000 });
+      setSyncStatus('OFFLINE');
+      return;
+    }
 
     const subjectIdsToSave = isSchoolUser
       ? selectedSubjectIds.filter(subId => schoolCanEditSubject(subId))
@@ -919,9 +1174,33 @@ const MarksEntry2Page: React.FC = () => {
     }
 
     setIsSaving(true);
+    setSyncStatus('UPLOADING');
     try {
       let allComp = false;
       for (const subId of subjectIdsToSave) {
+        if (!skipConflictCheck && !pendingSaveConfirm) {
+          try {
+            const checkRes = await apiClient.get('/marks/check-version', {
+              params: { examId: selectedExamId, subjectId: subId, schoolId: user?.schoolId || user?.id }
+            });
+            const serverMarks: any[] = checkRes.data.marks || [];
+            const conflicts = draftStore.detectConflicts(getDraftParams(subId), serverMarks, initialDbTimestamp, (stuId) => {
+              return displayedStudents.find(s => s.id === stuId)?.name || stuId;
+            });
+
+            if (conflicts.length > 0) {
+              setConflictedRows(conflicts);
+              setPendingSubjectToConfirm({ subId, confirmSubmit });
+              setConflictModalOpen(true);
+              setIsSaving(false);
+              setSyncStatus('UNSAVED_CHANGES');
+              return;
+            }
+          } catch (verErr) {
+            console.warn('Could not complete version check, proceeding to save', verErr);
+          }
+        }
+
         const payload = displayedStudents.map(s => {
           const isAbs = !!studentAbsentMap[s.id];
           const data = marksData[s.id]?.[subId] || { isAbsent: false, markGroups: getGroupsForSubject(subId).map(g => ({ ...g, marksObtained: '' })) };
@@ -1006,18 +1285,32 @@ const MarksEntry2Page: React.FC = () => {
       }
 
       setAllSubjectsCompleted(allComp && allInputsFilled);
+      for (const subId of subjectIdsToSave) {
+        draftStore.clearDraft(getDraftParams(subId));
+      }
+      setSyncStatus('UPLOAD_SUCCESSFUL');
+      setHasUnsavedChanges(false);
+      setInitialDbTimestamp(Date.now());
+      setPendingSaveConfirm(false);
       if (confirmSubmit) setLockedSubjects(prev => Array.from(new Set([...prev, ...subjectIdsToSave])));
       toast.success(confirmSubmit ? 'Marks Confirmed & Locked!' : 'Draft saved successfully');
       await refetchExams();
     } catch (err) {
-      toast.error('Failed to finalize subject entry');
+      toast.error('Failed to finalize subject entry. Local draft preserved.', { duration: 5000 });
+      setSyncStatus('OFFLINE');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleBulkSave = async (marksDataList: any[], confirm: boolean, finalConfirm: boolean) => {
+    if (!navigator.onLine) {
+      toast.error('Upload failed due to offline status. Your marks remain safely stored locally.', { duration: 5000 });
+      setSyncStatus('OFFLINE');
+      return;
+    }
     setIsSaving(true);
+    setSyncStatus('UPLOADING');
     try {
       const res = await apiClient.post('/marks/entry-all', {
         schoolId: user?.schoolId || user?.id,
@@ -1028,6 +1321,10 @@ const MarksEntry2Page: React.FC = () => {
       });
 
       toast.success(res.data.message || 'Marks saved successfully');
+      selectedSubjectIds.forEach(subId => draftStore.clearDraft(getDraftParams(subId)));
+      setSyncStatus('UPLOAD_SUCCESSFUL');
+      setHasUnsavedChanges(false);
+      setInitialDbTimestamp(Date.now());
 
       if (confirm && !finalConfirm) {
         setLockedSubjects(prev => Array.from(new Set([...prev, ...selectedSubjectIds])));
@@ -1039,6 +1336,7 @@ const MarksEntry2Page: React.FC = () => {
       loadStudentsAndMarks();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save marks');
+      setSyncStatus('OFFLINE');
     } finally {
       setIsSaving(false);
     }
@@ -1064,7 +1362,13 @@ const MarksEntry2Page: React.FC = () => {
   };
 
   const handleConfirmSubject = async (subjectId: string, subjectMarksData: any[]) => {
+    if (!navigator.onLine) {
+      toast.error('Cannot confirm marks while offline. Your marks are safely stored locally.', { duration: 5000 });
+      setSyncStatus('OFFLINE');
+      return;
+    }
     setIsSaving(true);
+    setSyncStatus('UPLOADING');
     try {
       const calculatedMaxMarks = getGroupsForSubject(subjectId).reduce((acc, g) => acc + (g.total || 0), 0);
       await apiClient.post('/marks/entry2', {
@@ -1076,10 +1380,14 @@ const MarksEntry2Page: React.FC = () => {
         subjectMaxMarks: calculatedMaxMarks > 0 ? calculatedMaxMarks : 0
       });
       setLockedSubjects(prev => Array.from(new Set([...prev, subjectId])));
+      draftStore.clearDraft(getDraftParams(subjectId));
+      setSyncStatus('UPLOAD_SUCCESSFUL');
+      setInitialDbTimestamp(Date.now());
       toast.success('Subject Confirmed & Locked!');
       await refetchExams();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to confirm subject');
+      setSyncStatus('OFFLINE');
     } finally {
       setIsSaving(false);
     }
@@ -1602,6 +1910,9 @@ const MarksEntry2Page: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 mt-4 md:mt-0 w-full md:w-auto">
+          {selectedExamId && selectedSubjectIds.length > 0 && (
+            <MarksEntrySyncStatus status={syncStatus} lastSavedTime={lastSavedTime} className="mr-1" />
+          )}
           <ExamSelect
             exams={exams}
             selectedExamId={selectedExamId}
@@ -1620,10 +1931,14 @@ const MarksEntry2Page: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowExamConfigModal(true)}
-              className="flex items-center gap-2 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800 px-3.5 py-2.5 rounded-xl text-xs font-bold uppercase transition-all whitespace-nowrap"
+              className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold uppercase transition-all whitespace-nowrap border ${
+                configuredExamIds.includes(selectedExamId)
+                  ? 'bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/50 dark:hover:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border-emerald-400 dark:border-emerald-600 shadow-sm shadow-emerald-500/10'
+                  : 'bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/30 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800'
+              }`}
             >
-              <Settings2 size={15} className="shrink-0" />
-              <span className="hidden sm:inline">Config Exam</span>
+              <Settings2 size={15} className={`shrink-0 ${configuredExamIds.includes(selectedExamId) ? 'text-emerald-600 dark:text-emerald-400' : 'text-purple-600 dark:text-purple-400'}`} />
+              <span className="hidden sm:inline">{configuredExamIds.includes(selectedExamId) ? '✓ Exam Configured' : 'Config Exam'}</span>
             </button>
           )}
 
@@ -1740,7 +2055,7 @@ const MarksEntry2Page: React.FC = () => {
                 placeholder="Select Subject..."
                 value={selectedSubjectIds[0] || ''}
                 onChange={(v) => setSelectedSubjectIds([v])}
-                options={availableSubjects.map((s: any) => ({ value: s.id, label: s.shortName || s.name }))}
+                options={availableSubjects.map((s: any) => ({ value: s.id, label: `${getSubjectShortLabel(s)} - ${s.name || s.shortName}` }))}
               />
             )}
 
@@ -1836,7 +2151,7 @@ const MarksEntry2Page: React.FC = () => {
                             ? 'text-indigo-900 dark:text-indigo-200'
                             : 'text-gray-700 dark:text-gray-200'
                         }`}>
-                          {s.shortName}
+                          {getSubjectShortLabel(s)} - {s.name || s.shortName}
                         </span>
                       </label>
                     ))}
@@ -1886,6 +2201,7 @@ const MarksEntry2Page: React.FC = () => {
                 isSubjectApplicable={isSubjectApplicable}
                 isSchoolUser={isSchoolUser}
                 schoolCanEditSubject={schoolCanEditSubject}
+                onCellDraftSave={handleCellDraftSave}
               />
             </div>
           ) : selectedSubjectIds.length === 0 ? (
@@ -1895,10 +2211,59 @@ const MarksEntry2Page: React.FC = () => {
             </div>
           ) : displayedStudents.length > 0 ? (
             <div className="bg-white dark:bg-[#161b22] rounded-3xl shadow-sm border border-gray-100 dark:border-[#30363d] mt-3 min-h-[400px] relative table-wrapper">
-              <table className="w-full text-left border-separate border-spacing-0">
-                <thead className="sticky top-0 z-30 bg-gray-50 dark:bg-[#1a1f26] shadow-sm">
+              <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-gray-100 dark:border-[#30363d] bg-white dark:bg-[#161b22] rounded-t-3xl">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm md:text-base font-extrabold text-gray-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                    <span>Marks Entry Grid</span>
+                    <span className="text-[11px] bg-gray-100 dark:bg-[#21262d] text-gray-600 dark:text-gray-300 font-bold px-2.5 py-0.5 rounded-full">
+                      {displayedStudents.length} {displayedStudents.length === 1 ? 'Student' : 'Students'}
+                    </span>
+                  </h3>
+                </div>
+                <div className="hidden md:flex items-center gap-3">
+                  {isFinalLocked ? (
+                    <div className="flex items-center gap-2 bg-green-100 dark:bg-green-950/20 text-green-800 dark:text-green-400 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest cursor-not-allowed">
+                      Finalized
+                    </div>
+                  ) : schoolAllSelectedLocked && !showExamConfigModal ? (
+                    <div className="flex items-center gap-2 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest cursor-not-allowed border border-amber-200 dark:border-amber-800">
+                      <AlertCircle size={16} />
+                      Awaiting Teacher Confirmation
+                    </div>
+                  ) : !lockedSubjects.includes(selectedSubjectIds[0]) ? (
+                    <button
+                      onClick={() => handleSave(false)}
+                      disabled={isSaving || displayedStudents.length === 0 || selectedSubjectIds.length === 0}
+                      className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md active:scale-95 disabled:opacity-50 ${
+                        hasUnsavedChanges
+                          ? 'bg-blue-600 dark:bg-blue-600 text-white hover:bg-blue-700 dark:hover:bg-blue-500 shadow-blue-500/25'
+                          : 'bg-gray-200 dark:bg-[#21262d] text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 hover:bg-gray-300 dark:hover:bg-[#2a3038]'
+                      }`}
+                    >
+                      {isSaving ? (
+                        <span className="animate-pulse">Saving...</span>
+                      ) : (
+                        <>
+                          <Save size={16} />
+                          Save Draft {hasUnsavedChanges && '• Unsaved'}
+                        </>
+                      )}
+                    </button>
+                  ) : !showExamConfigModal ? (
+                    <button
+                      onClick={handleReset}
+                      className="flex items-center gap-2 bg-red-650 dark:bg-red-700 text-white px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-red-700 dark:hover:bg-red-600 transition-all shadow-md active:scale-95"
+                    >
+                      Reset Subjects
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="overflow-x-auto w-full">
+                <table className="w-full md:w-auto md:min-w-max text-left border-separate border-spacing-0">
+                <thead className="sticky top-[12px] z-30 bg-gray-50 dark:bg-[#1a1f26] shadow-sm">
                   <tr className="border-b-2 border-gray-100 dark:border-[#30363d] bg-gray-50 dark:bg-[#1a1f26]">
-                    <th className="w-10 px-3 py-3 text-center border-r border-gray-200 dark:border-[#30363d] sticky top-0 left-0 bg-gray-50 dark:bg-[#1a1f26] z-40">
+                    <th className="w-10 px-3 py-3 text-center border-r border-gray-200 dark:border-[#30363d] sticky top-[12px] left-0 bg-gray-50 dark:bg-[#1a1f26] z-40">
                       <input
                         type="checkbox"
                         checked={displayedStudents.length > 0 && selectedStudentRowIds.length === displayedStudents.length}
@@ -1913,10 +2278,10 @@ const MarksEntry2Page: React.FC = () => {
                         title="Select all students"
                       />
                     </th>
-                    <th className="px-3 py-3 text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-[#30363d] min-w-[160px] sticky top-0 bg-gray-50 dark:bg-[#1a1f26] z-30">
+                    <th className="px-3 py-3 text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-gray-400 border-r border-gray-200 dark:border-[#30363d] min-w-[160px] sticky top-[12px] bg-gray-50 dark:bg-[#1a1f26] z-30">
                       Student Name
                     </th>
-                    <th className="w-14 px-2 py-3 text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-gray-400 text-center border-r border-gray-200 dark:border-[#30363d] sticky top-0 bg-gray-50 dark:bg-[#1a1f26] z-30">
+                    <th className="w-14 px-2 py-3 text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-gray-400 text-center border-r border-gray-200 dark:border-[#30363d] sticky top-[12px] bg-gray-50 dark:bg-[#1a1f26] z-30">
                       ABS
                     </th>
                     {selectedSubjectIds.map(subId => {
@@ -1931,18 +2296,18 @@ const MarksEntry2Page: React.FC = () => {
                           key={subId} 
                           colSpan={groups.length} 
                           title={hoverTitle}
-                          className="px-3 py-3 text-[10px] font-black uppercase tracking-widest text-gray-700 dark:text-gray-300 text-center border-r border-gray-200 dark:border-[#30363d] whitespace-nowrap cursor-help sticky top-0 bg-gray-50 dark:bg-[#1a1f26] z-30"
+                          className="px-3 py-3 text-[10px] font-black uppercase tracking-widest text-gray-700 dark:text-gray-300 text-center border-r border-gray-200 dark:border-[#30363d] whitespace-nowrap cursor-help sticky top-[12px] bg-gray-50 dark:bg-[#1a1f26] z-30"
                         >
                           {headerLabel}
                         </th>
                       );
                     })}
                     {user?.role === 'SCHOOL' ? (
-                      <th className="w-20 px-3 py-3 text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 text-center border-r border-gray-200 dark:border-[#30363d] sticky top-0 bg-gray-50 dark:bg-[#1a1f26] z-30">
+                      <th className="w-20 px-3 py-3 text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 text-center border-r border-gray-200 dark:border-[#30363d] sticky top-[12px] bg-gray-50 dark:bg-[#1a1f26] z-30">
                         Status
                       </th>
                     ) : (user?.role === 'TEACHER' && selectedSubjectIds.length > 1) ? (
-                      <th className="w-14 px-3 py-3 text-[10px] font-black uppercase tracking-widest text-rose-500 text-center border-l border-gray-200 dark:border-[#30363d] sticky top-0 bg-gray-50 dark:bg-[#1a1f26] z-30">
+                      <th className="w-14 px-3 py-3 text-[10px] font-black uppercase tracking-widest text-rose-500 text-center border-l border-gray-200 dark:border-[#30363d] sticky top-[12px] bg-gray-50 dark:bg-[#1a1f26] z-30">
                         Action
                       </th>
                     ) : null}
@@ -2078,6 +2443,7 @@ const MarksEntry2Page: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+            </div>
           ) : selectedSubjectIds.length > 0 ? (
             <div className="bg-white dark:bg-[#161b22] rounded-3xl shadow-sm border border-gray-100 dark:border-[#30363d] p-12 flex flex-col items-center justify-center gap-3 text-center text-gray-400 font-bold uppercase">
               <AlertCircle size={48} className="text-gray-300 dark:text-gray-600 mb-2" />
@@ -2122,41 +2488,6 @@ const MarksEntry2Page: React.FC = () => {
         </div>
       )}
 
-      {/* Fixed Floating Save Actions via Portal */}
-      {!isBulkMode && selectedExamId && document.body && createPortal(
-        <div className="fixed bottom-6 right-6 md:right-8 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] shadow-[0_10px_40px_-10px_rgba(0,0,0,0.3)] z-[9999] flex justify-end gap-3 rounded-2xl p-3 animate-in slide-in-from-bottom-8">
-          {isFinalLocked ? (
-            <div className="flex items-center gap-2 bg-green-100 dark:bg-green-950/20 text-green-800 dark:text-green-400 px-6 py-3 rounded-xl text-sm font-black uppercase tracking-widest cursor-not-allowed">
-              Finalized
-            </div>
-          ) : schoolAllSelectedLocked && !showExamConfigModal ? (
-            <div className="flex items-center gap-2 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-400 px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest cursor-not-allowed border border-amber-200 dark:border-amber-800">
-              <AlertCircle size={16} />
-              Awaiting Teacher Confirmation
-            </div>
-          ) : lockedSubjects.includes(selectedSubjectIds[0]) ? (
-            <>
-              <button
-                onClick={() => handleSave(false)}
-                disabled={isSaving || displayedStudents.length === 0 || selectedSubjectIds.length === 0}
-                className="flex items-center gap-2 bg-gray-200 dark:bg-[#21262d] text-gray-800 dark:text-gray-200 px-6 py-3 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-gray-300 dark:hover:bg-[#30363d] transition-all shadow-sm active:scale-95 disabled:opacity-50 border border-transparent dark:border-[#30363d]"
-              >
-                <Save size={18} />
-                Save Draft
-              </button>
-              </>
-            ) : !showExamConfigModal ? (
-              <button
-              onClick={handleReset}
-              className="flex items-center gap-2 bg-red-650 dark:bg-red-700 text-white px-8 py-3 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-red-700 dark:hover:bg-red-600 transition-all shadow-md active:scale-95"
-            >
-              Reset Subjects
-            </button>
-          ) : null}
-        </div>,
-        document.body
-      )}
-
       {showExamConfigModal && (
         <PremiumExamConfigModal
           isOpen={showExamConfigModal}
@@ -2177,6 +2508,57 @@ const MarksEntry2Page: React.FC = () => {
             }
           }}
         />
+      )}
+
+      <DraftRecoveryModal
+        isOpen={recoveryModalOpen}
+        metadata={recoveryMetadata}
+        recordCount={Object.values(recoveryRecords).reduce((acc, recs) => acc + Object.keys(recs).length, 0)}
+        onRestore={handleRestoreDraft}
+        onDiscard={handleDiscardDraft}
+      />
+
+      <ConflictResolutionModal
+        isOpen={conflictModalOpen}
+        conflicts={conflictedRows}
+        onKeepLocal={handleKeepLocal}
+        onReloadServer={handleReloadServer}
+        onMerge={handleMerge}
+        subjectName={availableSubjects.find(s => s.id === pendingSubjectToConfirm?.subId)?.name || 'the subject'}
+      />
+
+      {/* Mobile Bottom Fixed Full-Width Save Draft Bar */}
+      {!isBulkMode && !isFinalLocked && selectedExamId && displayedStudents.length > 0 && selectedSubjectIds.length > 0 && document.body && createPortal(
+        <div className="fixed bottom-0 left-0 right-0 p-3.5 bg-white/95 dark:bg-[#161b22]/95 backdrop-blur border-t border-gray-200 dark:border-[#30363d] z-[9999] md:hidden flex flex-col gap-2 shadow-[0_-4px_20px_rgba(0,0,0,0.15)]">
+          {!lockedSubjects.includes(selectedSubjectIds[0]) ? (
+            <button
+              onClick={() => handleSave(false)}
+              disabled={isSaving || displayedStudents.length === 0 || selectedSubjectIds.length === 0}
+              className={`w-full py-3.5 px-4 rounded-xl text-sm font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-md active:scale-98 disabled:opacity-50 ${
+                hasUnsavedChanges
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/30'
+                  : 'bg-gray-200 dark:bg-[#21262d] text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 hover:bg-gray-300 dark:hover:bg-[#2a3038]'
+              }`}
+            >
+              {isSaving ? (
+                <span className="animate-pulse">Saving...</span>
+              ) : (
+                <>
+                  <Save size={18} />
+                  Save Draft {hasUnsavedChanges && '• Unsaved'}
+                </>
+              )}
+            </button>
+          ) : !showExamConfigModal ? (
+            <button
+              onClick={handleReset}
+              className="w-full py-3.5 px-4 rounded-xl text-sm font-black uppercase tracking-widest flex items-center justify-center gap-2 bg-red-650 dark:bg-red-700 text-white hover:bg-red-700 transition-all shadow-md active:scale-98"
+            >
+              Reset Subjects
+            </button>
+          ) : null}
+        </div>,
+        document.body
       )}
     </div>
   );

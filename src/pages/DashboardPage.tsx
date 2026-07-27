@@ -31,8 +31,10 @@ import {
   Printer,
   Edit3,
   Map,
-  Info
+  Info,
+  RefreshCw
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { apiClient } from '../lib/apiClient';
 import { onRefresh } from '../lib/eventBus';
@@ -66,6 +68,8 @@ import { generateSchoolSubmissionPdf, printSchoolSubmissionWindow, formatDateTim
 import TeacherDashboard from './school/TeacherDashboard';
 import SubjectExpertDashboard from './repository/SubjectExpertDashboard';
 import MarkEntryStatusModal from '../components/school/MarkEntryStatusModal';
+import { sortSubjects } from '../lib/subjectUtils';
+
 
 
 const DashboardPage: React.FC = () => {
@@ -243,6 +247,26 @@ const DashboardPage: React.FC = () => {
     fetchSchoolAnalysis();
   }, [selectedExamId, selectedSchoolId, user, refreshKey]);
 
+  const handleForceRefreshStats = async () => {
+    const isSchool = user?.role === 'SCHOOL' || !!selectedSchoolId;
+    if (!isSchool || !selectedExamId) return;
+    const effectiveSid = user?.role === 'SCHOOL' ? (user.schoolId || user.id) : selectedSchoolId;
+    if (!effectiveSid) return;
+    
+    const toastId = toast.loading('Recalculating live counts from database...');
+    setIsAnalysisLoading(true);
+    try {
+      const res = await apiClient.get(`/dashboard/school-analysis?examId=${selectedExamId}&schoolId=${effectiveSid}&force=true`);
+      setSchoolAnalysis(res.data);
+      toast.success('Accurate counts updated from database!', { id: toastId });
+    } catch (err) {
+      console.error("Error force refreshing school analysis:", err);
+      toast.error('Failed to update counts', { id: toastId });
+    } finally {
+      setIsAnalysisLoading(false);
+    }
+  };
+
   // Language Distribution Validation
   useEffect(() => {
     const fetchLangValidation = async () => {
@@ -326,7 +350,8 @@ const DashboardPage: React.FC = () => {
     const unsub1 = onRefresh('mediums-updated', () => setRefreshKey(k => k + 1));
     const unsub2 = onRefresh('subjects-updated', () => setRefreshKey(k => k + 1));
     const unsub3 = onRefresh('data-updated', () => setRefreshKey(k => k + 1));
-    return () => { unsub1(); unsub2(); unsub3(); };
+    const unsub4 = onRefresh('students-updated', () => setRefreshKey(k => k + 1));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, []);
 
   // Auto-show language validation modal
@@ -990,7 +1015,7 @@ const DashboardPage: React.FC = () => {
                     if (c.includes('P10') || c === 'IT') return 'P10';
                     return c;
                   };
-                  const subs = (schoolAnalysis?.subjectWise || []).slice().sort((a: any, b: any) => getSubjectSortKey(a.shortCode || '').localeCompare(getSubjectSortKey(b.shortCode || '')));
+                  const subs = sortSubjects(schoolAnalysis?.subjectWise || []);
                   const visibleSubs = showAllSubjects ? subs : subs.slice(0, 5);
                   if (subs.length === 0) return <div className="text-center py-6 text-gray-300 text-[11px] font-bold uppercase">No data</div>;
                   return visibleSubs.map((sub: any, i: number) => (
@@ -1019,7 +1044,7 @@ const DashboardPage: React.FC = () => {
                   if (c.includes('P10') || c === 'IT') return 'P10';
                   return c;
                 };
-                const subs = (schoolAnalysis?.subjectWise || []).sort((a: any, b: any) => getSubjectSortKey2(a.shortCode || '').localeCompare(getSubjectSortKey2(b.shortCode || '')));
+                const subs = sortSubjects(schoolAnalysis?.subjectWise || []);
                 if (subs.length <= 5) return null;
                 return (
                   <button
@@ -1038,17 +1063,57 @@ const DashboardPage: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-stretch">
             {/* Medium + Gender Pie */}
             <div className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Users size={16} className="text-pink-500" />
-                <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">Medium & Gender</h3>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Users size={16} className="text-pink-500" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">Medium & Gender</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleForceRefreshStats}
+                  disabled={isAnalysisLoading}
+                  title="Reload accurate count from database"
+                  className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw size={14} className={isAnalysisLoading ? 'animate-spin text-pink-500' : ''} />
+                </button>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {/* Left: Pie chart + Medium & Gender labels below */}
                 <div className="flex flex-col gap-2">
-                  <div className="h-[160px]">
+                  <div className="h-[180px]">
                     <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={schoolAnalysis?.mediumStats ? Object.entries(schoolAnalysis.mediumStats).map(([k, v]: [string, any]) => ({ name: k, value: v.total })).filter(d => d.value > 0) : []} cx="50%" cy="50%" innerRadius={35} outerRadius={65} paddingAngle={3} dataKey="value">
+                      <PieChart margin={{ top: 25, right: 25, bottom: 25, left: 25 }}>
+                        <Pie 
+                          data={schoolAnalysis?.mediumStats ? Object.entries(schoolAnalysis.mediumStats).map(([k, v]: [string, any]) => ({ name: k, value: v.total })).filter(d => d.value > 0) : []} 
+                          cx="50%" 
+                          cy="50%" 
+                          innerRadius={28} 
+                          outerRadius={46} 
+                          paddingAngle={3} 
+                          dataKey="value"
+                          label={({ cx, cy, midAngle, outerRadius, value, index }) => {
+                            if (!value) return null;
+                            const MED_COLORS = ['#f97316', '#3b82f6', '#22c55e', '#8b5cf6'];
+                            const RADIAN = Math.PI / 180;
+                            const radius = outerRadius + 18;
+                            const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                            const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                            return (
+                              <text
+                                x={x}
+                                y={y}
+                                fill={MED_COLORS[index % MED_COLORS.length]}
+                                textAnchor={x > cx ? 'start' : x < cx ? 'end' : 'middle'}
+                                dominantBaseline="central"
+                                style={{ fontSize: '13px', fontWeight: 900 }}
+                              >
+                                {value}
+                              </text>
+                            );
+                          }}
+                          labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}
+                        >
                           <Cell fill="#f97316" />
                           <Cell fill="#3b82f6" />
                           <Cell fill="#22c55e" />
@@ -1093,9 +1158,20 @@ const DashboardPage: React.FC = () => {
 
             {/* Language Distribution Pie */}
             <div className={`bg-white dark:bg-[#161b22] border rounded-xl p-4 flex flex-col ${langValidation && !langValidation.isValid ? 'border-red-300 dark:border-red-700 shadow-red-100 dark:shadow-red-900/20 shadow-md' : 'border-gray-100 dark:border-[#30363d]'}`}>
-              <div className="flex items-center gap-2 mb-3">
-                <Languages size={16} className="text-cyan-500" />
-                <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">Language Distribution</h3>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Languages size={16} className="text-cyan-500" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">Language Distribution</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleForceRefreshStats}
+                  disabled={isAnalysisLoading}
+                  title="Reload accurate count from database"
+                  className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw size={14} className={isAnalysisLoading ? 'animate-spin text-cyan-500' : ''} />
+                </button>
               </div>
               <div className="flex-1 flex items-center justify-center min-h-[120px]">
                 {(() => {
@@ -1104,9 +1180,37 @@ const DashboardPage: React.FC = () => {
                   const pieData = langData.map((l: any) => ({ name: `${l.language} (${l.slot})`, value: l.count }));
                   const LANG_COLORS = ['#06b6d4','#8b5cf6','#f43f5e','#10b981','#f59e0b','#6366f1','#ec4899','#14b8a6','#f97316'];
                   return (
-                    <ResponsiveContainer width="100%" height={160}>
-                      <PieChart>
-                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={35} outerRadius={60} paddingAngle={2} dataKey="value" label={({ name, value }) => `${value}`} labelLine={false}>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <PieChart margin={{ top: 25, right: 25, bottom: 25, left: 25 }}>
+                        <Pie 
+                          data={pieData} 
+                          cx="50%" 
+                          cy="50%" 
+                          innerRadius={28} 
+                          outerRadius={46} 
+                          paddingAngle={2} 
+                          dataKey="value" 
+                          label={({ cx, cy, midAngle, outerRadius, value, index }) => {
+                            if (!value) return null;
+                            const RADIAN = Math.PI / 180;
+                            const radius = outerRadius + 18;
+                            const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                            const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                            return (
+                              <text
+                                x={x}
+                                y={y}
+                                fill={LANG_COLORS[index % LANG_COLORS.length]}
+                                textAnchor={x > cx ? 'start' : x < cx ? 'end' : 'middle'}
+                                dominantBaseline="central"
+                                style={{ fontSize: '13px', fontWeight: 900 }}
+                              >
+                                {value}
+                              </text>
+                            );
+                          }} 
+                          labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}
+                        >
                           {pieData.map((_: any, idx: number) => <Cell key={idx} fill={LANG_COLORS[idx % LANG_COLORS.length]} />)}
                         </Pie>
                         <Tooltip contentStyle={{ borderRadius: 8, border: 'none', fontSize: 11, fontWeight: 700 }} />
@@ -1293,7 +1397,7 @@ const DashboardPage: React.FC = () => {
                   if (c.includes('P10') || c === 'IT') return 'P10';
                   return c;
                 };
-                const sorted = [...subs].sort((a: any, b: any) => getSubjectSortKey3(a.shortCode || '').localeCompare(getSubjectSortKey3(b.shortCode || '')));
+                const sorted = sortSubjects(subs);
                 const totals = sorted.reduce((acc: any, s: any) => ({
                   appeared: acc.appeared + (s.appeared || 0), passCount: acc.passCount + (s.passCount || 0), failCount: acc.failCount + (s.failCount || 0),
                   absentCount: acc.absentCount + (s.absentCount || 0), totalStudents: acc.totalStudents + (s.totalStudents || 0), aPlus: acc.aPlus + (s.grades?.['A+'] || 0),

@@ -372,14 +372,17 @@ async function getSubjectMapping() {
   const codeToId: Record<string, string> = {};
 
   subjects.forEach((sub: any) => {
-    let code = sub.shortName || sub.name || '';
+    let code = sub.code || sub.shortName || sub.name || '';
     idToCode[sub._id.toString()] = code;
     codeToId[code] = sub._id.toString();
+    if (sub.shortName) codeToId[sub.shortName] = sub._id.toString();
+    if (sub.paperType) codeToId[sub.paperType] = sub._id.toString();
   });
 
   cachedSubjectMapping = { idToCode, codeToId, timestamp: Date.now() };
   return cachedSubjectMapping;
 }
+
 
 const getResolvedMaxMark = (exam: any, subjectId: string, shortCode: string, defaultMax = 50) => {
   if (!exam || !exam.maxMarks) return defaultMax;
@@ -919,6 +922,27 @@ export async function enqueueSchoolSummaryRebuild(schoolId: string, examId: stri
       console.error(`Error in background worker for school ${schoolId}:`, err);
     }
   }, 100);
+}
+
+export async function invalidateSchoolAnalytics(schoolId?: string) {
+  try {
+    analyticsCache.clearPattern(/school-analysis/);
+    analyticsCache.clearPattern(/lang-validation/);
+    analyticsCache.clearPattern(/dashboard/);
+    analyticsCache.clearPattern(/region-analytics/);
+    analyticsCache.clearPattern(/subj-counts/);
+    analyticsCache.clearPattern(/school-types/);
+    if (schoolId) {
+      analyticsCache.clearPattern(new RegExp(schoolId));
+      await SchoolSummary.deleteMany({ schoolId });
+    } else {
+      await SchoolSummary.deleteMany({});
+    }
+    await DashboardSummary.deleteMany({});
+    console.log(`[LiveSync] Analytics caches and summaries invalidated for school: ${schoolId || 'ALL'}`);
+  } catch (err) {
+    console.error("Error invalidating school analytics:", err);
+  }
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -1891,7 +1915,9 @@ app.put("/api/auth/profile", authenticateToken, async (req: any, res: any) => {
     const {
       hmName, hmMobile, udiseCode,
       coordinatorName, coordinatorMobile, coordinatorEmail,
-      schoolEmail, schoolTelephone, mediums
+      schoolEmail, schoolTelephone, mediums,
+      name, phone, email, qualification, designation,
+      teacherAssignments, teachingSubjects, assignedSubjects
     } = req.body;
 
     let user = null;
@@ -1910,6 +1936,25 @@ app.put("/api/auth/profile", authenticateToken, async (req: any, res: any) => {
     user.coordinatorEmail = coordinatorEmail || user.coordinatorEmail;
     user.schoolEmail = schoolEmail || user.schoolEmail;
     user.schoolTelephone = schoolTelephone || user.schoolTelephone;
+
+    if (name !== undefined) user.name = name;
+    if (phone !== undefined) user.phone = phone;
+    if (email !== undefined) user.email = email;
+    if (qualification !== undefined) user.qualification = qualification;
+    if (user.role === 'TEACHER') {
+      if (designation !== undefined) user.designation = designation;
+      if (Array.isArray(teacherAssignments)) {
+        user.teacherAssignments = teacherAssignments;
+        user.teachingSubjects = Array.isArray(teachingSubjects) ? teachingSubjects : Array.from(new Set(teacherAssignments.map((a: any) => a.subject).filter(Boolean)));
+        user.assignedSubjects = Array.isArray(assignedSubjects) ? assignedSubjects : Array.from(new Set(teacherAssignments.map((a: any) => a.className).filter(Boolean)));
+        if (!mediums && teacherAssignments.length > 0) {
+          user.mediums = Array.from(new Set(teacherAssignments.map((a: any) => a.medium).filter(Boolean)));
+        }
+      } else if (Array.isArray(teachingSubjects)) {
+        user.teachingSubjects = teachingSubjects;
+      }
+    }
+
     if (Array.isArray(mediums)) {
       // Normalize: resolve slug/id/code → canonical shortName
       const allMediumDocs = await Medium.find({ active: { $ne: false } }).lean();
@@ -4143,11 +4188,18 @@ app.get("/api/dashboard/school-analysis", async (req: any, res) => {
   try {
     const examId = req.query.examId as string;
     const schoolId = req.query.schoolId as string;
+    const force = req.query.force === 'true' || req.query.refresh === 'true';
     if (!examId || !schoolId) return res.status(400).json({ message: "examId and schoolId required" });
 
+    if (force) {
+      await invalidateSchoolAnalytics(schoolId);
+    }
+
     const cacheKey = `school-analysis-${schoolId}-${examId}`;
-    const cached = analyticsCache.get(cacheKey);
-    if (cached) return res.json(cached);
+    if (!force) {
+      const cached = analyticsCache.get(cacheKey);
+      if (cached) return res.json(cached);
+    }
 
     const exam = await Exam.findOne({ id: examId });
     const examClass = exam?.standard || '10';
@@ -5641,11 +5693,16 @@ app.get("/api/marks/batch-all", authenticateToken, async (req, res) => {
     let filter: any = { examId, schoolId };
     if (className) filter.className = className;
 
-    const marks = await Mark.find(filter);
+    const marks = await Mark.find(filter).lean();
 
     const isFinalLocked = marks.length > 0 && marks[0].finalLocked;
+    const formattedMarks = marks.map(m => ({
+      ...m,
+      version: (m as any).__v || 1,
+      updatedAt: m.updatedAt || m.createdAt || new Date(0)
+    }));
 
-    res.json({ marks, isFinalLocked });
+    res.json({ marks: formattedMarks, isFinalLocked });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
@@ -5850,7 +5907,7 @@ app.post("/api/marks/entry-all", authenticateToken, async (req: any, res) => {
 
 // Resources
 
-app.get("/api/resources", async (req, res) => {
+app.get("/api/resources", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET', 'SCHOOL', 'HEADMASTER', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'ADMIN'), async (req, res) => {
   try {
     const { category } = req.query;
     const filter: any = {};
@@ -5863,7 +5920,7 @@ app.get("/api/resources", async (req, res) => {
   }
 });
 
-app.post("/api/resources", upload.single('file'), requireRole('WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT'), async (req: any, res) => {
+app.post("/api/resources", authenticateToken, upload.single('file'), requireRole('WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'ADMIN'), async (req: any, res) => {
   try {
     const { title, description, category, className, medium, subject, uploadedBy, externalLink, publishDateTime } = req.body;
     const file = req.file;
@@ -5898,7 +5955,7 @@ app.post("/api/resources", upload.single('file'), requireRole('WEBMASTER', 'DEO'
   }
 });
 
-app.delete("/api/resources/:id", requireRole('WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT'), async (req: any, res) => {
+app.delete("/api/resources/:id", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'ADMIN'), async (req: any, res) => {
   try {
     const { id } = req.params;
     const resource = await Resource.findOne({ id });
@@ -5919,7 +5976,7 @@ app.delete("/api/resources/:id", requireRole('WEBMASTER', 'DEO', 'DIET', 'SUBJEC
   }
 });
 
-app.patch("/api/resources/:id/toggle", requireRole('WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT'), async (req: any, res) => {
+app.patch("/api/resources/:id/toggle", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'ADMIN'), async (req: any, res) => {
   try {
     const { id } = req.params;
     const resource = await Resource.findOne({ id });
@@ -5933,7 +5990,7 @@ app.patch("/api/resources/:id/toggle", requireRole('WEBMASTER', 'DEO', 'DIET', '
   }
 });
 
-app.post("/api/resources/:id/download", async (req: any, res) => {
+app.post("/api/resources/:id/download", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET', 'SCHOOL', 'HEADMASTER', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'ADMIN'), async (req: any, res) => {
   try {
     const { id } = req.params;
     const resource = await Resource.findOne({ id });
@@ -5952,7 +6009,7 @@ app.post("/api/resources/:id/download", async (req: any, res) => {
   }
 });
 
-app.get("/api/download-resource/:id", async (req: any, res) => {
+app.get("/api/download-resource/:id", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET', 'SCHOOL', 'HEADMASTER', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'ADMIN'), async (req: any, res) => {
   try {
     const { id } = req.params;
     console.log(`Download request for resource ID: ${id}`);
@@ -6100,7 +6157,7 @@ app.post("/api/management/students", authenticateToken, requireRole('WEBMASTER',
     let thirdLang = studentData.thirdLang ? String(studentData.thirdLang).trim() : '';
 
 
-    if (thirdLang.toUpperCase() === 'HINDI') thirdLang = 'HINDI (THIRD LANGUAGE) - P04';
+    if (thirdLang.toUpperCase() === 'HINDI' || thirdLang.toUpperCase() === 'HINDI (THIRD LANGUAGE) - P04') thirdLang = 'HINDI - P04 TM';
 
     if (medium && (!paper1 || !paper2)) {
       const medUpper = medium.toUpperCase();
@@ -6172,11 +6229,13 @@ app.post("/api/management/students", authenticateToken, requireRole('WEBMASTER',
       if (!updated) {
         return res.status(404).json({ message: "Student not found for update" });
       }
+      invalidateSchoolAnalytics(updated.schoolId || mappedData.schoolId);
       res.json(updated);
     } else {
       const id = `stud-${Date.now()}`;
       const newStudent = new Student({ ...mappedData, id });
       await newStudent.save();
+      invalidateSchoolAnalytics(newStudent.schoolId || mappedData.schoolId);
       res.json(newStudent);
     }
   } catch (err: any) {
@@ -6214,6 +6273,7 @@ app.post("/api/management/students/promote", authenticateToken, requireRole('WEB
         academicYear: newAcademicYear
       }
     });
+    invalidateSchoolAnalytics(schoolId);
 
     res.json({
       message: `Successfully promoted ${result.modifiedCount} students to Class ${targetClass} for Academic Year ${newAcademicYear}`,
@@ -6228,8 +6288,10 @@ app.post("/api/management/students/promote", authenticateToken, requireRole('WEB
 app.delete("/api/management/students/:id", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
   try {
     const { id } = req.params;
+    const studentToDelete = await Student.findOne({ id });
     await Student.deleteOne({ id });
     await Mark.deleteMany({ studentId: id });
+    invalidateSchoolAnalytics(studentToDelete?.schoolId);
     res.json({ message: "Student and associated marks deleted successfully" });
   } catch (err: any) {
     console.error("DELETE Student Error:", err);
@@ -6246,6 +6308,7 @@ app.post("/api/management/students/bulk-delete", authenticateToken, requireRole(
 
     await Student.deleteMany({ id: { $in: ids } });
     await Mark.deleteMany({ studentId: { $in: ids } });
+    invalidateSchoolAnalytics();
 
     res.json({ message: "Students and associated marks deleted successfully" });
   } catch (err: any) {
@@ -6346,7 +6409,7 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
       let thirdLang = s.thirdLang ? String(s.thirdLang).trim() : '';
 
 
-      if (thirdLang.toUpperCase() === 'HINDI') thirdLang = 'HINDI (THIRD LANGUAGE) - P04';
+      if (thirdLang.toUpperCase() === 'HINDI' || thirdLang.toUpperCase() === 'HINDI (THIRD LANGUAGE) - P04') thirdLang = 'HINDI - P04 TM';
 
       if (medium && (!paper1 || !paper2)) {
         const medUpper = medium.toUpperCase();
@@ -6391,6 +6454,7 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
 
     if (bulkOps.length > 0) {
       await Student.bulkWrite(bulkOps);
+      invalidateSchoolAnalytics(schoolId);
     }
 
     res.json({
@@ -6446,7 +6510,7 @@ app.post("/api/management/students/bulk-update-medium", authenticateToken, async
       const finalSecondLang = reqSecondLangStr;
 
       const reqThirdLangStr = reqThirdLang || st.thirdLang || '';
-      const finalThirdLang = (reqThirdLangStr.toUpperCase() === 'HINDI') ? 'HINDI (THIRD LANGUAGE) - P04' : reqThirdLangStr;
+      const finalThirdLang = (reqThirdLangStr.toUpperCase() === 'HINDI' || reqThirdLangStr.toUpperCase() === 'HINDI (THIRD LANGUAGE) - P04') ? 'HINDI - P04 TM' : reqThirdLangStr;
 
       const studentSubjects: string[] = [];
       if (paper1) studentSubjects.push(paper1.trim());
@@ -6483,6 +6547,7 @@ app.post("/api/management/students/bulk-update-medium", authenticateToken, async
     if (bulkOps.length > 0) {
       const result = await Student.bulkWrite(bulkOps);
       modifiedCount = result.modifiedCount;
+      invalidateSchoolAnalytics(schoolId);
     }
 
     res.json({ message: "Updated successfully", modifiedCount });
@@ -8138,7 +8203,7 @@ app.get("/api/management/mediums", authenticateToken, async (req, res) => {
 
 app.get("/api/school/mediums", authenticateToken, async (req: any, res) => {
   try {
-    const schoolId = req.user.role === 'SCHOOL' ? (req.user.schoolId || req.user.id) : req.user.id;
+    const schoolId = req.query.schoolId || req.user.schoolId || req.user.id;
     const schoolUser = await User.findById(schoolId).lean() as any;
     const schoolMediumCodes = schoolUser?.mediums || [];
 
@@ -8215,7 +8280,8 @@ app.get("/api/management/subjects", authenticateToken, async (req, res) => {
     if (mediumId) filter.mediumId = mediumId;
     if (medium) filter.medium = medium;
     if (category) filter.category = category;
-    const subjects = await Subject.find(filter).sort({ displayOrder: 1, shortName: 1 });
+    const subjects = await Subject.find(filter).sort({ displayOrder: 1, code: 1 });
+
     res.json(subjects);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
@@ -8387,13 +8453,26 @@ app.get("/api/management/subjects/grouped", authenticateToken, async (req, res) 
       }
     });
 
+    const sortSubjectsGrouped = (a: any, b: any) => {
+      const orderA = a.displayOrder !== undefined ? Number(a.displayOrder) : 0;
+      const orderB = b.displayOrder !== undefined ? Number(b.displayOrder) : 0;
+      if (orderA !== orderB) return orderA - orderB;
+      const getPNum = (item: any) => {
+        const codeStr = String(item.code || item.paperType || item.shortName || '').toUpperCase();
+        const match = codeStr.match(/P(\d+)/);
+        return match ? parseInt(match[1], 10) : 999;
+      };
+      return getPNum(a) - getPNum(b);
+    };
+
     for (const med in subjectsByMedium) {
-      subjectsByMedium[med].p01.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
-      subjectsByMedium[med].p02.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
-      subjectsByMedium[med].p03.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
-      subjectsByMedium[med].p04.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
-      subjectsByMedium[med].core.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
+      subjectsByMedium[med].p01.sort(sortSubjectsGrouped);
+      subjectsByMedium[med].p02.sort(sortSubjectsGrouped);
+      subjectsByMedium[med].p03.sort(sortSubjectsGrouped);
+      subjectsByMedium[med].p04.sort(sortSubjectsGrouped);
+      subjectsByMedium[med].core.sort(sortSubjectsGrouped);
     }
+
 
     res.json({ mediums: mediumNames, subjectsByMedium });
   } catch (err: any) {
@@ -8462,128 +8541,14 @@ app.get("/api/school/exam-config/:examId/dynamic-data", authenticateToken, async
     const exam = await Exam.findOne({ id: examId });
     if (!exam) return res.status(404).json({ message: "Exam not found" });
 
-    // Get school's configured mediums from the User/School document
-    const schoolUser = await User.findById(schoolId).lean();
-    const rawSchoolMediums: string[] = (schoolUser as any)?.mediums || [];
+    // Step 1: LOAD DATA (Mediums, Subjects, Active Students)
+    const allMediumDocs = await Medium.find({ active: { $ne: false } }).lean();
+    allMediumDocs.sort((a: any, b: any) => (Number(a.displayOrder) || 0) - (Number(b.displayOrder) || 0));
 
-    // Resolve medium codes (e.g. "TM") → shortNames (e.g. "Tamil") so keys match
-    // what resolveMediumNameDynamic() returns for subjects
-    const _medMapsForConfig = await getMediumMaps();
-    let schoolMediums: string[] = rawSchoolMediums.map((m: string) => {
-      const upper = m.toUpperCase().trim();
-      // If it's a code (exists in codeToShortName), resolve to shortName
-      if (_medMapsForConfig.codeToShortName[upper]) return _medMapsForConfig.codeToShortName[upper];
-      // If it's already a shortName (exists in shortNameToCode), keep as-is
-      if (_medMapsForConfig.shortNameToCode[upper]) return m;
-      // Fallback: return as-is
-      return m;
-    });
-
-    // Get students for student-derived language data
+    const allSubjects = await Subject.find({ active: { $ne: false } }).lean();
     const examClass = exam.standard || exam.className || '10';
     const students = await Student.find({ schoolId, className: examClass, active: { $ne: false } }).lean();
 
-    // Count students per subject/language name, and divisions per medium
-    const studentCounts: Record<string, number> = {};
-    const divisionCounts: Record<string, Set<string>> = {};
-    const totalStudentsByMedium: Record<string, number> = {};
-    // Create a normalized mapping of schoolMediums (UPPERCASE to exact string)
-    const normalizedSchoolMediums: Record<string, string> = {};
-    schoolMediums.forEach(sm => {
-      normalizedSchoolMediums[sm.toUpperCase().trim()] = sm;
-    });
-
-    // Normalize student mediums up-front
-    students.forEach((s: any) => {
-      if (s.medium) {
-        const upperMed = s.medium.toUpperCase().trim();
-        if (normalizedSchoolMediums[upperMed]) {
-          s.medium = normalizedSchoolMediums[upperMed];
-        } else {
-          s.medium = s.medium.charAt(0).toUpperCase() + s.medium.slice(1).toLowerCase();
-        }
-      }
-    });
-
-    students.forEach((s: any) => {
-      const langs = [s.firstLangPaper1, s.firstLangPaper2, s.secondLang, s.thirdLang].filter(Boolean);
-      langs.forEach((lang: string) => {
-        studentCounts[lang] = (studentCounts[lang] || 0) + 1;
-      });
-      // Count divisions per medium (students store shortName e.g. "Tamil")
-      let med = s.medium || '';
-      if (med) {
-        if (!divisionCounts[med]) divisionCounts[med] = new Set();
-        if (s.division) divisionCounts[med].add(s.division);
-        totalStudentsByMedium[med] = (totalStudentsByMedium[med] || 0) + 1;
-      }
-    });
-    // Convert sets to counts
-    const divisionCountResult: Record<string, number> = {};
-    for (const med in divisionCounts) {
-      divisionCountResult[med] = divisionCounts[med].size;
-    }
-
-    // If school has no configured mediums, derive from students' medium field
-    if (schoolMediums.length === 0) {
-      const studentMediums = Object.keys(totalStudentsByMedium).filter(Boolean);
-      if (studentMediums.length > 0) {
-        schoolMediums = studentMediums;
-      } else {
-        schoolMediums = [];
-      }
-    }
-
-    // Build per-subject student counts by medium + shortName (P01..P10)
-    const subjectStudentCounts: Record<string, Record<string, number>> = {};
-    students.forEach((s: any) => {
-      const med = s.medium || '';
-      if (!med) return;
-      if (!subjectStudentCounts[med]) subjectStudentCounts[med] = {};
-      const map = subjectStudentCounts[med];
-      if (s.firstLangPaper1) map['P01'] = (map['P01'] || 0) + 1;
-      if (s.firstLangPaper2) map['P02'] = (map['P02'] || 0) + 1;
-      if (s.secondLang) map['P03'] = (map['P03'] || 0) + 1;
-      if (s.thirdLang) map['P04'] = (map['P04'] || 0) + 1;
-      // Core subjects (P05-P10) = all students in the medium
-      ['P05', 'P06', 'P07', 'P08', 'P09', 'P10'].forEach(p => { map[p] = totalStudentsByMedium[med] || 0; });
-    });
-
-    const firstLanguages = new Set<string>();
-    const languagesByMedium: Record<string, Set<string>> = {};
-
-    students.forEach((s: any) => {
-      const medium = s.medium || 'Unknown';
-      if (!languagesByMedium[medium]) {
-        languagesByMedium[medium] = new Set<string>();
-      }
-
-      if (s.firstLangPaper1) {
-        firstLanguages.add(s.firstLangPaper1);
-        languagesByMedium[medium].add(s.firstLangPaper1);
-      }
-      if (s.firstLangPaper2) {
-        firstLanguages.add(s.firstLangPaper2);
-        languagesByMedium[medium].add(s.firstLangPaper2);
-      }
-      if (s.secondLang) {
-        firstLanguages.add(s.secondLang);
-        languagesByMedium[medium].add(s.secondLang);
-      }
-      if (s.thirdLang) {
-        firstLanguages.add(s.thirdLang);
-        languagesByMedium[medium].add(s.thirdLang);
-      }
-    });
-
-    const formattedLanguagesByMedium: Record<string, string[]> = {};
-    for (const med in languagesByMedium) {
-      formattedLanguagesByMedium[med] = Array.from(languagesByMedium[med]).filter(Boolean).sort();
-    }
-
-    // Fetch all active subjects from admin Subject collection and group by medium
-    const allSubjects = await Subject.find({ active: { $ne: false } }).lean();
-    const allMediumDocs = await Medium.find({ active: { $ne: false } }).lean();
     const schoolExamConfig = await SchoolExamConfig.findOne({ schoolId, examId }).lean();
     const markGroupMap: Record<string, any[]> = {};
     if (schoolExamConfig && schoolExamConfig.subjects) {
@@ -8593,172 +8558,222 @@ app.get("/api/school/exam-config/:examId/dynamic-data", authenticateToken, async
         }
       });
     }
-    const subjectsByMedium: Record<string, { p01: any[]; p02: any[]; p03: any[]; p04: any[]; core: any[] }> = {};
-    const commonSubjects = { p03: [] as any[], p04: [] as any[], core: [] as any[] };
 
-    // Initialize groups for each school medium
-    schoolMediums.forEach((med: string) => {
-      subjectsByMedium[med] = { p01: [], p02: [], p03: [], p04: [], core: [] };
+    // Step 2: GROUP BY MEDIUM
+    // Map medium IDs and legacy shortNames/names/codes to canonical Medium object
+    const mediumById: Record<string, any> = {};
+    const mediumByAlias: Record<string, any> = {};
+    allMediumDocs.forEach((m: any) => {
+      if (m.id) mediumById[m.id.toString()] = m;
+      if (m._id) mediumById[m._id.toString()] = m;
+      if (m.shortName) mediumByAlias[m.shortName.toUpperCase().trim()] = m;
+      if (m.name) mediumByAlias[m.name.toUpperCase().trim()] = m;
+      if (m.code) mediumByAlias[m.code.toUpperCase().trim()] = m;
     });
 
-    const mediumMapsDynamic = await getMediumMaps();
-
-    const resolveMediumNameDynamic = (sub: any): string => {
-      if (sub.mediumId) {
-        const med = allMediumDocs.find((m: any) => m.id === sub.mediumId);
-        if (med) return med.shortName;
-      }
-      const upperMedium = ((sub.medium || '') as string).toUpperCase().trim();
-      if (mediumMapsDynamic.codeToShortName[upperMedium]) return mediumMapsDynamic.codeToShortName[upperMedium];
-      const nameUpper = (sub.name || '').toUpperCase();
-      const shortUpper = (sub.shortName || '').toUpperCase();
-      for (const [code, shortName] of Object.entries(mediumMapsDynamic.codeToShortName)) {
-        if (nameUpper.endsWith(` ${code}`) || shortUpper.endsWith(` ${code}`)) return shortName;
-      }
-      if (nameUpper.includes('TAMIL AT') || nameUpper.includes('TAMIL BT')) return 'Tamil';
-      if (nameUpper.includes('MALAYALAM AT') || nameUpper.includes('MALAYALAM BT')) return 'Malayalam';
-      if (nameUpper.includes('KANNADA AT') || nameUpper.includes('KANNADA BT')) return 'Kannada';
-      return '';
+    const getStudentMedium = (st: any): any => {
+      if (st.mediumId && mediumById[st.mediumId.toString()]) return mediumById[st.mediumId.toString()];
+      if (st.medium && mediumByAlias[st.medium.toString().toUpperCase().trim()]) return mediumByAlias[st.medium.toString().toUpperCase().trim()];
+      return null;
     };
 
-    // Extract the primary P-code (P01–P10) from any subject field using regex
-    const extractPCodeDynamic = (sub: any): string => {
+    const totalStudentsByMedium: Record<string, number> = {};
+    const divisionCountsSet: Record<string, Set<string>> = {};
+    const studentsByMedShort: Record<string, any[]> = {};
+
+    students.forEach((st: any) => {
+      const medObj = getStudentMedium(st);
+      if (!medObj) return;
+      const shortName = medObj.shortName;
+      if (!totalStudentsByMedium[shortName]) totalStudentsByMedium[shortName] = 0;
+      if (!divisionCountsSet[shortName]) divisionCountsSet[shortName] = new Set();
+      if (!studentsByMedShort[shortName]) studentsByMedShort[shortName] = [];
+
+      totalStudentsByMedium[shortName]++;
+      studentsByMedShort[shortName].push(st);
+      if (st.division) divisionCountsSet[shortName].add(st.division);
+    });
+
+    const divisionCounts: Record<string, number> = {};
+    for (const k in divisionCountsSet) {
+      divisionCounts[k] = divisionCountsSet[k].size;
+    }
+
+    // Filter active mediums (0-student mediums will be hidden in UI per Step 2)
+    const activeSchoolMediums = allMediumDocs
+      .filter((m: any) => (totalStudentsByMedium[m.shortName] || 0) > 0)
+      .map((m: any) => m.shortName);
+
+    // Step 3 & 4: CALCULATE SUBJECT USAGE & GROUP SUBJECTS BY MEDIUM
+    const subjectsByMedium: Record<string, { p01: any[]; p02: any[]; p03: any[]; p04: any[]; core: any[] }> = {};
+    const commonSubjects = { p03: [] as any[], p04: [] as any[], core: [] as any[] };
+    const subjectIdCounts: Record<string, Record<string, number>> = {};
+    const validationReport: string[] = [];
+
+    // Map all active subjects by id for fast lookup
+    const subjectById: Record<string, any> = {};
+    allSubjects.forEach((s: any) => {
+      const sid = (s._id || s.id || '').toString();
+      if (sid) subjectById[sid] = s;
+    });
+
+    // Extract P-code (P01..P10)
+    const getPCode = (sub: any): string => {
       const fields = [sub.paperType, sub.code, sub.shortName, sub.name];
       for (const f of fields) {
         if (!f) continue;
         const m = String(f).toUpperCase().match(/\b(P\d{2})\b/);
         if (m) return m[1];
       }
+      const upperName = (sub.name || '').toUpperCase();
+      if (upperName.includes('PAPER II') || upperName.includes(' BT') || upperName.includes('SPECIAL ENGLISH') || upperName.includes(' (O)')) return 'P02';
+      if (upperName.includes('PAPER I') || upperName.includes(' AT') || upperName.includes('ADDL. ENGLISH') || upperName.includes(' (A)')) return 'P01';
+      if (sub.category === 'SECOND_LANGUAGE' || sub.paperType === 'SECOND_LANGUAGE') return 'P03';
+      if (sub.category === 'THIRD_LANGUAGE' || sub.paperType === 'THIRD_LANGUAGE') return 'P04';
+      if (sub.category === 'FIRST_LANGUAGE' || sub.paperType === 'FIRST_LANGUAGE') return 'P01';
       return '';
     };
 
-    const categorizeSubjectDynamic = (sub: any): string => {
-      const pCode = extractPCodeDynamic(sub);
-      if (pCode === 'P01' || pCode === 'P02') return 'FIRST_LANGUAGE';
-      if (pCode === 'P03') return 'SECOND_LANGUAGE';
-      if (pCode === 'P04') return 'THIRD_LANGUAGE';
-      if (pCode && parseInt(pCode.slice(1)) >= 5) return 'CORE';
-      // Fall back to stored category only if no P-code found
-      if (sub.category) return sub.category;
-      return 'CORE';
-    };
+    allMediumDocs.forEach((m: any) => {
+      const medShort = m.shortName;
+      subjectsByMedium[medShort] = { p01: [], p02: [], p03: [], p04: [], core: [] };
+      subjectIdCounts[medShort] = {};
+    });
 
+    // Step 11: VALIDATION CHECK
+    const seenCodeByMed: Record<string, Set<string>> = {};
     allSubjects.forEach((sub: any) => {
-      const name = (sub.name || '').toUpperCase();
-      const short = (sub.shortName || '').toUpperCase();
-      const matchedMedium = resolveMediumNameDynamic(sub);
-      const groups = markGroupMap[sub._id?.toString()] || [];
-      const subjectData = { _id: sub._id, id: sub._id, name: sub.name, shortName: sub.shortName, code: sub.code, medium: sub.medium, mediumId: sub.mediumId, mediumName: sub.mediumName, category: sub.category, paperType: sub.paperType, displayOrder: sub.displayOrder, groups };
-
-      // Determine category using new fields first, then fallback
-      const category = categorizeSubjectDynamic(sub);
-      const pCode = extractPCodeDynamic(sub);
-
-      // If medium matched but school doesn't have it configured, skip
-      if (matchedMedium && !subjectsByMedium[matchedMedium]) {
+      const sid = (sub._id || sub.id || '').toString();
+      if (!sid) {
+        validationReport.push(`Subject "${sub.name}" has missing ID.`);
         return;
       }
-
-      // If no medium matched, add to common section (shared across all mediums)
-      if (!matchedMedium) {
-        // P01/P02 (FIRST_LANGUAGE) must be medium-specific — skip if no medium resolved.
-        if (category === 'SECOND_LANGUAGE') {
-          commonSubjects.p03.push(subjectData);
-        } else if (category === 'THIRD_LANGUAGE') {
-          commonSubjects.p04.push(subjectData);
-        } else if (category === 'CORE') {
-          commonSubjects.core.push(subjectData);
-        }
-        return;
+      const pCode = getPCode(sub);
+      if (!pCode) {
+        validationReport.push(`Subject "${sub.name}" (${sub.shortName}) lacks a valid Paper Code (P01-P10).`);
       }
-
-      if (pCode === 'P01' || (category === 'FIRST_LANGUAGE' && (name.includes(' AT') || name.includes('PAPER I')))) {
-        subjectsByMedium[matchedMedium].p01.push(subjectData);
-      } else if (pCode === 'P02' || (category === 'FIRST_LANGUAGE' && (name.includes(' BT') || name.includes('PAPER II')))) {
-        subjectsByMedium[matchedMedium].p02.push(subjectData);
-      } else if (pCode === 'P03' || category === 'SECOND_LANGUAGE') {
-        subjectsByMedium[matchedMedium].p03.push(subjectData);
-      } else if (pCode === 'P04' || category === 'THIRD_LANGUAGE') {
-        subjectsByMedium[matchedMedium].p04.push(subjectData);
-      } else {
-        subjectsByMedium[matchedMedium].core.push(subjectData);
+      if (sub.mediumId && !mediumById[sub.mediumId.toString()]) {
+        validationReport.push(`Subject "${sub.name}" references non-existent mediumId: ${sub.mediumId}.`);
+      }
+      const medKey = sub.mediumId || sub.medium || 'COMMON';
+      if (!seenCodeByMed[medKey]) seenCodeByMed[medKey] = new Set();
+      const codeKey = (sub.code || sub.shortName || '').toUpperCase().trim();
+      if (codeKey && seenCodeByMed[medKey].has(codeKey)) {
+        validationReport.push(`Duplicate subject code "${codeKey}" detected in medium ${medKey}.`);
+      } else if (codeKey) {
+        seenCodeByMed[medKey].add(codeKey);
       }
     });
 
-    // Sort each category by displayOrder
-    for (const med in subjectsByMedium) {
-      subjectsByMedium[med].p01.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
-      subjectsByMedium[med].p02.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
-      subjectsByMedium[med].p03.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
-      subjectsByMedium[med].p04.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
-      subjectsByMedium[med].core.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
+    // Validate student subject mappings
+    let missingSubMappings = 0;
+    students.forEach((st: any) => {
+      if (!getStudentMedium(st)) {
+        validationReport.push(`Student "${st.name}" (${st.regNo || 'N/A'}) has an invalid or unassigned medium.`);
+      }
+      const checkSub = (id: any, label: string) => {
+        if (id && !subjectById[id.toString()]) {
+          missingSubMappings++;
+        }
+      };
+      checkSub(st.firstLangPaper1SubjectId || st.firstLangPaper1Id, 'First Language Paper 1');
+      checkSub(st.firstLangPaper2SubjectId || st.firstLangPaper2Id, 'First Language Paper 2');
+      checkSub(st.secondLanguageSubjectId || st.secondLangId, 'Second Language');
+      checkSub(st.thirdLanguageSubjectId || st.thirdLangId, 'Third Language');
+    });
+    if (missingSubMappings > 0) {
+      validationReport.push(`${missingSubMappings} student language mapping(s) reference non-existent or deleted Subject IDs.`);
     }
-    commonSubjects.p03.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
-    commonSubjects.p04.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
-    commonSubjects.core.sort((a: any, b: any) => (a.displayOrder || 0) - (b.displayOrder || 0));
 
-    const countStudentsForLanguageSub = (sub: any, med: string): number => {
-      const subId = (sub._id || sub.id || '').toString();
-      const subName = ((sub.name || '') as string).toUpperCase().trim();
-      const subShort = ((sub.shortName || '') as string).toUpperCase().trim();
+    // Assign subjects and calculate exact usage count per medium
+    allMediumDocs.forEach((medDoc: any) => {
+      const medShort = medDoc.shortName;
+      const medId = (medDoc.id || medDoc._id || '').toString();
+      const medStudents = studentsByMedShort[medShort] || [];
+      const medTotalCount = medStudents.length;
 
-      let count = 0;
-      students.forEach((st: any) => {
-        const stMed = st.medium || '';
-        if (med && stMed !== med) return;
+      allSubjects.forEach((sub: any) => {
+        const sid = (sub._id || sub.id || '').toString();
+        const subMedId = (sub.mediumId || '').toString();
+        const pCode = getPCode(sub);
+        const groups = markGroupMap[sid] || [];
+        const subjectData = { ...sub, id: sid, _id: sid, groups, pCode };
 
-        const ids = [st.firstLangPaper1Id, st.firstLangPaper2Id, st.secondLangId, st.thirdLangId].filter(Boolean).map(String);
-        if (subId && ids.includes(subId)) {
-          count++;
-          return;
-        }
+        // Determine usage count strictly from Student Management database assignments
+        let usageCount = 0;
+        let bucket = 'core';
 
-        const names = [st.firstLangPaper1, st.firstLangPaper2, st.secondLang, st.thirdLang].filter(Boolean).map((s: any) => String(s).toUpperCase().trim());
-        if (names.includes(subName) || (subShort && names.includes(subShort))) {
-          count++;
-          return;
-        }
-      });
-      return count;
-    };
-
-    // Build subjectIdCounts: maps each subject _id to its student count per medium
-    const subjectIdCounts: Record<string, Record<string, number>> = {};
-    const allKnownMediums = Array.from(new Set([...schoolMediums, ...Object.keys(subjectsByMedium), ...Object.keys(subjectStudentCounts)]));
-    for (const med of allKnownMediums) {
-      subjectIdCounts[med] = {};
-      const medCounts = subjectStudentCounts[med] || {};
-      allSubjects.forEach((s: any) => {
-        const sid = (s._id || s.id || '').toString();
-        if (!sid) return;
-        const cat = categorizeSubjectDynamic(s);
-        const pCode = extractPCodeDynamic(s);
-        const isLang = pCode === 'P01' || pCode === 'P02' || pCode === 'P03' || pCode === 'P04' || cat === 'FIRST_LANGUAGE' || cat === 'SECOND_LANGUAGE' || cat === 'THIRD_LANGUAGE' || String(s.paperType || '').includes('LANGUAGE') || String(s.category || '').includes('LANGUAGE');
-        if (isLang) {
-          subjectIdCounts[med][sid] = countStudentsForLanguageSub(s, med);
+        if (pCode === 'P02' || (sub.name && (sub.name.toUpperCase().includes('PAPER II') || sub.name.toUpperCase().includes(' BT') || sub.name.toUpperCase().includes('SPECIAL ENGLISH') || sub.name.toUpperCase().includes(' (O)')))) {
+          bucket = 'p02';
+          usageCount = medStudents.filter(st => {
+            const id = (st.firstLangPaper2SubjectId || st.firstLangPaper2Id || '').toString();
+            return id === sid;
+          }).length;
+        } else if (pCode === 'P01' || sub.category === 'FIRST_LANGUAGE' || sub.paperType === 'FIRST_LANGUAGE') {
+          bucket = 'p01';
+          usageCount = medStudents.filter(st => {
+            const id = (st.firstLangPaper1SubjectId || st.firstLangPaper1Id || '').toString();
+            return id === sid;
+          }).length;
+        } else if (pCode === 'P03' || sub.category === 'SECOND_LANGUAGE' || sub.paperType === 'SECOND_LANGUAGE') {
+          bucket = 'p03';
+          usageCount = medStudents.filter(st => {
+            const id = (st.secondLanguageSubjectId || st.secondLangId || '').toString();
+            return id === sid;
+          }).length;
+        } else if (pCode === 'P04' || sub.category === 'THIRD_LANGUAGE' || sub.paperType === 'THIRD_LANGUAGE') {
+          bucket = 'p04';
+          usageCount = medStudents.filter(st => {
+            const id = (st.thirdLanguageSubjectId || st.thirdLangId || '').toString();
+            return id === sid;
+          }).length;
         } else {
-          const subCode = ((s.code || '') as string).toUpperCase().trim();
-          if (subCode && medCounts[subCode] !== undefined) {
-            subjectIdCounts[med][sid] = medCounts[subCode];
+          // Core Subject (P05 - P10)
+          bucket = 'core';
+          if (subMedId && subMedId === medId) {
+            usageCount = medTotalCount;
+          } else if (!subMedId && (sub.medium === medDoc.code || sub.medium === medDoc.shortName || sub.medium === medDoc.name)) {
+            usageCount = medTotalCount;
           } else {
-            const nameUpper = ((s.name || '') + ' ' + (s.shortName || '')).toUpperCase();
-            const pMatch = nameUpper.match(/\bP(\d{2})\b/);
-            if (pMatch) {
-              const pCodeStr = `P${pMatch[1]}`;
-              subjectIdCounts[med][sid] = medCounts[pCodeStr] || totalStudentsByMedium[med] || 0;
-            } else {
-              subjectIdCounts[med][sid] = totalStudentsByMedium[med] || 0;
-            }
+            usageCount = 0;
           }
         }
+
+        subjectIdCounts[medShort][sid] = usageCount;
+
+        const isMatchingMedium = (subMedId && subMedId === medId) || (!subMedId && sub.medium && (sub.medium.toUpperCase() === (medDoc.code || '').toUpperCase() || sub.medium.toLowerCase() === (medDoc.shortName || '').toLowerCase() || sub.medium.toLowerCase() === (medDoc.name || '').toLowerCase() || (medDoc.shortName === 'Tamil' && sub.medium === 'TM') || (medDoc.shortName === 'Malayalam' && sub.medium === 'MM') || (medDoc.shortName === 'English' && sub.medium === 'EM')));
+        const isMismatchedMedium = !isMatchingMedium && ((subMedId && subMedId !== medId) || (sub.medium && ['TM', 'EM', 'MM', 'KM', 'UR', 'AR', 'TAMIL', 'MALAYALAM', 'ENGLISH'].includes(sub.medium.toUpperCase())));
+
+        if (!isMismatchedMedium && (usageCount > 0 || isMatchingMedium || (!subMedId && !sub.medium))) {
+          (subjectsByMedium[medShort] as any)[bucket].push(subjectData);
+        }
       });
+    });
+
+    // Step 7: SORTING (strictly by displayOrder, then Subject Code P01..P10)
+    const sortSubjectsEngine = (a: any, b: any) => {
+      const orderA = a.displayOrder !== undefined ? Number(a.displayOrder) : 0;
+      const orderB = b.displayOrder !== undefined ? Number(b.displayOrder) : 0;
+      if (orderA !== orderB) return orderA - orderB;
+      const getPNum = (item: any) => {
+        const match = String(item.pCode || item.code || item.shortName || item.paperType || '').toUpperCase().match(/P(\d+)/);
+        return match ? parseInt(match[1], 10) : 999;
+      };
+      return getPNum(a) - getPNum(b);
+    };
+
+    for (const med in subjectsByMedium) {
+      subjectsByMedium[med].p01.sort(sortSubjectsEngine);
+      subjectsByMedium[med].p02.sort(sortSubjectsEngine);
+      subjectsByMedium[med].p03.sort(sortSubjectsEngine);
+      subjectsByMedium[med].p04.sort(sortSubjectsEngine);
+      subjectsByMedium[med].core.sort(sortSubjectsEngine);
     }
 
-
-    const adminMaxMarks = {};
+    const adminMaxMarks: Record<string, any> = {};
     if (exam && exam.maxMarks) {
       if (typeof exam.maxMarks.forEach === 'function') {
-        exam.maxMarks.forEach((val, key) => {
+        exam.maxMarks.forEach((val: any, key: any) => {
           adminMaxMarks[key] = val;
         });
       } else {
@@ -8769,18 +8784,16 @@ app.get("/api/school/exam-config/:examId/dynamic-data", authenticateToken, async
     res.json({
       exam,
       adminMaxMarks,
-      languages: Array.from(firstLanguages).filter(Boolean).sort(),
-      mediums: schoolMediums,
-      languagesByMedium: formattedLanguagesByMedium,
+      mediums: activeSchoolMediums,
+      allMediums: allMediumDocs,
       subjectsByMedium,
       commonSubjects,
-      studentCounts,
-      subjectStudentCounts,
       subjectIdCounts,
-      divisionCounts: divisionCountResult,
+      divisionCounts,
       totalStudentsByMedium,
       totalStudents: students.length,
-      markGroupMap
+      markGroupMap,
+      validationReport
     });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
@@ -8924,12 +8937,16 @@ app.get("/api/marks/batch", authenticateToken, async (req, res) => {
     // Filter marks for the requested subject only
     const subjectMarks = marksList.filter(m => m.subjectId === subjectId);
 
-    // Format for frontend
+    // Format for frontend with offline recovery timestamps and versioning
     const responseData = subjectMarks.map(m => {
       return {
         studentId: m.studentId,
+        subjectId: m.subjectId,
         markGroups: Array.isArray(m.markGroups) ? m.markGroups : [],
         grade: m.grade,
+        mark: m.mark ?? m.totalObtained ?? m.rawScore ?? null,
+        totalObtained: m.totalObtained ?? m.mark ?? m.rawScore ?? null,
+        isAbsent: m.isAbsent || m.status === 'Absent' || m.grade === 'Ab' || m.grade === 'AB',
         locked: m.locked,
         finalLocked: m.finalLocked,
         workflowStatus: m.workflowStatus || 'NOT_STARTED',
@@ -8937,6 +8954,10 @@ app.get("/api/marks/batch", authenticateToken, async (req, res) => {
         teacherConfirmedBy: m.teacherConfirmedBy,
         schoolReviewedAt: m.schoolReviewedAt,
         schoolReviewedBy: m.schoolReviewedBy,
+        updatedAt: m.updatedAt || m.createdAt || new Date(0),
+        createdAt: m.createdAt || new Date(0),
+        version: (m as any).__v || 1,
+        lastEditedBy: m.lastEditedBy || m.enteredBy || 'unknown'
       };
     });
 
@@ -8954,6 +8975,36 @@ app.get("/api/marks/batch", authenticateToken, async (req, res) => {
       allCompleted,
       subjectWorkflowStatus,
     });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ─── OFFLINE DRAFT CONFLICT VERSION CHECK ───────────────────────────────────
+
+app.get("/api/marks/check-version", authenticateToken, async (req, res) => {
+  try {
+    const { examId, subjectId, schoolId } = req.query;
+    if (!examId || !schoolId || !subjectId) {
+      return res.status(400).json({ message: "Missing required params" });
+    }
+    const marks = await Mark.find({
+      examId: String(examId),
+      subjectId: String(subjectId),
+      schoolId: String(schoolId)
+    }, { studentId: 1, updatedAt: 1, __v: 1, grade: 1, mark: 1, totalObtained: 1, isAbsent: 1, lastEditedBy: 1, enteredBy: 1 }).lean();
+
+    const formatted = marks.map(m => ({
+      studentId: m.studentId,
+      updatedAt: m.updatedAt || new Date(0),
+      version: (m as any).__v || 1,
+      grade: m.grade,
+      mark: m.mark ?? m.totalObtained ?? null,
+      isAbsent: !!m.isAbsent,
+      lastEditedBy: m.lastEditedBy || m.enteredBy || 'Another User'
+    }));
+
+    res.json({ marks: formatted });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
@@ -9005,14 +9056,40 @@ app.get("/api/marks/entry-status", authenticateToken, async (req: any, res) => {
     let totalMarksEnteredAcrossAll = 0;
     let totalApplicableAcrossAll = 0;
 
-    // Sort subjects by shortName (P01, P02, P03...)
+    const getSubjectSortNumber = (doc: any, subName?: string): number => {
+      if (!doc && !subName) return 999;
+      const fields = [doc?.pCode, doc?.code, doc?.paperType, doc?.shortName, doc?.name, subName];
+      for (const f of fields) {
+        if (!f) continue;
+        const m = String(f).toUpperCase().match(/\bP(0?[1-9]|10)\b/) || String(f).toUpperCase().match(/P(0?[1-9]|10)/);
+        if (m && m[1]) {
+          const num = parseInt(m[1].replace('P', ''), 10);
+          if (num >= 1 && num <= 10) return num;
+        }
+      }
+      const upper = (doc?.name || subName || '').toUpperCase().trim();
+      const cat = (doc?.category || '').toUpperCase();
+      if (upper.includes('PAPER I') || upper.includes(' AT') || upper.includes('LAN I') || upper.includes('FIRST LANG') || upper === 'TAMIL AT' || upper === 'MALAYALAM AT' || upper.includes('ARABIC (A)') || upper.includes('SANSKRIT (A)') || cat === 'FIRST_LANGUAGE') return 1;
+      if (upper.includes('PAPER II') || upper.includes(' BT') || upper.includes('LAN II') || upper.includes('SPECIAL ENGLISH') || upper.includes('SPECIAL HINDI') || upper.includes('ARABIC (O)') || upper.includes('SANSKRIT (O)') || upper.includes('OPTIONAL')) return 2;
+      if (upper === 'ENGLISH' || upper.includes('SECOND LANG') || upper === 'ENG' || cat === 'SECOND_LANGUAGE') return 3;
+      if (upper === 'HINDI' || upper.includes('THIRD LANG') || upper === 'HIN' || upper.includes('GENERAL KNOWLEDGE') || upper === 'GK' || cat === 'THIRD_LANGUAGE') return 4;
+      if (upper.includes('SOCIAL') || upper === 'SS' || upper === 'SOC') return 5;
+      if (upper.includes('PHYSIC') || upper === 'PHY') return 6;
+      if (upper.includes('CHEMIS') || upper === 'CHE') return 7;
+      if (upper.includes('BIOLOG') || upper === 'BIO' || upper.includes('NATURAL')) return 8;
+      if (upper.includes('MATH') || upper === 'MAT' || upper.includes('GANITHAM')) return 9;
+      if (upper.includes('INFO') || upper === 'ICT' || upper === 'IT' || upper.includes('COMPUTER')) return 10;
+      if (doc?.displayOrder !== undefined && doc?.displayOrder !== null && doc.displayOrder > 0) return Number(doc.displayOrder);
+      return 999;
+    };
+
     const sortedSubjects = [...configuredSubjects].sort((a: any, b: any) => {
       const docA = subjectDocMap[a.subjectId?.toString()];
       const docB = subjectDocMap[b.subjectId?.toString()];
-      const numA = parseInt((docA?.shortName || '').replace(/\D/g, ''), 10) || 999;
-      const numB = parseInt((docB?.shortName || '').replace(/\D/g, ''), 10) || 999;
+      const numA = getSubjectSortNumber(docA);
+      const numB = getSubjectSortNumber(docB);
       if (numA !== numB) return numA - numB;
-      return (docA?.shortName || '').localeCompare(docB?.shortName || '');
+      return (docA?.name || '').localeCompare(docB?.name || '');
     });
 
     for (const sub of sortedSubjects) {
@@ -9082,10 +9159,17 @@ app.get("/api/marks/entry-status", authenticateToken, async (req: any, res) => {
       totalMarksEnteredAcrossAll += effectiveEntered;
       totalApplicableAcrossAll += totalStudents;
 
+      const sortIndex = getSubjectSortNumber(subjectDoc, subjectName);
+      const resolvedCode = (sortIndex >= 1 && sortIndex <= 10) ? (sortIndex <= 9 ? `P0${sortIndex}` : `P${sortIndex}`) : (subjectDoc?.code || subjectDoc?.paperType || '');
+
       subjectResults.push({
         subjectId,
         subjectName,
         shortName,
+        code: resolvedCode,
+        pCode: resolvedCode,
+        paperType: subjectDoc?.paperType || resolvedCode,
+        displayOrder: subjectDoc?.displayOrder || sortIndex,
         totalStudents,
         marksEntered: effectiveEntered,
         remaining: totalStudents - effectiveEntered,
@@ -10248,10 +10332,11 @@ app.delete("/api/school/teachers/:id", requireRole('SCHOOL'), async (req: any, r
   }
 });
 
-app.get("/api/school/classes-divisions", requireRole('SCHOOL'), async (req: any, res: any) => {
+app.get("/api/school/classes-divisions", requireRole('SCHOOL', 'TEACHER', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
   try {
+    const schoolId = req.query.schoolId || req.user.schoolId || req.user.id.toString();
     const classes = await Student.aggregate([
-      { $match: { schoolId: req.user.id.toString(), active: { $ne: false } } },
+      { $match: { schoolId: schoolId.toString(), active: { $ne: false } } },
       { $group: { _id: { className: "$className", division: "$division" } } },
       { $sort: { "_id.className": 1, "_id.division": 1 } }
     ]);
@@ -10265,9 +10350,9 @@ app.get("/api/school/classes-divisions", requireRole('SCHOOL'), async (req: any,
   }
 });
 
-app.get("/api/school/active-subjects", requireRole('SCHOOL', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
+app.get("/api/school/active-subjects", requireRole('SCHOOL', 'TEACHER', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
   try {
-    const schoolId = req.query.schoolId || req.user.id.toString();
+    const schoolId = req.query.schoolId || req.user.schoolId || req.user.id.toString();
     const students = await Student.find({ schoolId, active: { $ne: false } }, 'subjects').lean();
     const allSubjects = new Set<string>();
     students.forEach((s: any) => {
@@ -10281,9 +10366,9 @@ app.get("/api/school/active-subjects", requireRole('SCHOOL', 'WEBMASTER', 'DEO',
   }
 });
 
-app.get("/api/school/class-hierarchy", requireRole('SCHOOL', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
+app.get("/api/school/class-hierarchy", requireRole('SCHOOL', 'TEACHER', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
   try {
-    const schoolId = req.query.schoolId || req.user.id.toString();
+    const schoolId = req.query.schoolId || req.user.schoolId || req.user.id.toString();
     const students = await Student.find({ schoolId, active: { $ne: false } }, 'className division medium subjects').lean();
 
     // Group into hierarchy: class -> division -> medium -> subjects

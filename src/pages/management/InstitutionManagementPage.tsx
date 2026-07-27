@@ -33,6 +33,7 @@ interface Institution {
   hmName: string;
   hmMobile: string;
   hmEmail: string;
+  udiseCode?: string;
   districtName?: string;
   revenueDistrictName?: string;
   eduDistrictName?: string;

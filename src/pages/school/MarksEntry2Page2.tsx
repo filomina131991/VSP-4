@@ -13,6 +13,8 @@ import PageLoader from '../../components/common/PageLoader';
 import ExamSelect from '../../components/common/ExamSelect';
 import Dropdown from '../../components/common/Dropdown';
 import SchoolExamConfigModal from '../../components/school/SchoolExamConfigModal';
+import { sortSubjects, getSubjectShortLabel } from '../../lib/subjectUtils';
+
 
 
 interface Student {
@@ -79,6 +81,7 @@ const MarksEntry2Page: React.FC = () => {
   const [isSubjectsCollapsed, setIsSubjectsCollapsed] = useState<boolean>(true);
   const [rejectedInputs, setRejectedInputs] = useState<Set<string>>(new Set());
   const [configuredExamIds, setConfiguredExamIds] = useState<string[]>([]);
+  const [classStudents, setClassStudents] = useState<any[]>([]);
 
   useEffect(() => {
     localStorage.setItem('marksEntrySortPreference', sortOption);
@@ -88,22 +91,7 @@ const MarksEntry2Page: React.FC = () => {
     loadInitialData();
   }, []);
 
-  const teacherAlertShownRef = useRef(false);
 
-  useEffect(() => {
-    if (user?.role === 'TEACHER' && selectedSubjectIds.length > 0 && !isLoading && !teacherAlertShownRef.current) {
-      Swal.fire({
-        title: 'Marking Absentees',
-        text: "Please use the 'Absent' checkbox for students who are absent. This will automatically mark them as 'Ab'.",
-        icon: 'info',
-        confirmButtonText: 'OK',
-        confirmButtonColor: '#4f46e5',
-        showClass: { popup: 'animate__animated animate__fadeInDown' },
-        hideClass: { popup: 'animate__animated animate__fadeOutUp' }
-      });
-      teacherAlertShownRef.current = true;
-    }
-  }, [user, selectedSubjectIds, isLoading]);
 
   const [dbClasses, setDbClasses] = useState<{ className: string; division: string }[]>([]);
 
@@ -132,14 +120,7 @@ const MarksEntry2Page: React.FC = () => {
       const filteredExams = examsRes.data.filter((e: any) => configuredIds.includes(e.id));
       setExams(filteredExams);
 
-      const sortedSubjects = subjectsRes.data.sort((a: any, b: any) => {
-        const aMatch = (a.shortName || '').match(/P(\d+)/i);
-        const bMatch = (b.shortName || '').match(/P(\d+)/i);
-        if (aMatch && bMatch) return parseInt(aMatch[1]) - parseInt(bMatch[1]);
-        if (aMatch) return -1;
-        if (bMatch) return 1;
-        return (a.shortName || '').localeCompare(b.shortName || '');
-      });
+      const sortedSubjects = sortSubjects(subjectsRes.data || []);
       setSubjects(sortedSubjects);
       setGradeConfig(gradesRes.data);
 
@@ -188,12 +169,12 @@ const MarksEntry2Page: React.FC = () => {
     }
   };
 
-  const [schoolConfig, setSchoolConfig] = useState<any[]>([]);
+  const [schoolConfig, setSchoolConfig] = useState<any>(null);
 
   const reloadExamConfig = async (examId: string) => {
     try {
       const res = await apiClient.get(`/school/exam-config/${examId}`);
-      const savedConfig = res.data.subjects || [];
+      const savedConfig = res.data || {};
       setSchoolConfig(savedConfig);
     } catch (err) {
       toast.error('Failed to load exam config');
@@ -223,14 +204,7 @@ const MarksEntry2Page: React.FC = () => {
       // For now, let's keep all papers accessible to teachers, or you can filter by paper name.
       // As per prompt, all columns should be generated. 
     }
-    return subs.sort((a: any, b: any) => {
-      const aMatch = (a.shortName || '').match(/P(\d+)/i);
-      const bMatch = (b.shortName || '').match(/P(\d+)/i);
-      if (aMatch && bMatch) return parseInt(aMatch[1]) - parseInt(bMatch[1]);
-      if (aMatch) return -1;
-      if (bMatch) return 1;
-      return (a.shortName || '').localeCompare(b.shortName || '');
-    });
+    return sortSubjects(subs);
   }, [schoolConfig, user, selectedMedium]);
 
   const currentSchoolConfirmedSubjects = useMemo(() => {
@@ -1019,10 +993,14 @@ const MarksEntry2Page: React.FC = () => {
           {user?.role === 'SCHOOL' && (
             <button
               onClick={() => setShowExamConfigModal(true)}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-black uppercase tracking-widest bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition-all shadow-sm active:scale-95"
+              className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 border ${
+                configuredExamIds.includes(selectedExamId)
+                  ? 'bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/50 dark:hover:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border-emerald-400 dark:border-emerald-600 shadow-emerald-500/10'
+                  : 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 border-transparent'
+              }`}
             >
-              <Settings2 size={18} />
-              Exam Config
+              <Settings2 size={18} className={configuredExamIds.includes(selectedExamId) ? 'text-emerald-600 dark:text-emerald-400' : ''} />
+              {configuredExamIds.includes(selectedExamId) ? '✓ Exam Configured' : 'Exam Config'}
             </button>
           )}
           {selectedExamId && availableSubjects.length > 0 && !isFinalLocked && !isBulkMode && (
@@ -1317,7 +1295,7 @@ const MarksEntry2Page: React.FC = () => {
                 placeholder="Select Subject..."
                 value={selectedSubjectIds[0] || ''}
                 onChange={(v) => setSelectedSubjectIds([v])}
-                options={availableSubjects.map((s: any) => ({ value: s.id, label: `${s.name} (${s.shortName})` }))}
+                options={availableSubjects.map((s: any) => ({ value: s.id, label: `${getSubjectShortLabel(s)} - ${s.name || s.shortName}` }))}
               />
             )}
 
@@ -1393,7 +1371,7 @@ const MarksEntry2Page: React.FC = () => {
                             ? 'text-indigo-900 dark:text-indigo-200'
                             : 'text-gray-700 dark:text-gray-200'
                         }`}>
-                          {s.name} ({s.shortName})
+                          {getSubjectShortLabel(s)} - {s.name || s.shortName}
                         </span>
                       </label>
                     ))}
@@ -1457,7 +1435,7 @@ const MarksEntry2Page: React.FC = () => {
                         const groups = getGroupsForSubject(subId);
                         return (
                           <th key={subId} colSpan={groups.length + 2} className="px-2 py-2 text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-gray-300 text-center border-b border-gray-200 dark:border-[#30363d] border-r">
-                            {subObj?.shortName || 'Subject'}
+                            {subObj ? getSubjectShortLabel(subObj) : 'Subject'}
                           </th>
                         );
                       })}

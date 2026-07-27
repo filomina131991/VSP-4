@@ -25,8 +25,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
     return <Navigate to="/dashboard" replace />;
   }
 
-  // Force School and Teacher users to complete profile & change password before accessing dashboard
-  if (user && (!user.profileCompleted || !user.passwordChanged)) {
+  // Force School and Teacher users to complete profile, change password, or fill missing Mobile/Email before accessing dashboard
+  if (user && (!user.profileCompleted || !user.passwordChanged || (user.role === 'TEACHER' && (!user.phone || !user.email)))) {
     if (user?.role === 'SCHOOL' && location.pathname !== '/dashboard/school-profile') {
       return <Navigate to="/dashboard/school-profile" replace />;
     }

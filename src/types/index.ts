@@ -97,3 +97,28 @@ export interface SubjectGradeStats {
   d: number;
   absents: number;
 }
+
+export interface Student {
+  _id?: string;
+  id?: string;
+  admissionNumber?: string;
+  name: string;
+  gender?: string;
+  className?: string;
+  division?: string;
+  schoolId?: string;
+  medium?: string;
+  mediumId?: string;
+  firstLangPaper1?: string;
+  firstLangPaper1SubjectId?: string;
+  firstLangPaper2?: string;
+  firstLangPaper2SubjectId?: string;
+  secondLang?: string;
+  secondLanguageSubjectId?: string;
+  thirdLang?: string;
+  thirdLanguageSubjectId?: string;
+  subjects?: string[];
+  exemptions?: string[];
+  active?: boolean;
+}
+

@@ -43,10 +43,6 @@ export function resolveMediumShortName(input: string, mediums: Medium[]): string
   if (maps.byCode[upper]) return maps.byCode[upper].shortName;
   // Name match (uppercase)
   if (maps.byName[upper]) return maps.byName[upper].shortName;
-  // Partial match on shortName (e.g. "Tamil Medium" → "Tamil")
-  for (const m of mediums) {
-    if (m.shortName && upper.includes(m.shortName.toUpperCase())) return m.shortName;
-  }
   return '';
 }
 
@@ -70,10 +66,6 @@ export function resolveMediumId(input: string, mediums: Medium[]): string {
   if (maps.byCode[upper]) return maps.byCode[upper].id;
   // Name match
   if (maps.byName[upper]) return maps.byName[upper].id;
-  // Partial shortName match
-  for (const m of mediums) {
-    if (m.shortName && upper.includes(m.shortName.toUpperCase())) return m.id;
-  }
   return '';
 }
 
@@ -93,9 +85,6 @@ export function resolveMediumCode(input: string, mediums: Medium[]): string {
   if (maps.byShortName[trimmed]) return maps.byShortName[trimmed].code;
   if (maps.byCode[upper]) return maps.byCode[upper].code;
   if (maps.byName[upper]) return maps.byName[upper].code;
-  for (const m of mediums) {
-    if (m.shortName && upper.includes(m.shortName.toUpperCase())) return m.code;
-  }
   return '';
 }
 
@@ -115,9 +104,6 @@ export function resolveMediumName(input: string, mediums: Medium[]): string {
   if (maps.byShortName[trimmed]) return maps.byShortName[trimmed].name;
   if (maps.byCode[upper]) return maps.byCode[upper].name;
   if (maps.byName[upper]) return maps.byName[upper].name;
-  for (const m of mediums) {
-    if (m.shortName && upper.includes(m.shortName.toUpperCase())) return m.name;
-  }
   return '';
 }
 
@@ -137,9 +123,6 @@ export function resolveMedium(input: string, mediums: Medium[]): Medium | undefi
   if (maps.byShortName[trimmed]) return maps.byShortName[trimmed];
   if (maps.byCode[upper]) return maps.byCode[upper];
   if (maps.byName[upper]) return maps.byName[upper];
-  for (const m of mediums) {
-    if (m.shortName && upper.includes(m.shortName.toUpperCase())) return m;
-  }
   return undefined;
 }
 
@@ -153,18 +136,34 @@ export function mediumNameToId(medium: string, mediums: Medium[]): string {
 }
 
 /**
- * Get sorted unique medium shortNames from a list of mediums.
- * Returns ['English', 'Kannada', 'Malayalam', 'Tamil'] (alphabetical).
+ * Sort mediums strictly by displayOrder. Never alphabetically.
  */
-export function getMediumShortNames(mediums: Medium[]): string[] {
-  return [...new Set(mediums.filter(m => m.active !== false).map(m => m.shortName))].sort();
+export function sortMediums<T extends { displayOrder?: number }>(a: T, b: T): number {
+  return (a.displayOrder || 0) - (b.displayOrder || 0);
 }
 
 /**
- * Get sorted active mediums.
+ * Get sorted unique medium shortNames from a list of mediums.
+ * Sorted strictly by displayOrder.
+ */
+export function getMediumShortNames(mediums: Medium[]): string[] {
+  const active = getActiveMediums(mediums);
+  const seen = new Set<string>();
+  const res: string[] = [];
+  for (const m of active) {
+    if (m.shortName && !seen.has(m.shortName)) {
+      seen.add(m.shortName);
+      res.push(m.shortName);
+    }
+  }
+  return res;
+}
+
+/**
+ * Get sorted active mediums (by displayOrder).
  */
 export function getActiveMediums(mediums: Medium[]): Medium[] {
-  return mediums.filter(m => m.active !== false).sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
+  return mediums.filter(m => m.active !== false).sort(sortMediums);
 }
 
 /**

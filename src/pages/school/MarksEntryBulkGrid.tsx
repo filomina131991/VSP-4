@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Upload, FileText, CheckCircle, AlertCircle, Save, Trash2 } from 'lucide-react';
 import { apiClient } from '../../lib/apiClient';
@@ -7,6 +7,7 @@ import Swal from 'sweetalert2';
 import Papa from 'papaparse';
 import PageLoader from '../../components/common/PageLoader';
 import { useAuth } from '../../context/AuthContext';
+import { getSubjectShortLabel } from '../../lib/subjectUtils';
 interface MarksEntryBulkGridProps {
   selectedExam: any;
   availableSubjects: any[];
@@ -22,6 +23,7 @@ interface MarksEntryBulkGridProps {
   isSubjectApplicable?: (studentId: string, subjectId: string) => boolean;
   isSchoolUser?: boolean;
   schoolCanEditSubject?: (subjectId: string) => boolean;
+  onCellDraftSave?: (studentId: string, subjectId: string, val: string) => void;
 }
 export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
   selectedExam,
@@ -37,7 +39,8 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
   existingMarks,
   isSubjectApplicable,
   isSchoolUser = false,
-  schoolCanEditSubject
+  schoolCanEditSubject,
+  onCellDraftSave
 }) => {
   const { user } = useAuth();
   
@@ -61,6 +64,36 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
     });
     return initial;
   });
+
+  React.useEffect(() => {
+    setGridData(prev => {
+      const next: Record<string, Record<string, string>> = {};
+      let changed = false;
+      students.forEach(st => {
+        next[st.id] = { ...(prev[st.id] || {}) };
+        availableSubjects.forEach(sub => {
+          const mark = existingMarks.find(m => m.studentId === st.id && m.subjectId === sub.id);
+          let expectedVal = '';
+          if (mark) {
+            if (mark.grade === 'Ab' || mark.grade === 'AB' || mark.isAbsent) {
+              expectedVal = 'Ab';
+            } else if (selectedExam?.marksEntryMode === 'marks' && mark.mark !== undefined && mark.mark !== null && mark.mark !== '') {
+              expectedVal = mark.mark.toString();
+            } else {
+              expectedVal = mark.grade !== undefined && mark.grade !== null ? mark.grade.toString() : '';
+            }
+          } else {
+            expectedVal = next[st.id][sub.id] !== undefined ? next[st.id][sub.id] : '';
+          }
+          if (next[st.id][sub.id] !== expectedVal) {
+            next[st.id][sub.id] = expectedVal;
+            changed = true;
+          }
+        });
+      });
+      return changed ? next : prev;
+    });
+  }, [existingMarks, students, availableSubjects, selectedExam]);
 
   const [isUploading, setIsUploading] = useState(false);
 
@@ -179,6 +212,7 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
       }
     }));
     setHasUnsavedChanges(true);
+    if (onCellDraftSave) onCellDraftSave(studentId, subjectId, finalVal);
 
     if (isInvalid) {
       setTimeout(() => {
@@ -238,7 +272,9 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
       const isCurrentlyAbsent = applicableSubjects.length > 0 && applicableSubjects.every(sub => studentData[sub.id]?.toLowerCase() === 'ab');
       
       applicableSubjects.forEach(sub => {
-        studentData[sub.id] = isCurrentlyAbsent ? '' : 'Ab';
+        const newVal = isCurrentlyAbsent ? '' : 'Ab';
+        studentData[sub.id] = newVal;
+        if (onCellDraftSave) onCellDraftSave(studentId, sub.id, newVal);
       });
       
       return {
@@ -626,6 +662,50 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
     return 'PASS';
   };
 
+  const gradeAnalytics = useMemo(() => {
+    let totalCells = 0;
+    let filledCells = 0;
+    let totalAbsent = 0;
+    const gradeCounts: Record<string, number> = {
+      'A+': 0, 'A': 0, 'B+': 0, 'B': 0, 'C': 0, 'D': 0, 'Pass': 0, 'Fail': 0
+    };
+
+    students.forEach(st => {
+      const status = getBulkStudentStatus(st.id);
+      if (status === 'PASS') gradeCounts['Pass']++;
+      if (status === 'FAIL') gradeCounts['Fail']++;
+
+      availableSubjects.forEach(sub => {
+        if (isSubjectApplicable && !isSubjectApplicable(st.id, sub.id)) return;
+        if (isMutuallyExcluded(st.id, sub.id)) return;
+        totalCells++;
+        const val = gridData[st.id]?.[sub.id]?.toString().trim();
+        if (val && val !== '') {
+          filledCells++;
+          if (val.toLowerCase() === 'ab') {
+            totalAbsent++;
+          } else if (isNaN(Number(val))) {
+            const upper = val.toUpperCase();
+            if (gradeCounts[upper] !== undefined) gradeCounts[upper]++;
+          } else {
+            const num = Number(val);
+            const max = resolveMaxMark(sub) || 100;
+            const pct = (num / max) * 100;
+            if (pct >= 90) gradeCounts['A+']++;
+            else if (pct >= 80) gradeCounts['A']++;
+            else if (pct >= 70) gradeCounts['B+']++;
+            else if (pct >= 60) gradeCounts['B']++;
+            else if (pct >= 50) gradeCounts['C']++;
+            else gradeCounts['D']++;
+          }
+        }
+      });
+    });
+
+    const completionRate = totalCells > 0 ? Math.round((filledCells / totalCells) * 100) : 0;
+    return { totalCells, filledCells, totalAbsent, gradeCounts, completionRate };
+  }, [students, availableSubjects, gridData, isSubjectApplicable, isMutuallyExcluded, getBulkStudentStatus, resolveMaxMark]);
+
   if (students.length === 0) {
     return (
       <div className="bg-white dark:bg-[#161b22] rounded-3xl p-12 text-center text-gray-400 font-bold uppercase border border-gray-100 dark:border-[#30363d]">
@@ -727,8 +807,10 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
         </div>
       )}
 
-      <div className="bg-white dark:bg-[#161b22] rounded-3xl shadow-sm border border-gray-100 dark:border-[#30363d] min-h-[400px] relative table-wrapper">
-        <table className="w-full text-left border-separate border-spacing-0">
+      <div className="flex flex-col lg:flex-row gap-6 items-start mt-4">
+        {/* Left Side: Table Only, Sticky Header & Full Page Scroll */}
+        <div className="flex-1 w-full min-w-0 bg-white dark:bg-[#161b22] rounded-3xl shadow-sm border border-gray-100 dark:border-[#30363d] overflow-x-auto table-wrapper">
+          <table className="w-full md:w-auto md:min-w-max text-left border-separate border-spacing-0">
           <thead className="sticky top-0 z-30 bg-gray-50 dark:bg-[#1a1f26] shadow-sm">
             <tr className="border-b-2 border-gray-100 dark:border-[#30363d] bg-gray-50 dark:bg-[#1a1f26]">
               <th className="px-2 py-3 text-[10px] font-black uppercase tracking-widest text-gray-500 dark:text-gray-400 min-w-[150px] sticky top-0 bg-gray-50 dark:bg-[#1a1f26] z-30">Student Name</th>
@@ -746,7 +828,7 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
                     className={`px-4 py-3 text-center border-r border-gray-200 dark:border-[#30363d] cursor-help sticky top-0 bg-gray-50 dark:bg-[#1a1f26] z-30 ${isSubLocked ? 'bg-indigo-50 dark:bg-indigo-900/10' : ''}`}
                   >
                     <div className="flex flex-col items-center justify-center mb-0.5">
-                      <span className="font-semibold text-slate-800 dark:text-white whitespace-nowrap text-xs">{sub.shortName || 'Subject'}</span>
+                      <span className="font-semibold text-slate-800 dark:text-white whitespace-nowrap text-xs">{getSubjectShortLabel(sub)}</span>
                     </div>
                     {!isFinalLocked && (
                       <div className="mt-1 flex justify-center h-8 items-center">
@@ -918,8 +1000,165 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
           </table>
         </div>
 
+        {/* Right Side Fixed / Sticky Panel: Save button + Stunning Grades & Analytics Widget (No scroll) */}
+        <div className="w-full lg:w-80 shrink-0 lg:sticky lg:top-4 self-start flex flex-col gap-5 z-20">
+          {/* Save Progress Card (Desktop Only since Mobile has Bottom Fixed Bar) */}
+          <div className="hidden md:flex bg-white dark:bg-[#161b22] rounded-3xl p-5 shadow-sm border border-gray-100 dark:border-[#30363d] flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Draft Status</span>
+              {hasUnsavedChanges ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 uppercase tracking-widest animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400 animate-ping" />
+                  Unsaved Edits
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-gray-100 text-gray-700 dark:bg-[#21262d] dark:text-gray-400 uppercase tracking-widest">
+                  <CheckCircle size={12} className="text-emerald-500" />
+                  Saved
+                </span>
+              )}
+            </div>
+            {!isFinalLocked ? (
+              <button
+                type="button"
+                onClick={() => save(false, false)}
+                disabled={isSaving}
+                className={`w-full py-3.5 px-6 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2.5 transition-all shadow-lg active:scale-98 disabled:opacity-50 ${
+                  hasUnsavedChanges
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-blue-500/30 ring-2 ring-blue-400/50 dark:ring-blue-500/30'
+                    : 'bg-gray-100 dark:bg-[#21262d] text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-[#30363d] hover:bg-gray-200 dark:hover:bg-[#2a3038] shadow-sm'
+                }`}
+              >
+                {isSaving ? (
+                  <span className="animate-pulse flex items-center gap-2">
+                    <svg className="animate-spin w-4 h-4 text-current" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
+                    </svg>
+                    Saving Progress...
+                  </span>
+                ) : (
+                  <>
+                    <Save size={18} className={hasUnsavedChanges ? 'animate-bounce' : ''} />
+                    <span>Save Progress {hasUnsavedChanges && '• Unsaved'}</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <div className="w-full py-3.5 px-6 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800">
+                <CheckCircle size={18} />
+                <span>Finalized & Locked</span>
+              </div>
+            )}
+          </div>
 
+          {/* Stunning Animated Grade Analytics Widget */}
+          <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 dark:from-[#13171f] dark:via-[#1a202c] dark:to-[#13171f] text-white rounded-3xl p-6 shadow-xl border border-indigo-500/20 relative overflow-hidden group">
+            <div className="absolute -right-10 -top-10 w-40 h-40 bg-indigo-500/20 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700 ease-in-out pointer-events-none" />
+            <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-purple-500/20 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700 ease-in-out pointer-events-none" />
 
+            <div className="relative z-10 space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-indigo-300 font-extrabold text-xs uppercase tracking-widest">
+                    <span className="inline-block w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+                    Live Analytics
+                  </div>
+                  <h4 className="text-base font-black text-white uppercase tracking-wider mt-0.5">
+                    Grades Summary
+                  </h4>
+                </div>
+                <div className="text-right">
+                  <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-300 via-purple-300 to-pink-300">
+                    {gradeAnalytics.completionRate}%
+                  </span>
+                  <div className="text-[10px] font-bold text-indigo-300/70 uppercase">Completed</div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="w-full h-2.5 bg-white/10 dark:bg-white/5 rounded-full overflow-hidden p-0.5 backdrop-blur">
+                  <div 
+                    className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 rounded-full transition-all duration-700 ease-out shadow-lg shadow-indigo-500/50 relative overflow-hidden"
+                    style={{ width: `${gradeAnalytics.completionRate}%` }}
+                  >
+                    <div className="absolute inset-0 bg-white/20 animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]" />
+                  </div>
+                </div>
+                <div className="flex justify-between text-[11px] font-bold text-slate-300">
+                  <span>Entered: {gradeAnalytics.filledCells}</span>
+                  <span>Total: {gradeAnalytics.totalCells}</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
+                  <span>Grade Distribution</span>
+                  <span className="text-indigo-400 font-bold">{students.length} Total Students</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2.5">
+                  {[
+                    { label: 'A+ Grade', count: gradeAnalytics.gradeCounts['A+'], color: 'from-emerald-500/20 to-teal-500/10 text-emerald-300 border-emerald-500/30' },
+                    { label: 'A Grade', count: gradeAnalytics.gradeCounts['A'], color: 'from-blue-500/20 to-cyan-500/10 text-blue-300 border-blue-500/30' },
+                    { label: 'B+ Grade', count: gradeAnalytics.gradeCounts['B+'], color: 'from-indigo-500/20 to-purple-500/10 text-indigo-300 border-indigo-500/30' },
+                    { label: 'B Grade', count: gradeAnalytics.gradeCounts['B'], color: 'from-purple-500/20 to-fuchsia-500/10 text-purple-300 border-purple-500/30' },
+                    { label: 'C Grade', count: gradeAnalytics.gradeCounts['C'], color: 'from-amber-500/20 to-orange-500/10 text-amber-300 border-amber-500/30' },
+                    { label: 'Absent', count: gradeAnalytics.totalAbsent, color: 'from-rose-500/20 to-red-500/10 text-rose-300 border-rose-500/30' },
+                  ].map((item, idx) => (
+                    <div key={idx} className={`bg-gradient-to-br ${item.color} border rounded-2xl p-2.5 text-center transition-all hover:scale-105 duration-200 backdrop-blur-sm`}>
+                      <div className="text-[10px] font-black uppercase tracking-wider opacity-80">{item.label}</div>
+                      <div className="text-lg font-black mt-0.5">{item.count}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {(gradeAnalytics.gradeCounts['Pass'] > 0 || gradeAnalytics.gradeCounts['Fail'] > 0) && (
+                <div className="pt-2 border-t border-white/10 grid grid-cols-2 gap-3">
+                  <div className="bg-emerald-950/50 border border-emerald-500/30 rounded-2xl p-3 flex items-center justify-between">
+                    <span className="text-xs font-black text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <CheckCircle size={14} /> Pass
+                    </span>
+                    <span className="text-xl font-black text-emerald-300">{gradeAnalytics.gradeCounts['Pass']}</span>
+                  </div>
+                  <div className="bg-rose-950/50 border border-rose-500/30 rounded-2xl p-3 flex items-center justify-between">
+                    <span className="text-xs font-black text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <AlertCircle size={14} /> Fail
+                    </span>
+                    <span className="text-xl font-black text-rose-300">{gradeAnalytics.gradeCounts['Fail']}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile Bottom Fixed Full-Width Save Progress Bar */}
+      {!isFinalLocked && document.body && createPortal(
+        <div className="fixed bottom-0 left-0 right-0 p-3.5 bg-white/95 dark:bg-[#161b22]/95 backdrop-blur border-t border-gray-200 dark:border-[#30363d] z-[9999] md:hidden flex flex-col gap-2 shadow-[0_-4px_20px_rgba(0,0,0,0.15)]">
+          <button
+            type="button"
+            onClick={() => save(false, false)}
+            disabled={isSaving}
+            className={`w-full py-3.5 px-4 rounded-xl text-sm font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-md active:scale-98 disabled:opacity-50 ${
+              hasUnsavedChanges
+                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/30'
+                : 'bg-gray-200 dark:bg-[#21262d] text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700 hover:bg-gray-300 dark:hover:bg-[#2a3038]'
+            }`}
+          >
+            {isSaving ? (
+              <span className="animate-pulse">Saving...</span>
+            ) : (
+              <>
+                <Save size={18} />
+                Save Progress {hasUnsavedChanges && '• Unsaved'}
+              </>
+            )}
+          </button>
+        </div>,
+        document.body
+      )}
 
     </div>
   );

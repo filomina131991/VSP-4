@@ -197,6 +197,8 @@ const SubjectSchema = new Schema({
 SubjectSchema.index({ mediumId: 1, active: 1 });
 SubjectSchema.index({ category: 1, active: 1 });
 SubjectSchema.index({ paperType: 1, active: 1 });
+SubjectSchema.index({ displayOrder: 1, code: 1 });
+
 
 // ─── Exam ─────────────────────────────────────────────────────────────────────
 
@@ -314,10 +316,15 @@ const StudentSchema = new Schema({
   readingStatus:  { type: Number, default: 0 },
   writingStatus:  { type: Number, default: 0 },
   medium:         { type: String, default: '' },
+  mediumId:                 { type: String, default: '', index: true },
   firstLangPaper1:{ type: String, default: '' },
+  firstLangPaper1SubjectId: { type: String, default: '', index: true },
   firstLangPaper2:{ type: String, default: '' },
+  firstLangPaper2SubjectId: { type: String, default: '', index: true },
   secondLang:     { type: String, default: 'English' },
+  secondLanguageSubjectId:  { type: String, default: '', index: true },
   thirdLang:      { type: String, default: 'Hindi' },
+  thirdLanguageSubjectId:   { type: String, default: '', index: true },
   academicYear:   { type: String, required: true },
   subjects:       { type: [String], default: [] },
   status:         { type: String, enum: ['Active', 'Inactive', 'Transferred'], default: 'Active' },
@@ -334,6 +341,8 @@ StudentSchema.index({ schoolId: 1, className: 1, academicYear: 1 });
 StudentSchema.index({ schoolId: 1, active: 1, className: 1 });
 StudentSchema.index({ schoolId: 1, className: 1, active: 1, gender: 1 });
 StudentSchema.index({ className: 1, active: 1, gender: 1, schoolId: 1 });
+StudentSchema.index({ schoolId: 1, mediumId: 1 });
+
 
 // Virtual aliases for frontend compatibility
 StudentSchema.virtual('vGlobalId')
