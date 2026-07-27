@@ -65,7 +65,6 @@ import Dropdown from '../components/common/Dropdown';
 import { generateSchoolSubmissionPdf, printSchoolSubmissionWindow, formatDateTime } from '../lib/pdfGenerator';
 import TeacherDashboard from './school/TeacherDashboard';
 import SubjectExpertDashboard from './repository/SubjectExpertDashboard';
-import StudentManagementTutorialModal from '../components/school/StudentManagementTutorialModal';
 import MarkEntryStatusModal from '../components/school/MarkEntryStatusModal';
 
 
@@ -92,7 +91,6 @@ const DashboardPage: React.FC = () => {
   const [modalSearch, setModalSearch] = useState('');
   const [selectedModalEduId, setSelectedModalEduId] = useState<string>('ALL');
   
-  const [showStudentGuideModal, setShowStudentGuideModal] = useState(false);
   const [showMarkEntryStatusModal, setShowMarkEntryStatusModal] = useState(false);
   const [showAllSubjects, setShowAllSubjects] = useState(false);
 
@@ -338,18 +336,7 @@ const DashboardPage: React.FC = () => {
     }
   }, [langValidation]);
 
-  // Auto-show Student Management Guide when language counts don't match total students
-  useEffect(() => {
-    if (langValidation && langValidation.totalStudents > 0 && !langValidation.isValid) {
-      // Check if any slot has fewer students than total (mismatch)
-      const hasMismatch = langValidation.perSlot && Object.values(langValidation.perSlot).some(
-        (slot: any) => slot.total < langValidation.totalStudents
-      );
-      if (hasMismatch && localStorage.getItem('student_guide_seen') !== 'true') {
-        setShowStudentGuideModal(true);
-      }
-    }
-  }, [langValidation]);
+
 
   // Click outside to close exam dropdown
   useEffect(() => {
@@ -481,15 +468,6 @@ const DashboardPage: React.FC = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-700 p-5">
       {/* Modals */}
-      {user?.role === 'SCHOOL' && showStudentGuideModal && (
-        <StudentManagementTutorialModal 
-          onClose={() => {
-            setShowStudentGuideModal(false);
-            localStorage.setItem('student_guide_seen', 'true');
-          }} 
-        />
-      )}
-
       {user?.role === 'SCHOOL' && showMarkEntryStatusModal && selectedExamId && (
         <MarkEntryStatusModal
           isOpen={showMarkEntryStatusModal}
@@ -696,17 +674,7 @@ const DashboardPage: React.FC = () => {
               />
             )}
 
-            {/* Student Management Guide Trigger */}
-            {user?.role === 'SCHOOL' && (
-              <button
-                type="button"
-                onClick={() => setShowStudentGuideModal(true)}
-                className="flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 px-3.5 py-2.5 rounded-xl text-xs font-bold uppercase transition-all whitespace-nowrap"
-              >
-                <BookOpen size={15} className="shrink-0" />
-                <span className="hidden sm:inline">Guide</span>
-              </button>
-            )}
+
 
             {/* Mark Entry Status Trigger */}
             {user?.role === 'SCHOOL' && selectedExamId && (

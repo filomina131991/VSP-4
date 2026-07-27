@@ -184,11 +184,16 @@ const StudentManagementPage: React.FC = () => {
         const found = mediums.find(m => m.id === s.medium || m.code === s.medium.toUpperCase() || m.shortName === s.medium || m.name === s.medium);
         subMediumShort = found ? found.shortName : s.medium;
       }
-
-      if (keyword === 'P01' || keyword === 'P02') {
-        return subMediumShort.toLowerCase() === medium.toLowerCase();
+      if (!subMediumShort && s.name) {
+        const upperName = s.name.toUpperCase();
+        if (upperName.includes('TAMIL')) subMediumShort = 'Tamil';
+        else if (upperName.includes('MALAYALAM')) subMediumShort = 'Malayalam';
+        else if (upperName.includes('KANNADA')) subMediumShort = 'Kannada';
+        else if (upperName.includes('ENGLISH') && !upperName.includes('ADDL')) subMediumShort = 'English';
       }
-      return subMediumShort.toLowerCase() === medium.toLowerCase() || !subMediumShort;
+
+      const studentMedShort = resolveMediumShortName(medium, mediums) || medium;
+      return subMediumShort.toLowerCase() === studentMedShort.toLowerCase() || !subMediumShort;
     });
   };
   const [selectedClassFilter, setSelectedClassFilter] = useState('ALL');
