@@ -743,7 +743,7 @@ export async function rebuildDashboardSummary(examId: string, className: string 
       const summaries = await SchoolSummary.find({ examId, className, schoolId: { $in: schoolIds } }).lean();
 
       let totalStudents = 0, appeared = 0, pass = 0, fullAPlus = 0;
-      let absent = 0, fail = 0;
+      let absent = 0, fail = 0, notEntered = 0;
       let maleCount = 0, femaleCount = 0, scribeCount = 0;
       let basicLevel = 0, averageLevel = 0, profoundLevel = 0;
       let gradeDistribution: Record<string, number> = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "Ab": 0 };
@@ -757,6 +757,7 @@ export async function rebuildDashboardSummary(examId: string, className: string 
         fullAPlus += stats.fullAPlus || 0;
         absent += stats.absent || 0;
         fail += stats.fail || 0;
+        notEntered += stats.notEntered || 0;
         maleCount += stats.maleCount || 0;
         femaleCount += stats.femaleCount || 0;
         scribeCount += stats.scribeCount || 0;
@@ -794,7 +795,7 @@ export async function rebuildDashboardSummary(examId: string, className: string 
       const summaries = await DashboardSummary.find({ examId, className, level: 'EDU_DISTRICT', refId: { $in: edusInDist } }).lean();
 
       let totalStudents = 0, appeared = 0, pass = 0, fullAPlus = 0;
-      let absent = 0, fail = 0;
+      let absent = 0, fail = 0, notEntered = 0;
       let maleCount = 0, femaleCount = 0, scribeCount = 0;
       let basicLevel = 0, averageLevel = 0, profoundLevel = 0;
       let gradeDistribution: Record<string, number> = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "Ab": 0 };
@@ -808,6 +809,7 @@ export async function rebuildDashboardSummary(examId: string, className: string 
         fullAPlus += stats.fullAPlus || 0;
         absent += stats.absent || 0;
         fail += stats.fail || 0;
+        notEntered += stats.notEntered || 0;
         maleCount += stats.maleCount || 0;
         femaleCount += stats.femaleCount || 0;
         scribeCount += stats.scribeCount || 0;
@@ -856,8 +858,6 @@ export async function rebuildDashboardSummary(examId: string, className: string 
       absent += stats.absent || 0;
       fail += stats.fail || 0;
       notEntered += stats.notEntered || 0;
-        notEntered += stats.notEntered || 0;
-        notEntered += stats.notEntered || 0;
       maleCount += stats.maleCount || 0;
       femaleCount += stats.femaleCount || 0;
       scribeCount += stats.scribeCount || 0;
@@ -3989,6 +3989,12 @@ app.get("/api/dashboard/subject-counts", async (req: any, res) => {
       mediumRaw[normalizedMedium].total += count;
     });
 
+    // Resolve shortNameToCode from medium docs for the response
+    const shortNameToCode: Record<string, string> = {};
+    mediumDocs.forEach((m: any) => {
+      if (m.shortName && m.code) shortNameToCode[m.shortName.toUpperCase()] = m.code;
+    });
+
     const mediumCounts = Object.entries(mediumRaw)
       .filter(([name]) => name && name !== 'Unknown' && name !== '')
       .map(([name, counts]) => ({
@@ -3997,12 +4003,6 @@ app.get("/api/dashboard/subject-counts", async (req: any, res) => {
         ...counts,
       }))
       .sort((a, b) => b.total - a.total);
-
-    // Resolve shortNameToCode from medium docs for the response
-    const shortNameToCode: Record<string, string> = {};
-    mediumDocs.forEach((m: any) => {
-      if (m.shortName && m.code) shortNameToCode[m.shortName.toUpperCase()] = m.code;
-    });
 
     const response = {
       firstLanguages,
@@ -4143,6 +4143,156 @@ app.get("/api/dashboard/school-type-counts", async (req: any, res) => {
     res.json(response);
   } catch (err: any) {
     console.error("GET School Type Counts Error:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get("/api/dashboard/district-school-students", async (req: any, res) => {
+  try {
+    const examId = (req.query.examId as string) || 'exam-1';
+    const districtId = req.query.districtId as string | undefined;
+    const eduId = req.query.eduId as string | undefined;
+
+    const exam = await Exam.findOne({ id: examId }).lean();
+    const examClass = exam?.standard || '10';
+
+    const districts = await District.find().lean();
+    const districtMap: Record<string, string> = {};
+    districts.forEach((d: any) => {
+      districtMap[d.id] = d.name;
+      if (d._id) districtMap[d._id.toString()] = d.name;
+    });
+
+    const rawEduDistricts = await EducationalDistrict.find().lean();
+    const eduMap: Record<string, any> = {};
+    rawEduDistricts.forEach((e: any) => {
+      eduMap[e.id] = e;
+      if (e._id) eduMap[e._id.toString()] = e;
+    });
+
+    let query: any = { role: "SCHOOL" };
+    if (eduId && eduId !== 'ALL') {
+      query.subDistrictId = eduId;
+    } else if (districtId && districtId !== 'ALL') {
+      const eduIds = rawEduDistricts.filter((e: any) => e.districtId === districtId).map((e: any) => e.id);
+      query.subDistrictId = { $in: eduIds };
+    }
+
+    const schoolsList = await School.find(query).lean();
+    const schoolIds = schoolsList.map(s => s._id.toString());
+    const schoolCodes = schoolsList.map((s: any) => s.schoolCode).filter(Boolean);
+    const allIdentifiers = [...schoolIds, ...schoolCodes];
+
+    if (allIdentifiers.length === 0) {
+      return res.json({ schools: [], totalSchools: 0, totalMale: 0, totalFemale: 0, totalStudents: 0 });
+    }
+
+    const aggResult = await Student.aggregate([
+      {
+        $match: {
+          className: examClass,
+          active: { $ne: false },
+          $or: [
+            { schoolId: { $in: allIdentifiers } },
+            { schoolCode: { $in: allIdentifiers } }
+          ]
+        }
+      },
+      {
+        $group: {
+          _id: { schoolId: "$schoolId", gender: "$gender" },
+          count: { $sum: 1 }
+        }
+      }
+    ]).allowDiskUse(true);
+
+    const studentCountsBySchool: Record<string, { male: number; female: number }> = {};
+    (aggResult || []).forEach((item: any) => {
+      const sid = item._id?.schoolId || '';
+      const gender = item._id?.gender || '';
+      const count = item.count || 0;
+      if (!sid) return;
+
+      if (!studentCountsBySchool[sid]) studentCountsBySchool[sid] = { male: 0, female: 0 };
+      if (gender === 'Male' || gender === 'Boy') {
+        studentCountsBySchool[sid].male += count;
+      } else if (gender === 'Female' || gender === 'Girl') {
+        studentCountsBySchool[sid].female += count;
+      }
+    });
+
+    const schoolTypeMap: Record<string, string> = {};
+    schoolsList.forEach((s: any) => {
+      const id = s._id.toString();
+      const type = (s.schoolType || 'Government').trim();
+      schoolTypeMap[id] = type;
+      if (s.schoolCode) schoolTypeMap[s.schoolCode] = type;
+    });
+
+    const institutions = await Institution.find({
+      $or: [
+        { schoolId: { $in: schoolIds } },
+        { id: { $in: schoolIds } }
+      ]
+    }).lean();
+    institutions.forEach((inst: any) => {
+      if (inst.type) {
+        const matchedSchool = schoolsList.find((s: any) => s._id.toString() === inst.schoolId || s.id === inst.id);
+        if (matchedSchool) {
+          schoolTypeMap[matchedSchool._id.toString()] = inst.type;
+          if ((matchedSchool as any).schoolCode) schoolTypeMap[(matchedSchool as any).schoolCode] = inst.type;
+        }
+      }
+    });
+
+    let totalMale = 0;
+    let totalFemale = 0;
+
+    const schoolsData = schoolsList.map((s: any) => {
+      const sid = s._id.toString();
+      const scode = s.schoolCode || '';
+      
+      const counts1 = studentCountsBySchool[sid] || { male: 0, female: 0 };
+      const counts2 = scode ? (studentCountsBySchool[scode] || { male: 0, female: 0 }) : { male: 0, female: 0 };
+      
+      const male = counts1.male + counts2.male;
+      const female = counts1.female + counts2.female;
+      const total = male + female;
+
+      totalMale += male;
+      totalFemale += female;
+
+      const eduObj = eduMap[s.subDistrictId] || {};
+      const distName = districtMap[s.districtId] || districtMap[eduObj.districtId] || 'Other';
+      const eduName = eduObj.name || 'Other';
+      const schoolType = schoolTypeMap[sid] || s.schoolType || 'Government';
+
+      return {
+        id: sid,
+        code: s.code || s.schoolCode || sid.slice(-6),
+        name: s.name || 'Unknown School',
+        districtId: s.districtId || eduObj.districtId || '',
+        districtName: distName,
+        subDistrictId: s.subDistrictId || '',
+        subDistrictName: eduName,
+        schoolType: schoolType,
+        maleCount: male,
+        femaleCount: female,
+        totalStudents: total
+      };
+    });
+
+    schoolsData.sort((a, b) => b.totalStudents - a.totalStudents);
+
+    res.json({
+      schools: schoolsData,
+      totalSchools: schoolsData.length,
+      totalMale,
+      totalFemale,
+      totalStudents: totalMale + totalFemale
+    });
+  } catch (err: any) {
+    console.error("GET District School Students Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
@@ -4431,33 +4581,34 @@ async function computeSchoolAnalysis(schoolId: string, examId: string, exam: any
     return row;
   }).sort((a, b) => (a.shortCode || '').localeCompare(b.shortCode || ''));
 
-  // Language Distribution: read directly from student fields (same as validation endpoint)
+  // Language Distribution: read directly from student ID fields (ID-based architecture)
   const VALID_SLOTS = ['P01', 'P02', 'P03', 'P04'] as const;
   const langSlotMap: Record<string, Record<string, number>> = {};
   VALID_SLOTS.forEach(s => { langSlotMap[s] = {}; });
 
+  const allSubjects = await Subject.find().lean();
+  const langSubjectNameMap = new Map(allSubjects.map(s => [s._id.toString(), s.name.toUpperCase().replace(/\s*\([EMTK]M\)\s*/g, '').trim()]));
+
   students.forEach((st: any) => {
-    // P01: from firstLangPaper1
-    const p1 = (st.firstLangPaper1 || '').trim();
-    if (p1) {
-      const lang1 = p1.replace(/\s*-\s*P01.*$/i, '').trim().toUpperCase();
+    const p1Id = st.firstLangPaper1SubjectId;
+    if (p1Id && langSubjectNameMap.has(p1Id)) {
+      const lang1 = langSubjectNameMap.get(p1Id)!;
       langSlotMap['P01'][lang1] = (langSlotMap['P01'][lang1] || 0) + 1;
     }
-    // P02: from firstLangPaper2
-    const p2 = (st.firstLangPaper2 || '').trim();
-    if (p2) {
-      const lang2 = p2.replace(/\s*-\s*P02.*$/i, '').trim().toUpperCase();
+    const p2Id = st.firstLangPaper2SubjectId;
+    if (p2Id && langSubjectNameMap.has(p2Id)) {
+      const lang2 = langSubjectNameMap.get(p2Id)!;
       langSlotMap['P02'][lang2] = (langSlotMap['P02'][lang2] || 0) + 1;
     }
-    // P03: from secondLang
-    const sLang = (st.secondLang || '').trim();
-    if (sLang) {
-      langSlotMap['P03'][sLang.toUpperCase()] = (langSlotMap['P03'][sLang.toUpperCase()] || 0) + 1;
+    const p3Id = st.secondLanguageSubjectId;
+    if (p3Id && langSubjectNameMap.has(p3Id)) {
+      const lang3 = langSubjectNameMap.get(p3Id)!;
+      langSlotMap['P03'][lang3] = (langSlotMap['P03'][lang3] || 0) + 1;
     }
-    // P04: from thirdLang
-    const tLang = (st.thirdLang || '').trim();
-    if (tLang) {
-      langSlotMap['P04'][tLang.toUpperCase()] = (langSlotMap['P04'][tLang.toUpperCase()] || 0) + 1;
+    const p4Id = st.thirdLanguageSubjectId;
+    if (p4Id && langSubjectNameMap.has(p4Id)) {
+      const lang4 = langSubjectNameMap.get(p4Id)!;
+      langSlotMap['P04'][lang4] = (langSlotMap['P04'][lang4] || 0) + 1;
     }
   });
 
@@ -4548,7 +4699,7 @@ app.get("/api/school/language-validation", authenticateToken, async (req: any, r
       });
     }
 
-    // ── 1. Count languages per slot directly from student fields ──
+    // ── 1. Count languages per slot directly from student ID fields ──
     const slotCounts: Record<string, Record<string, number>> = {};
     VALID_SLOTS.forEach(s => { slotCounts[s] = {}; });
 
@@ -4556,36 +4707,34 @@ app.get("/api/school/language-validation", authenticateToken, async (req: any, r
     const noMediumSamples: string[] = [], noPaper1Samples: string[] = [], noPaper2Samples: string[] = [];
     const noSecondLangSamples: string[] = [], noThirdLangSamples: string[] = [];
 
+    const allSubjects = await Subject.find().lean();
+    const subjectMap = new Map(allSubjects.map(s => [s._id.toString(), s.name.toUpperCase().replace(/\s*\([EMTK]M\)\s*/g, '').trim()]));
+
     students.forEach((st: any) => {
       const stName = st.name || 'Unknown';
 
-      // P01: from firstLangPaper1
-      const p1 = (st.firstLangPaper1 || '').trim();
-      if (p1) {
-        const lang1 = p1.replace(/\s*-\s*P01.*$/i, '').trim().toUpperCase();
-        const slotKey = lang1 || 'UNKNOWN';
-        slotCounts['P01'][slotKey] = (slotCounts['P01'][slotKey] || 0) + 1;
+      const p1Id = st.firstLangPaper1SubjectId;
+      if (p1Id && subjectMap.has(p1Id)) {
+        const lang1 = subjectMap.get(p1Id)!;
+        slotCounts['P01'][lang1] = (slotCounts['P01'][lang1] || 0) + 1;
       } else {
         missingPaper1++;
         if (noPaper1Samples.length < 10) noPaper1Samples.push(stName);
       }
 
-      // P02: from firstLangPaper2
-      const p2 = (st.firstLangPaper2 || '').trim();
-      if (p2) {
-        const lang2 = p2.replace(/\s*-\s*P02.*$/i, '').trim().toUpperCase();
-        const slotKey = lang2 || 'UNKNOWN';
-        slotCounts['P02'][slotKey] = (slotCounts['P02'][slotKey] || 0) + 1;
+      const p2Id = st.firstLangPaper2SubjectId;
+      if (p2Id && subjectMap.has(p2Id)) {
+        const lang2 = subjectMap.get(p2Id)!;
+        slotCounts['P02'][lang2] = (slotCounts['P02'][lang2] || 0) + 1;
       } else {
         missingPaper2++;
         if (noPaper2Samples.length < 10) noPaper2Samples.push(stName);
       }
 
-      // P03: from secondLang
-      const sLang = (st.secondLang || '').trim();
-      if (sLang) {
-        const slotKey = sLang.toUpperCase();
-        slotCounts['P03'][slotKey] = (slotCounts['P03'][slotKey] || 0) + 1;
+      const p3Id = st.secondLanguageSubjectId;
+      if (p3Id && subjectMap.has(p3Id)) {
+        const lang3 = subjectMap.get(p3Id)!;
+        slotCounts['P03'][lang3] = (slotCounts['P03'][lang3] || 0) + 1;
       } else {
         missingSecondLang++;
         if (noSecondLangSamples.length < 10) noSecondLangSamples.push(stName);
@@ -8744,8 +8893,11 @@ app.get("/api/school/exam-config/:examId/dynamic-data", authenticateToken, async
         const isMatchingMedium = (subMedId && subMedId === medId) || (!subMedId && sub.medium && (sub.medium.toUpperCase() === (medDoc.code || '').toUpperCase() || sub.medium.toLowerCase() === (medDoc.shortName || '').toLowerCase() || sub.medium.toLowerCase() === (medDoc.name || '').toLowerCase() || (medDoc.shortName === 'Tamil' && sub.medium === 'TM') || (medDoc.shortName === 'Malayalam' && sub.medium === 'MM') || (medDoc.shortName === 'English' && sub.medium === 'EM')));
         const isMismatchedMedium = !isMatchingMedium && ((subMedId && subMedId !== medId) || (sub.medium && ['TM', 'EM', 'MM', 'KM', 'UR', 'AR', 'TAMIL', 'MALAYALAM', 'ENGLISH'].includes(sub.medium.toUpperCase())));
 
-        if (!isMismatchedMedium && (usageCount > 0 || isMatchingMedium || (!subMedId && !sub.medium))) {
-          (subjectsByMedium[medShort] as any)[bucket].push(subjectData);
+        if (!isMismatchedMedium) {
+          const existingList = (subjectsByMedium[medShort] as any)[bucket];
+          if (existingList && !existingList.some((s: any) => (s._id || s.id || '').toString() === sid)) {
+            existingList.push(subjectData);
+          }
         }
       });
     });
@@ -10243,7 +10395,7 @@ app.get("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: any
 
 app.post("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: any) => {
   try {
-    const { name, penNumber, designation, teachingSubjects, assignedSubjects, mediums, teacherAssignments } = req.body;
+    const { name, penNumber, designation, teachingSubjectIds, assignedSubjects, mediumIds, teacherAssignments } = req.body;
 
     // Sanitize penNumber
     const sanitizedPenNumber = typeof penNumber === 'string' ? penNumber.trim() : penNumber;
@@ -10261,9 +10413,9 @@ app.post("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: an
       name,
       penNumber: sanitizedPenNumber,
       designation,
-      teachingSubjects,
+      teachingSubjectIds,
       assignedSubjects,
-      mediums,
+      mediumIds,
       teacherAssignments: teacherAssignments || [],
       schoolId: req.user.id,
       schoolCode: req.user.schoolCode
@@ -10277,7 +10429,7 @@ app.post("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: an
 
 app.put("/api/school/teachers/:id", requireRole('SCHOOL'), async (req: any, res: any) => {
   try {
-    const { name, penNumber, designation, teachingSubjects, assignedSubjects, mediums, teacherAssignments } = req.body;
+    const { name, penNumber, designation, teachingSubjectIds, assignedSubjects, mediumIds, teacherAssignments } = req.body;
     const sanitizedPenNumber = typeof penNumber === 'string' ? penNumber.trim() : penNumber;
 
     // Force-override: explicitly set ALL teacher fields, replacing old data completely
@@ -10285,14 +10437,14 @@ app.put("/api/school/teachers/:id", requireRole('SCHOOL'), async (req: any, res:
       name: name ?? '',
       penNumber: sanitizedPenNumber ?? '',
       designation: designation ?? '',
-      teachingSubjects: teachingSubjects ?? [],
-      assignedSubjects: assignedSubjects ?? [],
-      mediums: mediums ?? [],
+      teachingSubjectIds: teachingSubjectIds ?? [],
+      assignedSubjects: assignedSubjects ?? [], // Actually classes
+      mediumIds: mediumIds ?? [],
       teacherAssignments: teacherAssignments ?? [],
     };
 
     const teacher = await User.findOneAndUpdate(
-      { _id: req.params.id, schoolId: req.user.id, role: 'TEACHER' },
+      { _id: req.params.id, schoolId: req.user.id, role: { $in: ['TEACHER', 'RESOURCE_PERSON'] } },
       { $set: updateFields },
       { new: true }
     );
@@ -10305,7 +10457,7 @@ app.put("/api/school/teachers/:id", requireRole('SCHOOL'), async (req: any, res:
 
 app.put("/api/school/teachers/:id/reset-password", requireRole('SCHOOL'), async (req: any, res: any) => {
   try {
-    const teacher = await User.findOne({ _id: req.params.id, schoolId: req.user.id, role: 'TEACHER' });
+    const teacher = await User.findOne({ _id: req.params.id, schoolId: req.user.id, role: { $in: ['TEACHER', 'RESOURCE_PERSON'] } });
     if (!teacher) return res.status(404).json({ message: "Teacher not found" });
 
     const salt = await bcrypt.genSalt(10);

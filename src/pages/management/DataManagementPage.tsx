@@ -30,7 +30,7 @@ const DataManagementPage: React.FC = () => {
     { id: 'SCHOOLS', label: 'Schools', icon: School, roles: ['WEBMASTER', 'DIET', 'DEO', 'SCHOOL'] },
     { id: 'GRADES', label: 'Grades', icon: PenLine, roles: ['WEBMASTER', 'DIET', 'DEO'] },
     { id: 'CHECKLIST', label: 'Checklist DB', icon: Database, roles: ['WEBMASTER'] },
-    { id: 'SUBJECTS', label: 'Subjects', icon: BookOpen, roles: ['WEBMASTER', 'DIET', 'DEO'] },
+    { id: 'SUBJECTS', label: 'Subjects', icon: BookOpen, roles: ['WEBMASTER'] },
     { id: 'MEDIUM', label: 'Mediums', icon: Languages, roles: ['WEBMASTER'] },
     { id: 'BULK_CONFIRM', label: 'Bulk Confirm', icon: CheckCheck, roles: ['WEBMASTER', 'DIET', 'DEO'] },
   ] as const;

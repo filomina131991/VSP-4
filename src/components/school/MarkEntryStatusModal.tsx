@@ -235,8 +235,7 @@ const MarkEntryStatusModal: React.FC<MarkEntryStatusModalProps> = ({ isOpen, onC
                                   {getSubjectPCode(subject) || `P${String(idx + 1).padStart(2, '0')}`}
                                 </span>
                                 <div className="min-w-0">
-                                  <span className="text-[11px] font-black text-gray-900 dark:text-white uppercase block truncate">{getSubjectShortLabel(subject)}</span>
-                                  <div className="text-[9px] text-gray-400 dark:text-gray-500 font-bold mt-0.5 truncate max-w-[200px]">{subject.subjectName}</div>
+                                  <span className="text-[11px] font-black text-gray-900 dark:text-white uppercase block truncate">{subject.subjectName}</span>
                                 </div>
                               </div>
                             </td>

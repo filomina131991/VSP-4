@@ -104,6 +104,16 @@ const DashboardPage: React.FC = () => {
   const [schoolListFilterEdu, setSchoolListFilterEdu] = useState<string>('ALL');
   const [schoolListFilterDistrict, setSchoolListFilterDistrict] = useState<string>('ALL');
 
+  // District Student Breakdown Modal (admin / district)
+  const [isDistrictStudentsModalOpen, setIsDistrictStudentsModalOpen] = useState(false);
+  const [districtSchoolStudentsData, setDistrictSchoolStudentsData] = useState<any>(null);
+  const [isDistrictStudentsLoading, setIsDistrictStudentsLoading] = useState(false);
+  const [districtModalSearch, setDistrictModalSearch] = useState('');
+  const [districtModalRevenueDistrict, setDistrictModalRevenueDistrict] = useState('ALL');
+  const [districtModalEduDistrict, setDistrictModalEduDistrict] = useState('ALL');
+  const [districtModalSchoolType, setDistrictModalSchoolType] = useState('ALL');
+  const [districtModalGender, setDistrictModalGender] = useState('ALL');
+
   const isWebmaster = user?.role === 'WEBMASTER';
   const userSubDistrictId = user?.subDistrictId;
   const hasAllAccess = isWebmaster || !userSubDistrictId;
@@ -344,6 +354,64 @@ const DashboardPage: React.FC = () => {
     };
     fetchSchoolTypeCounts();
   }, [selectedExamId, user, selectedDistrict, selectedEduId, selectedSchoolId, refreshKey]);
+
+  // Fetch school-wise student counts for District Student Breakdown Modal
+  useEffect(() => {
+    if (!isDistrictStudentsModalOpen || !selectedExamId) return;
+    const fetchDistrictStudents = async () => {
+      setIsDistrictStudentsLoading(true);
+      try {
+        const params = new URLSearchParams({ examId: selectedExamId });
+        if (selectedDistrict && selectedDistrict !== 'ALL') params.append('districtId', selectedDistrict);
+        if (selectedEduId && selectedEduId !== 'ALL') params.append('eduId', selectedEduId);
+        const res = await apiClient.get(`/dashboard/district-school-students?${params.toString()}`);
+        setDistrictSchoolStudentsData(res.data);
+      } catch (err) {
+        console.error("Error fetching district school students:", err);
+      } finally {
+        setIsDistrictStudentsLoading(false);
+      }
+    };
+    fetchDistrictStudents();
+  }, [isDistrictStudentsModalOpen, selectedExamId, selectedDistrict, selectedEduId, refreshKey]);
+
+  const filteredDistrictSchools = useMemo(() => {
+    if (!districtSchoolStudentsData?.schools) return [];
+    return districtSchoolStudentsData.schools.filter((s: any) => {
+      if (districtModalSearch.trim()) {
+        const q = districtModalSearch.toLowerCase().trim();
+        const matchName = (s.name || '').toLowerCase().includes(q);
+        const matchCode = (s.code || '').toLowerCase().includes(q);
+        if (!matchName && !matchCode) return false;
+      }
+      if (districtModalRevenueDistrict !== 'ALL' && s.districtId !== districtModalRevenueDistrict) {
+        return false;
+      }
+      if (districtModalEduDistrict !== 'ALL' && s.subDistrictId !== districtModalEduDistrict) {
+        return false;
+      }
+      if (districtModalSchoolType !== 'ALL' && (s.schoolType || '').toUpperCase() !== districtModalSchoolType.toUpperCase()) {
+        return false;
+      }
+      if (districtModalGender === 'MALE_ONLY' && (s.maleCount || 0) === 0) {
+        return false;
+      }
+      if (districtModalGender === 'FEMALE_ONLY' && (s.femaleCount || 0) === 0) {
+        return false;
+      }
+      return true;
+    });
+  }, [districtSchoolStudentsData, districtModalSearch, districtModalRevenueDistrict, districtModalEduDistrict, districtModalSchoolType, districtModalGender]);
+
+  const filteredDistrictTotals = useMemo(() => {
+    let male = 0, female = 0, total = 0;
+    filteredDistrictSchools.forEach((s: any) => {
+      male += s.maleCount || 0;
+      female += s.femaleCount || 0;
+      total += s.totalStudents || 0;
+    });
+    return { male, female, total, schools: filteredDistrictSchools.length };
+  }, [filteredDistrictSchools]);
 
   // Listen for data refresh events (mediums/subjects updated from management pages)
   useEffect(() => {
@@ -1727,10 +1795,11 @@ const DashboardPage: React.FC = () => {
             </div>
           </div>
 
-          {/* ======== ROW 2: 9 KPI CARDS ======== */}
-          <div className="grid grid-cols-3 lg:grid-cols-9 gap-2">
+          {/* ======== ROW 2: 10 KPI CARDS ======== */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-2">
             {[
-              { label: 'Total Schools', value: totalSchools.toLocaleString(), color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/20', border: 'border-purple-100 dark:border-purple-800', icon: <SchoolIcon size={14} className="text-purple-500" />, clickable: true },
+              { label: 'Total Schools', value: totalSchools.toLocaleString(), color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/20', border: 'border-purple-100 dark:border-purple-800', icon: <SchoolIcon size={14} className="text-purple-500" />, clickable: true, onClick: () => setIsSchoolListModalOpen(true) },
+              { label: 'Total Students', value: (data?.totalStudents || 0).toLocaleString(), color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-950/20', border: 'border-indigo-100 dark:border-indigo-800', icon: <Users size={14} className="text-indigo-500" />, sub: `M: ${(data?.maleCount || 0).toLocaleString()} | F: ${(data?.femaleCount || 0).toLocaleString()}`, clickable: true, onClick: () => setIsDistrictStudentsModalOpen(true) },
               { label: 'Male', value: (data?.maleCount || 0).toLocaleString(), color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-100 dark:border-blue-800', icon: <Users size={14} className="text-blue-500" /> },
               { label: 'Female', value: (data?.femaleCount || 0).toLocaleString(), color: 'text-pink-600', bg: 'bg-pink-50 dark:bg-pink-950/20', border: 'border-pink-100 dark:border-pink-800', icon: <Users size={14} className="text-pink-500" /> },
               { label: 'Appeared', value: (data?.appeared || 0).toLocaleString(), color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-100 dark:border-blue-800', icon: <Eye size={14} className="text-blue-500" /> },
@@ -1742,11 +1811,14 @@ const DashboardPage: React.FC = () => {
             ].map((c, i) => (
               <div 
                 key={i} 
-                onClick={(c as any).clickable ? () => setIsSchoolListModalOpen(true) : undefined}
-                className={`${c.bg} border ${c.border} rounded-xl p-3 hover:shadow-sm transition-all duration-300 ${(c as any).clickable ? 'cursor-pointer hover:scale-[1.02] active:scale-[0.98]' : ''}`}
+                onClick={(c as any).onClick ? (c as any).onClick : (c as any).clickable ? () => setIsSchoolListModalOpen(true) : undefined}
+                className={`${c.bg} border ${c.border} rounded-xl p-2.5 hover:shadow-md transition-all duration-300 ${(c as any).clickable ? 'cursor-pointer hover:scale-[1.02] active:scale-[0.98]' : ''}`}
               >
-                <div className="flex items-center gap-1 mb-1">{c.icon}<span className="text-[9px] font-black text-gray-400 uppercase tracking-wider leading-none">{c.label}</span></div>
-                <div className={`text-lg sm:text-xl font-black ${c.color} leading-none`}>{c.value}</div>
+                <div className="flex items-center gap-1 mb-1">{c.icon}<span className="text-[9px] font-black text-gray-400 uppercase tracking-wider leading-none truncate">{c.label}</span></div>
+                <div className={`text-base sm:text-lg font-black ${c.color} leading-none`}>{c.value}</div>
+                {(c as any).sub && (
+                  <div className="text-[9px] font-extrabold text-indigo-700 dark:text-indigo-400 mt-1 truncate">{(c as any).sub}</div>
+                )}
               </div>
             ))}
            </div>
@@ -2872,6 +2944,261 @@ const DashboardPage: React.FC = () => {
                   setSchoolListFilterDistrict('ALL');
                 }}
                 className="px-6 py-3 bg-gray-100 dark:bg-[#30363d] hover:bg-gray-200 dark:hover:bg-slate-750 text-gray-800 dark:text-gray-200 rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer"
+              >
+                Close Window
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* District Student Breakdown Modal */}
+      {isDistrictStudentsModalOpen && (
+        <Modal 
+          isOpen={isDistrictStudentsModalOpen} 
+          onClose={() => {
+            setIsDistrictStudentsModalOpen(false);
+            setDistrictModalSearch('');
+            setDistrictModalRevenueDistrict('ALL');
+            setDistrictModalEduDistrict('ALL');
+            setDistrictModalSchoolType('ALL');
+            setDistrictModalGender('ALL');
+          }} 
+          className="items-start pt-4 sm:pt-6"
+          disableOutsideClick={true}
+        >
+          <div className="bg-white dark:bg-[#161b22] w-full max-w-6xl rounded-3xl shadow-2xl overflow-hidden border border-gray-200 dark:border-[#30363d] h-[90vh] max-h-[90vh] flex flex-col my-auto sm:my-0">
+            {/* Header */}
+            <div className="px-8 py-5 bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white border-b border-indigo-900/40 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-indigo-600/30 border border-indigo-400/30 rounded-2xl">
+                  <Users className="text-indigo-300" size={22} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black tracking-tight uppercase">District Student Breakdown (All Schools)</h2>
+                  <p className="text-xs text-indigo-200 font-bold uppercase mt-0.5">
+                    Exam: {selectedExam?.name || 'N/A'} &bull; Male, Female and Total Enrollment per School
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setIsDistrictStudentsModalOpen(false);
+                  setDistrictModalSearch('');
+                  setDistrictModalRevenueDistrict('ALL');
+                  setDistrictModalEduDistrict('ALL');
+                  setDistrictModalSchoolType('ALL');
+                  setDistrictModalGender('ALL');
+                }}
+                className="p-2 hover:bg-white/10 rounded-full transition-colors text-white/80 hover:text-white cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 flex-1 overflow-y-auto space-y-5 bg-slate-50/50 dark:bg-[#12161c]">
+              
+              {/* Multi-Filters Control Panel */}
+              <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] rounded-2xl p-4 shadow-sm space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-100 dark:border-[#30363d]">
+                  <div className="flex items-center gap-2 text-xs font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    <Filter size={14} className="text-indigo-600" />
+                    <span>District & School Multi-Filters</span>
+                  </div>
+                  {(districtModalSearch || districtModalRevenueDistrict !== 'ALL' || districtModalEduDistrict !== 'ALL' || districtModalSchoolType !== 'ALL' || districtModalGender !== 'ALL') && (
+                    <button
+                      onClick={() => {
+                        setDistrictModalSearch('');
+                        setDistrictModalRevenueDistrict('ALL');
+                        setDistrictModalEduDistrict('ALL');
+                        setDistrictModalSchoolType('ALL');
+                        setDistrictModalGender('ALL');
+                      }}
+                      className="text-[11px] font-bold text-red-600 hover:text-red-700 underline cursor-pointer"
+                    >
+                      Reset All Filters
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                    <input
+                      type="text"
+                      placeholder="School name or code..."
+                      value={districtModalSearch}
+                      onChange={(e) => setDistrictModalSearch(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-[#1f242c] border border-gray-200 dark:border-[#30363d] rounded-xl py-2.5 pl-10 pr-3 text-xs font-bold focus:ring-2 focus:ring-indigo-600 outline-none"
+                    />
+                  </div>
+
+                  {/* Revenue District Filter */}
+                  <div>
+                    <select
+                      value={districtModalRevenueDistrict}
+                      onChange={(e) => {
+                        setDistrictModalRevenueDistrict(e.target.value);
+                        setDistrictModalEduDistrict('ALL');
+                      }}
+                      className="w-full bg-slate-50 dark:bg-[#1f242c] border border-gray-200 dark:border-[#30363d] rounded-xl py-2.5 px-3 text-xs font-bold focus:ring-2 focus:ring-indigo-600 outline-none cursor-pointer"
+                    >
+                      <option value="ALL">All Revenue Districts</option>
+                      {districts.map((d: any) => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Educational District Filter */}
+                  <div>
+                    <select
+                      value={districtModalEduDistrict}
+                      onChange={(e) => setDistrictModalEduDistrict(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-[#1f242c] border border-gray-200 dark:border-[#30363d] rounded-xl py-2.5 px-3 text-xs font-bold focus:ring-2 focus:ring-indigo-600 outline-none cursor-pointer"
+                    >
+                      <option value="ALL">All Educational Districts</option>
+                      {eduDistricts
+                        .filter((edu: any) => districtModalRevenueDistrict === 'ALL' || edu.districtId === districtModalRevenueDistrict)
+                        .map((edu: any) => (
+                        <option key={edu.id} value={edu.id}>{edu.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* School Type Filter */}
+                  <div>
+                    <select
+                      value={districtModalSchoolType}
+                      onChange={(e) => setDistrictModalSchoolType(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-[#1f242c] border border-gray-200 dark:border-[#30363d] rounded-xl py-2.5 px-3 text-xs font-bold focus:ring-2 focus:ring-indigo-600 outline-none cursor-pointer"
+                    >
+                      <option value="ALL">All School Types</option>
+                      <option value="Government">Government</option>
+                      <option value="Aided">Aided</option>
+                      <option value="Unaided">Unaided / Private</option>
+                    </select>
+                  </div>
+
+                  {/* Male / Female Multi-Filter */}
+                  <div>
+                    <select
+                      value={districtModalGender}
+                      onChange={(e) => setDistrictModalGender(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-[#1f242c] border border-gray-200 dark:border-[#30363d] rounded-xl py-2.5 px-3 text-xs font-bold focus:ring-2 focus:ring-indigo-600 outline-none cursor-pointer"
+                    >
+                      <option value="ALL">All Genders (Male & Female)</option>
+                      <option value="MALE_ONLY">Male Students Only</option>
+                      <option value="FEMALE_ONLY">Female Students Only</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* KPI Summary Cards inside Modal */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-100 dark:border-purple-800 rounded-2xl p-3.5">
+                  <div className="text-[10px] font-black text-purple-600 uppercase tracking-wider">Schools Displayed</div>
+                  <div className="text-xl font-black text-purple-700 dark:text-purple-400 mt-1">{filteredDistrictTotals.schools}</div>
+                </div>
+                <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-800 rounded-2xl p-3.5">
+                  <div className="text-[10px] font-black text-blue-600 uppercase tracking-wider">Total Male Students</div>
+                  <div className="text-xl font-black text-blue-700 dark:text-blue-400 mt-1">{filteredDistrictTotals.male.toLocaleString()}</div>
+                </div>
+                <div className="bg-pink-50 dark:bg-pink-950/20 border border-pink-100 dark:border-pink-800 rounded-2xl p-3.5">
+                  <div className="text-[10px] font-black text-pink-600 uppercase tracking-wider">Total Female Students</div>
+                  <div className="text-xl font-black text-pink-700 dark:text-pink-400 mt-1">{filteredDistrictTotals.female.toLocaleString()}</div>
+                </div>
+                <div className="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-800 rounded-2xl p-3.5">
+                  <div className="text-[10px] font-black text-indigo-600 uppercase tracking-wider">Grand Total Students</div>
+                  <div className="text-xl font-black text-indigo-700 dark:text-indigo-400 mt-1">{filteredDistrictTotals.total.toLocaleString()}</div>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="border border-gray-200 dark:border-[#30363d] rounded-2xl overflow-hidden shadow-sm bg-white dark:bg-[#161b22]">
+                {isDistrictStudentsLoading ? (
+                  <div className="p-12 text-center text-xs font-bold text-gray-500">Loading student counts for all schools in district...</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[850px]">
+                      <thead>
+                        <tr className="bg-slate-100 dark:bg-[#1f242c] border-b border-gray-200 dark:border-[#30363d]">
+                          <th className="px-4 py-3 text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest text-center" style={{ width: '50px' }}>#</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest text-center" style={{ width: '90px' }}>Code</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">School Name</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest">Revenue & Edu District</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-widest text-center" style={{ width: '120px' }}>School Type</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest text-right" style={{ width: '90px' }}>Male</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-pink-600 dark:text-pink-400 uppercase tracking-widest text-right" style={{ width: '90px' }}>Female</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest text-right" style={{ width: '110px' }}>Total Students</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-[#30363d]">
+                        {filteredDistrictSchools.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-6 py-12 text-center text-gray-400 text-xs font-bold uppercase">No schools match your multi-filter criteria</td>
+                          </tr>
+                        ) : (
+                          filteredDistrictSchools.map((s: any, idx: number) => (
+                            <tr key={s.id} className="hover:bg-slate-50/80 dark:hover:bg-[#1f242c]/50 text-xs font-bold transition-all text-slate-800 dark:text-slate-200">
+                              <td className="px-4 py-3 text-center text-gray-400">{idx + 1}</td>
+                              <td className="px-4 py-3 text-center font-mono font-black text-indigo-600 dark:text-indigo-400">{s.code}</td>
+                              <td className="px-4 py-3 font-black uppercase text-black dark:text-white truncate max-w-[280px]" title={s.name}>{s.name}</td>
+                              <td className="px-4 py-3 text-gray-600 dark:text-gray-300 text-[11px]">
+                                <span className="font-bold">{s.districtName}</span> &bull; <span className="text-gray-400">{s.subDistrictName}</span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                                  s.schoolType?.toLowerCase() === 'aided' 
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400' 
+                                    : s.schoolType?.toLowerCase().includes('unaided') || s.schoolType?.toLowerCase().includes('private')
+                                      ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400'
+                                      : 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400'
+                                }`}>
+                                  {s.schoolType || 'Government'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right font-black text-blue-600 dark:text-blue-400">{s.maleCount.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right font-black text-pink-600 dark:text-pink-400">{s.femaleCount.toLocaleString()}</td>
+                              <td className="px-4 py-3 text-right font-black text-indigo-700 dark:text-indigo-300 text-sm">{s.totalStudents.toLocaleString()}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                      {filteredDistrictSchools.length > 0 && (
+                        <tfoot>
+                          <tr className="bg-slate-100 dark:bg-[#1f242c] font-black text-xs text-slate-900 dark:text-white border-t-2 border-gray-300 dark:border-[#30363d]">
+                            <td colSpan={5} className="px-4 py-3 uppercase tracking-wider text-right">Filtered Total ({filteredDistrictTotals.schools} Schools):</td>
+                            <td className="px-4 py-3 text-right text-blue-600 dark:text-blue-400">{filteredDistrictTotals.male.toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right text-pink-600 dark:text-pink-400">{filteredDistrictTotals.female.toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right text-indigo-600 dark:text-indigo-400 text-sm">{filteredDistrictTotals.total.toLocaleString()}</td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-8 py-4 bg-slate-50 dark:bg-[#1f242c] border-t border-gray-200 dark:border-[#30363d] flex justify-between items-center">
+              <span className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Showing {filteredDistrictSchools.length} of {districtSchoolStudentsData?.schools?.length || 0} total schools
+              </span>
+              <button 
+                onClick={() => {
+                  setIsDistrictStudentsModalOpen(false);
+                  setDistrictModalSearch('');
+                  setDistrictModalRevenueDistrict('ALL');
+                  setDistrictModalEduDistrict('ALL');
+                  setDistrictModalSchoolType('ALL');
+                  setDistrictModalGender('ALL');
+                }}
+                className="px-6 py-2.5 bg-gray-200 dark:bg-[#30363d] hover:bg-gray-300 dark:hover:bg-slate-700 text-gray-800 dark:text-gray-200 rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer"
               >
                 Close Window
               </button>

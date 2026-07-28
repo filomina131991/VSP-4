@@ -56,11 +56,20 @@ const ResourceManagementPage: React.FC = () => {
 
   const getAvailableSubjects = (medium: string) => {
     const upper = medium.toUpperCase();
-    const medId = mediumNameToId(medium, mediums);
-    if (medId) {
-      const byId = subjects.filter(s => s.active && s.mediumId === medId);
-      if (byId.length > 0) return byId;
+    const matchedMedium = mediums.find((m: any) => m.name.toUpperCase() === upper || m.id === medium);
+    
+    if (matchedMedium) {
+      const medId = matchedMedium.id;
+      const medCode = (matchedMedium.code || '').toUpperCase();
+      const byIdOrCode = subjects.filter(s => s.active && (
+        s.mediumId === medId ||
+        s.mediumId === matchedMedium._id ||
+        (s.medium || '').toUpperCase() === medCode ||
+        (s.medium || '').toUpperCase() === upper
+      ));
+      if (byIdOrCode.length > 0) return byIdOrCode;
     }
+    
     return subjects.filter(s => s.active && (
       (s.mediumName || '').toUpperCase() === upper ||
       (s.medium || '').toUpperCase() === upper

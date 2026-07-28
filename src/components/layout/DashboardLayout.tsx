@@ -456,7 +456,7 @@ const DashboardLayout: React.FC = () => {
                         {user?.phone && <div className="truncate flex items-center gap-1.5"><span className="text-gray-400 font-normal">📱</span> {user.phone}</div>}
                         {user?.email && <div className="truncate flex items-center gap-1.5"><span className="text-gray-400 font-normal">✉️</span> {user.email}</div>}
                       </div>
-                    ) : (user?.role === 'TEACHER' || user?.role === 'SCHOOL') ? (
+                    ) : (user?.role === 'TEACHER' ) ? (
                       <div className="mt-2 text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800 flex items-center gap-1">
                         <span>⚠️ Mobile / Email Missing</span>
                       </div>
@@ -547,10 +547,12 @@ const DashboardLayout: React.FC = () => {
         })()}
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-[5px] md:p-2.5">
-          <PageTransition>
-            <Outlet />
-          </PageTransition>
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-[5px] md:p-2.5 min-h-full">
+            <PageTransition>
+              <Outlet />
+            </PageTransition>
+          </div>
         </div>
 
         {/* Footer */}

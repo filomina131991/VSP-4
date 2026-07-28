@@ -589,12 +589,6 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
       if (searchQuery && !name.includes(searchQuery.toUpperCase()) && !short.includes(searchQuery.toUpperCase())) return false;
       if (activeFilter === 'Selected' && !selectedIds.has(s._id || s.id || '')) return false;
       if (activeFilter === 'Unselected' && selectedIds.has(s._id || s.id || '')) return false;
-      
-      // Step 4: If usageCount == 0, hide language subject card from DOM, but never hide Core subjects
-      const isCoreSubject = s.category === 'core' || String(s.code || s.shortName || s.name || '').toUpperCase().match(/\bP0[5-9]\b|\bP10\b/);
-      if (!isCoreSubject && getSubjectStudentCount(s, activeMediumTab) === 0) {
-        return false;
-      }
       return true;
     }) as any) as any;
   };
@@ -608,7 +602,8 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
 
   const getMediumTabCount = (med: string): number => {
     const g: any = subjectsByMedium[med] || {};
-    const allMedSubs = [
+    const set = new Set<string>();
+    [
       ...(g.p01 || []),
       ...(g.p02 || []),
       ...(g.p03 || []),
@@ -619,11 +614,11 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
       ...(commonSubjects.p03 || []),
       ...(commonSubjects.p04 || []),
       ...(commonSubjects.core || [])
-    ];
-    return allMedSubs.filter((s: Subject) => {
-      const isCoreSubject = s.category === 'core' || String(s.code || s.shortName || s.name || '').toUpperCase().match(/\bP0[5-9]\b|\bP10\b/);
-      return isCoreSubject || getSubjectStudentCount(s, med) > 0;
-    }).length;
+    ].forEach((s: Subject) => {
+      const id = (s._id || s.id || '').toString();
+      if (id) set.add(id);
+    });
+    return set.size;
   };
 
   const getDivisionsForMedium = (): number => {
@@ -721,7 +716,7 @@ const PremiumExamConfigModal: React.FC<PremiumExamConfigModalProps> = ({
         onClick={() => !isDisabled && toggleSubject(subId)}
         className={`p-4 rounded-xl border-2 flex flex-col gap-3 transition-all duration-200 ${
           isDisabled 
-            ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed hidden'
+            ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
             : isSelected 
               ? 'border-indigo-600 bg-indigo-50/30 shadow-sm cursor-pointer' 
               : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm cursor-pointer'

@@ -71,7 +71,7 @@ export default function TeacherManagementPage() {
     name: '',
     penNumber: '',
     designation: DESIGNATIONS[0],
-    teacherAssignments: [] as Array<{ medium: string, className: string, subject: string }>
+    teacherAssignments: [] as Array<{ mediumId: string, className: string, subjectId: string }>
   });
 
   useEffect(() => {
@@ -81,10 +81,11 @@ export default function TeacherManagementPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
+      const timestamp = Date.now();
       const [tRes, sRes, cRes] = await Promise.all([
-        apiClient.get('/school/teachers'),
-        apiClient.get('/school/teachers/stats'),
-        apiClient.get('/school/classes-divisions')
+        apiClient.get(`/school/teachers?_t=${timestamp}`),
+        apiClient.get(`/school/teachers/stats?_t=${timestamp}`),
+        apiClient.get(`/school/classes-divisions?_t=${timestamp}`)
       ]);
       setTeachers(tRes.data);
       setStats(sRes.data);
@@ -110,7 +111,7 @@ export default function TeacherManagementPage() {
       ...formData,
       teacherAssignments: [
         ...formData.teacherAssignments,
-        { medium: activeAssignTab !== 'All' ? activeAssignTab : '', className: '', subject: '' }
+        { mediumId: activeAssignTab !== 'All' ? resolveMediumId(activeAssignTab, dmMediums) || '' : '', className: '', subjectId: '' }
       ]
     });
   };
@@ -120,11 +121,11 @@ export default function TeacherManagementPage() {
     newAssignments[index] = { ...newAssignments[index], [field]: value };
     if (field === 'className') {
       if (activeAssignTab === 'All') {
-        newAssignments[index].medium = '';
+        newAssignments[index].mediumId = '';
       }
-      newAssignments[index].subject = '';
-    } else if (field === 'medium') {
-      newAssignments[index].subject = '';
+      newAssignments[index].subjectId = '';
+    } else if (field === 'mediumId') {
+      newAssignments[index].subjectId = '';
     }
     setFormData({ ...formData, teacherAssignments: newAssignments });
   };
@@ -152,22 +153,26 @@ export default function TeacherManagementPage() {
         toast.error("Designation is required");
         return;
       }
-      if (formData.teacherAssignments.length === 0) {
+      
+      const validAssignments = formData.teacherAssignments.filter(a => a.mediumId || a.className || a.subjectId);
+      
+      if (validAssignments.length === 0) {
         toast.error("At least one assignment must be added");
         return;
       }
       
-      // Auto-extract legacy arrays to preserve backend compatibility
-      const mediums = Array.from(new Set(formData.teacherAssignments.map(a => a.medium)));
-      const assignedSubjects = Array.from(new Set(formData.teacherAssignments.map(a => a.className)));
-      const teachingSubjects = Array.from(new Set(formData.teacherAssignments.map(a => a.subject)));
+      // Auto-extract arrays to preserve backend compatibility
+      const mediumIds = Array.from(new Set(validAssignments.map(a => a.mediumId).filter(Boolean)));
+      const assignedSubjects = Array.from(new Set(validAssignments.map(a => a.className).filter(Boolean)));
+      const teachingSubjectIds = Array.from(new Set(validAssignments.map(a => a.subjectId).filter(Boolean)));
 
       const payload = {
         ...formData,
+        teacherAssignments: validAssignments,
         penNumber: trimmedPen,
-        mediums,
+        mediumIds,
         assignedSubjects,
-        teachingSubjects
+        teachingSubjectIds
       };
 
       if (editingId) {
@@ -231,53 +236,34 @@ export default function TeacherManagementPage() {
     setEditingId(teacher._id);
 
     let sourceAssignments = teacher.teacherAssignments || [];
-    let assignments: Array<{ medium: string, className: string, subject: string }>;
+    let assignments: Array<{ mediumId: string, className: string, subjectId: string }> = [];
 
-    if (sourceAssignments.length === 0 && teacher.mediums?.length) {
+    if (sourceAssignments.length === 0 && teacher.mediumIds?.length) {
       assignments = [];
-      teacher.mediums.forEach((m: string) => {
+      teacher.mediumIds.forEach((m: string) => {
         (teacher.assignedSubjects || []).forEach((c: string) => {
-          (teacher.teachingSubjects || []).forEach((s: string) => {
-            assignments.push({ medium: m, className: c, subject: s });
+          (teacher.teachingSubjectIds || []).forEach((s: string) => {
+            assignments.push({ mediumId: m, className: c, subjectId: s });
           });
         });
       });
     } else {
       assignments = JSON.parse(JSON.stringify(sourceAssignments));
-    }
-
-    // Normalize subject names and medium names against Data Management subjects and mediums
-    assignments = assignments.map((a: any) => {
-      let normMedium = a.medium || '';
-      if (normMedium) {
-        const matchedMed = dmMediums.find((m: any) => 
-          m.name?.toLowerCase() === normMedium.toLowerCase() || 
-          m.shortName?.toLowerCase() === normMedium.toLowerCase() || 
-          m.code?.toLowerCase() === normMedium.toLowerCase() || 
-          m.id === normMedium
-        );
-        if (matchedMed) normMedium = matchedMed.name;
-      }
-
-      let normSubject = a.subject || '';
-      if (normSubject) {
-        const matchedSub = dmSubjects.find((s: any) => 
-          s.name?.toLowerCase() === normSubject.toLowerCase() || 
-          s.shortName?.toLowerCase() === normSubject.toLowerCase() || 
-          s.code?.toLowerCase() === normSubject.toLowerCase() || 
-          (s.shortName && normSubject.toUpperCase() === s.shortName.toUpperCase()) ||
-          s.name?.toUpperCase() === normSubject.toUpperCase()
-        );
-        if (matchedSub) {
-          normSubject = matchedSub.name;
-        } else {
-          const partial = dmSubjects.find((s: any) => s.name?.toUpperCase().includes(normSubject.toUpperCase()) || normSubject.toUpperCase().includes(s.name?.toUpperCase() || '___'));
-          if (partial) normSubject = partial.name;
+      // Normalize any lingering string subjects to IDs if possible
+      assignments = assignments.map((a: any) => {
+        let normMediumId = a.mediumId || '';
+        if (!normMediumId && a.medium) {
+          const matchedMed = dmMediums.find((m: any) => m.name === a.medium || m.id === a.medium);
+          if (matchedMed) normMediumId = matchedMed.id;
         }
-      }
-
-      return { ...a, medium: normMedium, subject: normSubject };
-    });
+        let normSubjectId = a.subjectId || '';
+        if (!normSubjectId && a.subject) {
+          const matchedSub = dmSubjects.find((s: any) => s.name === a.subject || s.id === a.subject || s._id === a.subject);
+          if (matchedSub) normSubjectId = matchedSub.id || matchedSub._id;
+        }
+        return { mediumId: normMediumId, className: a.className, subjectId: normSubjectId };
+      });
+    }
 
     setFormData({
       name: teacher.name,
@@ -486,14 +472,16 @@ export default function TeacherManagementPage() {
                   <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                     <ul className="divide-y divide-gray-100 dark:divide-gray-700">
                       {formData.teacherAssignments.map((assign, idx) => {
-                        if (activeAssignTab !== 'All' && assign.medium && assign.medium !== activeAssignTab) {
+                        const assignMedName = dmMediums.find(m => m.id === assign.mediumId)?.name || '';
+                        if (activeAssignTab !== 'All' && assignMedName && assignMedName !== activeAssignTab) {
                           return null;
                         }
 
                         let isSubjectIneligible = false;
 
-                        if (assign.subject) {
-                          const stateSubject = assign.subject.toUpperCase();
+                        if (assign.subjectId) {
+                          const sObj = dmSubjects.find(s => s.id === assign.subjectId || s._id === assign.subjectId);
+                          const stateSubject = (sObj?.name || '').toUpperCase();
                           isSubjectIneligible = !isSubjectEligibleForDesignation(stateSubject, formData.designation);
                         }
 
@@ -515,27 +503,26 @@ export default function TeacherManagementPage() {
                               <label className="block text-[10px] text-gray-500 font-bold uppercase mb-1">Medium</label>
                               <select 
                                 className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-gray-700 dark:text-white outline-none"
-                                value={assign.medium}
-                                onChange={(e) => handleUpdateAssignment(idx, 'medium', e.target.value)}
+                                value={assign.mediumId}
+                                onChange={(e) => handleUpdateAssignment(idx, 'mediumId', e.target.value)}
                                 disabled={!assign.className}
                               >
                                 <option value="" disabled>Select Medium</option>
                                 {(() => {
                                   const selectedClassDiv = classDivisionsData.find(c => `${c.className}${c.division || ''}` === assign.className);
-                                  const activeMediumNames = eligibleMediums.map(m => m.name);
-                                  const uniqueMediums = Array.from(new Set(activeMediumNames));
-                                  return uniqueMediums
-                                    .filter(m => activeAssignTab === 'All' || m === activeAssignTab)
+                                  const activeMediums = eligibleMediums;
+                                  
+                                  return activeMediums
+                                    .filter(m => activeAssignTab === 'All' || m.name === activeAssignTab)
                                     .filter(m => {
                                       if (!selectedClassDiv || !selectedClassDiv.mediums || selectedClassDiv.mediums.length === 0) return true;
-                                      const mId = resolveMediumId(m, dmMediums);
+                                      const mId = m.id;
                                       return selectedClassDiv.mediums.some((cm: string) => {
-                                        if (cm.toLowerCase() === m.toLowerCase()) return true;
                                         const cmId = resolveMediumId(cm, dmMediums);
-                                        return (cmId && mId && cmId === mId) || cm.toLowerCase().includes(m.toLowerCase()) || m.toLowerCase().includes(cm.toLowerCase());
+                                        return (cmId && mId && cmId === mId) || cm.toLowerCase().includes((m.name || '').toLowerCase()) || (m.name || '').toLowerCase().includes(cm.toLowerCase());
                                       });
                                     })
-                                    .map(m => <option key={m} value={m}>{m}</option>);
+                                    .map(m => <option key={m.id} value={m.id}>{m.name}</option>);
                                 })()}
                               </select>
                             </div>
@@ -547,18 +534,18 @@ export default function TeacherManagementPage() {
                                     ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500' 
                                     : 'border-gray-300 dark:border-gray-600'
                                 }`}
-                                 value={assign.subject}
-                                 onChange={(e) => handleUpdateAssignment(idx, 'subject', e.target.value)}
-                                 disabled={!assign.medium}
+                                 value={assign.subjectId}
+                                 onChange={(e) => handleUpdateAssignment(idx, 'subjectId', e.target.value)}
+                                 disabled={!assign.mediumId}
                                >
                                 <option value="" disabled>Select Subject</option>
                                 {(() => {
                                   const selectedClassDiv = classDivisionsData.find(c => `${c.className}${c.division || ''}` === assign.className);
-                                  const assignMedId = resolveMediumId(assign.medium, dmMediums);
+                                  const assignMedId = assign.mediumId;
                                   const subjectsForMedium = dmSubjects
                                     .filter(s => {
                                       if (s.active === false) return false;
-                                      if (!assign.medium) return true;
+                                      if (!assignMedId) return true;
                                       
                                       const sMedId = resolveMediumId(s.mediumId || s.medium || s.mediumName || '', dmMediums);
                                       if (sMedId && assignMedId && sMedId !== assignMedId) {
@@ -587,18 +574,25 @@ export default function TeacherManagementPage() {
                                       }
                                       
                                       return true;
-                                    })
-                                    .map(s => s.name);
-                                  const uniqueSubjects = Array.from(new Set(subjectsForMedium));
+                                    });
+                                  
+                                  const uniqueSubjects = [];
+                                  const seen = new Set();
+                                  for (const s of subjectsForMedium) {
+                                    if (!seen.has(s.id || s._id)) {
+                                      seen.add(s.id || s._id);
+                                      uniqueSubjects.push(s);
+                                    }
+                                  }
 
-                                  const eligible: string[] = [];
-                                  const others: string[] = [];
+                                  const eligible: any[] = [];
+                                  const others: any[] = [];
 
-                                  uniqueSubjects.forEach((subName: string) => {
-                                    if (isSubjectEligibleForDesignation(subName, formData.designation)) {
-                                      eligible.push(subName);
+                                  uniqueSubjects.forEach((sub: any) => {
+                                    if (isSubjectEligibleForDesignation(sub.name || '', formData.designation)) {
+                                      eligible.push(sub);
                                     } else {
-                                      others.push(subName);
+                                      others.push(sub);
                                     }
                                   });
 
@@ -606,14 +600,14 @@ export default function TeacherManagementPage() {
                                     <>
                                       <optgroup label="Eligible Subject Suggestions">
                                         {eligible.length > 0 ? (
-                                          eligible.map((s) => <option key={s} value={s} className="font-bold text-indigo-700 dark:text-indigo-400">{s}</option>)
+                                          eligible.map((s) => <option key={s.id || s._id} value={s.id || s._id} className="font-bold text-indigo-700 dark:text-indigo-400">{s.name}</option>)
                                         ) : (
                                           <option disabled>{others.length > 0 ? 'None matching this designation' : 'No subjects available for this medium'}</option>
                                         )}
                                       </optgroup>
                                       {others.length > 0 && (
                                         <optgroup label="Other Subjects">
-                                          {others.map((s) => <option key={s} value={s}>{s}</option>)}
+                                          {others.map((s) => <option key={s.id || s._id} value={s.id || s._id}>{s.name}</option>)}
                                         </optgroup>
                                       )}
                                     </>

@@ -74,7 +74,7 @@ export default function QuestionRepositoryPage() {
       filtered = filterSubjectsByMedium(filtered, filterMedium, allMediums);
     }
     
-    if (user?.role === 'SUBJECT_EXPERT' && user.teachingSubjects && Array.isArray(user.teachingSubjects)) {
+    if ((user?.role === 'SUBJECT_EXPERT' || user?.role === 'TEACHER') && user.teachingSubjects && Array.isArray(user.teachingSubjects)) {
       filtered = filtered.filter((sub) => {
         const dbName = (sub.name || '').toUpperCase();
         return user.teachingSubjects.some((ts: string) => {
@@ -242,12 +242,14 @@ export default function QuestionRepositoryPage() {
           <Search size={18} />
           <span className="font-medium">Filter:</span>
         </div>
-        <Dropdown
-          value={filterMedium}
-          onChange={(v) => setFilterMedium(v)}
-          placeholder="All Mediums"
-          options={availableMediums.map(m => ({ value: m, label: m }))}
-        />
+        {isManager && (
+          <Dropdown
+            value={filterMedium}
+            onChange={(v) => setFilterMedium(v)}
+            placeholder="All Mediums"
+            options={availableMediums.map(m => ({ value: m, label: m }))}
+          />
+        )}
         <Dropdown
           minWidth={200}
           value={filterSubject}

@@ -37,13 +37,15 @@ const UserSchema = new Schema({
   // New fields for Question Repository Ecosystem
   penNumber:       { type: String, default: '' },
   designation:     { type: String, default: '' },
-  teachingSubjects:{ type: [String], default: [] },
+  teachingSubjects:{ type: [String], default: [] }, // Deprecated
+  teachingSubjectIds:{ type: [String], default: [] },
   skills:          { type: [String], default: [] },
   joiningDate:     { type: Date },
   dob:             { type: Date },
   qualification:   { type: String, default: '' },
-  assignedSubjects:{ type: [String], default: [] },
-  mediums:         { type: [String], default: [] },
+  assignedSubjects:{ type: [String], default: [] }, // Actually classes
+  mediums:         { type: [String], default: [] }, // Deprecated
+  mediumIds:       { type: [String], default: [] },
   teacherAssignments: { type: [mongoose.Schema.Types.Mixed], default: [] },
 
   // Region references stored as string IDs for UI compatibility
@@ -273,11 +275,13 @@ const SchoolExamConfigSchema = new Schema({
     }]
   }],
   // New Exam Config Module (Marks Entry 2.0)
-  firstLanguages: { type: [String], default: [] },
+  firstLanguages: { type: [String], default: [] }, // Deprecated
+  firstLanguageIds: { type: [String], default: [] },
   papers: [{
     id: { type: String, required: true }, // P01, P02...
     name: { type: String, required: true },
-    subjects: { type: [String], default: [] },
+    subjects: { type: [String], default: [] }, // Deprecated
+    subjectIds: { type: [String], default: [] },
     status: { type: Boolean, default: true },
     description: { type: String, default: '' }
   }]
@@ -326,7 +330,8 @@ const StudentSchema = new Schema({
   thirdLang:      { type: String, default: 'Hindi' },
   thirdLanguageSubjectId:   { type: String, default: '', index: true },
   academicYear:   { type: String, required: true },
-  subjects:       { type: [String], default: [] },
+  subjects:       { type: [String], default: [] }, // Deprecated
+  subjectIds:     { type: [String], default: [] },
   status:         { type: String, enum: ['Active', 'Inactive', 'Transferred'], default: 'Active' },
   active:         { type: Boolean, default: true },
 }, {
