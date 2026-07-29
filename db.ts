@@ -636,7 +636,7 @@ const SubjectChapterSchema = new Schema({
   subUnits: { type: [String], default: [] },
 }, { timestamps: true });
 
-export const SubjectChapter = (mongoose.models['SubjectChapter'] || mongoose.model('SubjectChapter', SubjectChapterSchema, 'subject_chapters'));
+export const SubjectChapter: mongoose.Model<any> = (mongoose.models['SubjectChapter'] || mongoose.model('SubjectChapter', SubjectChapterSchema, 'subject_chapters'));
 
 const QuestionTaskSchema = new Schema({
   subjectExpertId: { type: String, required: true, index: true },
@@ -665,38 +665,38 @@ const BlueprintTemplateSchema = new Schema({
 // ─── Model Exports ────────────────────────────────────────────────────────────
 // School and User both map to the 'users' collection — School is a filtered view.
 
-export const User               = (mongoose.models['User'] || mongoose.model('User', UserSchema, 'users'));
-export const School             = User; // School uses the same collection and schema
-export const MainDistrict       = (mongoose.models['MainDistrict'] || mongoose.model('MainDistrict', MainDistrictSchema, 'maindistricts'));
-export const District           = (mongoose.models['District'] || mongoose.model('District', DistrictSchema, 'districts'));
-export const RevenueDivision    = (mongoose.models['RevenueDivision'] || mongoose.model('RevenueDivision', RevenueDivisionSchema, 'revenuedivisions'));
-export const EducationalDistrict= (mongoose.models['EducationalDistrict'] || mongoose.model('EducationalDistrict', EducationalDistrictSchema, 'subdistricts'));
-export const Institution       = (mongoose.models['Institution'] || mongoose.model('Institution', InstitutionSchema, 'institutions'));
-export const Medium             = (mongoose.models['Medium'] || mongoose.model('Medium', MediumSchema, 'mediums'));
-export const Subject            = (mongoose.models['Subject'] || mongoose.model('Subject', SubjectSchema, 'subjects'));
-export const Exam               = (mongoose.models['Exam'] || mongoose.model('Exam', ExamSchema, 'exams'));
-export const Student            = (mongoose.models['Student'] || mongoose.model('Student', StudentSchema, 'students'));
-export const Mark               = (mongoose.models['Mark'] || mongoose.model('Mark', MarkSchema, 'markentries'));
-export const Preference         = (mongoose.models['Preference'] || mongoose.model('Preference', PreferenceSchema, 'preferences'));
-export const GradeConfig        = (mongoose.models['GradeConfig'] || mongoose.model('GradeConfig', GradeConfigSchema, 'grades'));
-export const Grade              = GradeConfig;
-export const Resource           = (mongoose.models['Resource'] || mongoose.model('Resource', ResourceSchema, 'resources'));
-export const AuditLog           = (mongoose.models['AuditLog'] || mongoose.model('AuditLog', AuditLogSchema, 'auditlogs'));
-export const MessageAlert       = (mongoose.models['MessageAlert'] || mongoose.model('MessageAlert', MessageAlertSchema, 'messagealerts'));
-export const AdminMarkGroupConfig = (mongoose.models['AdminMarkGroupConfig'] || mongoose.model('AdminMarkGroupConfig', AdminMarkGroupConfigSchema, 'adminmarkgroupconfigs'));
-export const SchoolExamConfig   = (mongoose.models['SchoolExamConfig'] || mongoose.model('SchoolExamConfig', SchoolExamConfigSchema, 'schoolexamconfigs'));
-export const RegionAnalyticsSummary = (mongoose.models['RegionAnalyticsSummary'] || mongoose.model('RegionAnalyticsSummary', RegionAnalyticsSummarySchema, 'regionanalyticssummaries'));
+export const User: mongoose.Model<any>               = (mongoose.models['User'] || mongoose.model('User', UserSchema, 'users'));
+export const School: mongoose.Model<any>             = User; // School uses the same collection and schema
+export const MainDistrict: mongoose.Model<any>       = (mongoose.models['MainDistrict'] || mongoose.model('MainDistrict', MainDistrictSchema, 'maindistricts'));
+export const District: mongoose.Model<any>           = (mongoose.models['District'] || mongoose.model('District', DistrictSchema, 'districts'));
+export const RevenueDivision: mongoose.Model<any>    = (mongoose.models['RevenueDivision'] || mongoose.model('RevenueDivision', RevenueDivisionSchema, 'revenuedivisions'));
+export const EducationalDistrict: mongoose.Model<any>= (mongoose.models['EducationalDistrict'] || mongoose.model('EducationalDistrict', EducationalDistrictSchema, 'subdistricts'));
+export const Institution: mongoose.Model<any>       = (mongoose.models['Institution'] || mongoose.model('Institution', InstitutionSchema, 'institutions'));
+export const Medium: mongoose.Model<any>             = (mongoose.models['Medium'] || mongoose.model('Medium', MediumSchema, 'mediums'));
+export const Subject: mongoose.Model<any>            = (mongoose.models['Subject'] || mongoose.model('Subject', SubjectSchema, 'subjects'));
+export const Exam: mongoose.Model<any>               = (mongoose.models['Exam'] || mongoose.model('Exam', ExamSchema, 'exams'));
+export const Student: mongoose.Model<any>            = (mongoose.models['Student'] || mongoose.model('Student', StudentSchema, 'students'));
+export const Mark: mongoose.Model<any>               = (mongoose.models['Mark'] || mongoose.model('Mark', MarkSchema, 'markentries'));
+export const Preference: mongoose.Model<any>         = (mongoose.models['Preference'] || mongoose.model('Preference', PreferenceSchema, 'preferences'));
+export const GradeConfig: mongoose.Model<any>        = (mongoose.models['GradeConfig'] || mongoose.model('GradeConfig', GradeConfigSchema, 'grades'));
+export const Grade: mongoose.Model<any>              = GradeConfig;
+export const Resource: mongoose.Model<any>           = (mongoose.models['Resource'] || mongoose.model('Resource', ResourceSchema, 'resources'));
+export const AuditLog: mongoose.Model<any>           = (mongoose.models['AuditLog'] || mongoose.model('AuditLog', AuditLogSchema, 'auditlogs'));
+export const MessageAlert: mongoose.Model<any>       = (mongoose.models['MessageAlert'] || mongoose.model('MessageAlert', MessageAlertSchema, 'messagealerts'));
+export const AdminMarkGroupConfig: mongoose.Model<any> = (mongoose.models['AdminMarkGroupConfig'] || mongoose.model('AdminMarkGroupConfig', AdminMarkGroupConfigSchema, 'adminmarkgroupconfigs'));
+export const SchoolExamConfig: mongoose.Model<any>   = (mongoose.models['SchoolExamConfig'] || mongoose.model('SchoolExamConfig', SchoolExamConfigSchema, 'schoolexamconfigs'));
+export const RegionAnalyticsSummary: mongoose.Model<any> = (mongoose.models['RegionAnalyticsSummary'] || mongoose.model('RegionAnalyticsSummary', RegionAnalyticsSummarySchema, 'regionanalyticssummaries'));
 
-export const QuestionFamily = (mongoose.models['QuestionFamily'] || mongoose.model('QuestionFamily', QuestionFamilySchema, 'questionfamilies'));
-export const Question = (mongoose.models['Question'] || mongoose.model('Question', QuestionSchema, 'questions'));
-export const QuestionVersion = (mongoose.models['QuestionVersion'] || mongoose.model('QuestionVersion', QuestionVersionSchema, 'questionversions'));
-export const BlueprintTemplate = (mongoose.models['BlueprintTemplate'] || mongoose.model('BlueprintTemplate', BlueprintTemplateSchema));
-export const SchoolTarget = (mongoose.models['SchoolTarget'] || mongoose.model('SchoolTarget', SchoolTargetSchema, 'schooltargets'));
-export const QuestionPaperBlueprint = (mongoose.models['QuestionPaperBlueprint'] || mongoose.model('QuestionPaperBlueprint', QuestionPaperBlueprintSchema, 'questionpaperblueprints'));
-export const QuestionTask = (mongoose.models['QuestionTask'] || mongoose.model('QuestionTask', QuestionTaskSchema, 'questiontasks'));
+export const QuestionFamily: mongoose.Model<any> = (mongoose.models['QuestionFamily'] || mongoose.model('QuestionFamily', QuestionFamilySchema, 'questionfamilies'));
+export const Question: mongoose.Model<any> = (mongoose.models['Question'] || mongoose.model('Question', QuestionSchema, 'questions'));
+export const QuestionVersion: mongoose.Model<any> = (mongoose.models['QuestionVersion'] || mongoose.model('QuestionVersion', QuestionVersionSchema, 'questionversions'));
+export const BlueprintTemplate: mongoose.Model<any> = (mongoose.models['BlueprintTemplate'] || mongoose.model('BlueprintTemplate', BlueprintTemplateSchema));
+export const SchoolTarget: mongoose.Model<any> = (mongoose.models['SchoolTarget'] || mongoose.model('SchoolTarget', SchoolTargetSchema, 'schooltargets'));
+export const QuestionPaperBlueprint: mongoose.Model<any> = (mongoose.models['QuestionPaperBlueprint'] || mongoose.model('QuestionPaperBlueprint', QuestionPaperBlueprintSchema, 'questionpaperblueprints'));
+export const QuestionTask: mongoose.Model<any> = (mongoose.models['QuestionTask'] || mongoose.model('QuestionTask', QuestionTaskSchema, 'questiontasks'));
 
-export const DashboardSummary = (mongoose.models['DashboardSummary'] || mongoose.model('DashboardSummary', DashboardSummarySchema, 'dashboardsummaries'));
-export const SchoolSummary = (mongoose.models['SchoolSummary'] || mongoose.model('SchoolSummary', SchoolSummarySchema, 'schoolsummaries'));
+export const DashboardSummary: mongoose.Model<any> = (mongoose.models['DashboardSummary'] || mongoose.model('DashboardSummary', DashboardSummarySchema, 'dashboardsummaries'));
+export const SchoolSummary: mongoose.Model<any> = (mongoose.models['SchoolSummary'] || mongoose.model('SchoolSummary', SchoolSummarySchema, 'schoolsummaries'));
 
 // School is just a User with role === 'SCHOOL'
 // We keep a School model to simplify queries in server.ts.

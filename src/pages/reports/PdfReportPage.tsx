@@ -230,7 +230,7 @@ export default function PdfReportPage() {
         const rawSubjectData = res.data?.data || [];
         const mediumTables = buildMediumSubjectTables(rawSubjectData);
 
-        const overallSummary = mediumTables.find(m => m.code === 'OVERALL')?.summary || {};
+        const overallSummary: any = mediumTables.find(m => m.code === 'OVERALL')?.summary || {};
 
         setReportData({
           type: 'SUBJECT',

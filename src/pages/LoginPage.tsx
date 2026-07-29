@@ -10,6 +10,8 @@ import {
   ShieldCheck,
   Sun,
   User,
+  HelpCircle,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
@@ -167,7 +169,20 @@ const LoginPage: React.FC = () => {
           />
 
           <div className="relative z-10 w-full max-w-[342px] sm:max-w-md page-enter">
-            <div className="mb-8 flex items-center justify-end">
+            <div className="mb-8 flex items-center justify-between">
+              <Link
+                to="/help"
+                className={cn(
+                  'flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-sm',
+                  isDark
+                    ? 'border-blue-500/40 bg-blue-950/60 text-blue-300 hover:bg-blue-900/60'
+                    : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                )}
+              >
+                <HelpCircle size={15} className="text-blue-500" />
+                <span>Public Help Center</span>
+              </Link>
+
               <div
                 className={cn(
                   'flex rounded-[8px] border p-1',

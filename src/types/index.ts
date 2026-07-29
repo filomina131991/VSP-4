@@ -122,3 +122,44 @@ export interface Student {
   active?: boolean;
 }
 
+export interface School {
+  _id?: string;
+  id?: string;
+  code?: string;
+  schoolCode?: string;
+  name?: string;
+  displayName?: string;
+  districtId?: string;
+  eduDistrictId?: string;
+  schoolType?: string;
+  hmName?: string;
+  hmMobile?: string;
+  udiseCode?: string;
+  email?: string;
+}
+
+export interface District {
+  _id?: string;
+  id?: string;
+  name?: string;
+  code?: string;
+}
+
+export interface EducationalDistrict {
+  _id?: string;
+  id?: string;
+  name?: string;
+  code?: string;
+  districtId?: string;
+}
+
+export interface Exam {
+  _id?: string;
+  id?: string;
+  name?: string;
+  code?: string;
+  year?: string;
+  academicYear?: string;
+  active?: boolean;
+}
+

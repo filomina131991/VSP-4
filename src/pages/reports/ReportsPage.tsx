@@ -564,7 +564,7 @@ const ReportsPage: React.FC = () => {
     let gradedSubjects = 0;
     let hasActualMarks = false;
     
-    SUBJECTS.forEach(sub => {
+    SUBJECTS.forEach((sub: any) => {
       const { mark } = getSubjectMarkRecord(result, sub);
       const grade = getCalculatedGrade(result, sub, examInfo);
       const subCode = typeof sub === 'string' ? sub : (sub.code || sub.shortName || sub.name);
@@ -1500,7 +1500,7 @@ const ReportsPage: React.FC = () => {
                               </p>
                             </div>
                           </td>
-                          {SUBJECTS.map(sub => {
+                          {SUBJECTS.map((sub: any) => {
                             const score = getCalculatedGrade(r, sub, exam);
                             return (
                               <td key={sub.code || sub.subjectId || sub.name} className="px-1 py-3.5 border-r border-gray-100 dark:border-[#30363d] text-center font-bold">

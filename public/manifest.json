@@ -1,0 +1,16 @@
+{
+  "short_name": "Vijayasree Help",
+  "name": "Vijayasree Palakkad Help Center (PWA)",
+  "icons": [
+    {
+      "src": "/assets/favicon-Cqu3-9o9.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ],
+  "start_url": "/help",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "display": "standalone",
+  "orientation": "portrait"
+}

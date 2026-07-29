@@ -216,7 +216,7 @@ import {
 
 // ─── Dynamic Medium Resolution Helpers ─────────────────────────────────────
 // Cache for medium maps to avoid repeated DB queries within a single request
-let _mediumCache: { codeToShortName: Record<string, string>; shortNameToCode: Record<string, string>; allCodes: string[] } | null = null;
+let _mediumCache: { codeToShortName: Record<string, string>; shortNameToCode: Record<string, string>; shortNameToId: Record<string, string>; allCodes: string[] } | null = null;
 const MEDIUM_CACHE_TTL_MS = 60_000;
 let _mediumCacheTs = 0;
 
@@ -3313,7 +3313,7 @@ async function computeRegionAnalytics(examId: string, className: string = '10') 
         if (isBoy) failedBoys++; else failedGirls++;
       }
       Object.entries(r.gradeDistribution).forEach(([g, cnt]) => {
-        if (gradeDistAgg[g] !== undefined) gradeDistAgg[g] += cnt;
+        if (gradeDistAgg[g] !== undefined) gradeDistAgg[g] += Number(cnt || 0);
       });
     });
 
@@ -6368,7 +6368,7 @@ app.get("/api/management/students", authenticateToken, requireRole('WEBMASTER', 
     if (schoolId) filter.schoolId = schoolId;
     if (academicYear && academicYear !== 'ALL') filter.academicYear = academicYear;
     if (className) filter.className = className;
-    if (division) filter.division = new RegExp(`^${escapeRegex(division)}$`, 'i');
+    if (division) filter.division = new RegExp(`^${escapeRegex(String(division))}$`, 'i');
 
     if (mediumId) {
       filter.$or = [{ mediumId: String(mediumId) }, { medium: String(mediumId) }];
@@ -6464,7 +6464,8 @@ async function populateStudentSubjectIds(studentData: any, mediumMapsSingle: any
   }
 
   // 2. Resolve language paper names and subject IDs
-  const resolveSubject = (subName: string, subId: string): { id: string; name: string } => {
+  const medCode = mediumMapsSingle.shortNameToCode[String(studentData.medium).trim().toUpperCase()] || 'EM';
+  const resolveSubject = (subName: string, subId: string, pCode?: string): { id: string; name: string } => {
       let finalName = subName ? String(subName).trim() : '';
       
       if (!finalName) {
@@ -6474,7 +6475,18 @@ async function populateStudentSubjectIds(studentData: any, mediumMapsSingle: any
       let finalId = '';
       let str = finalName.toUpperCase();
       if (str === 'HINDI' || str.includes('HINDI (THIRD LANGUAGE)')) str = 'HINDI - P04 TM';
-      const matchedId = subjectNameMap?.get(str) || subjectNameMap?.get(str.replace(/\s*\([EMTK]M\)\s*/g, '').trim()) || '';
+      
+      let matchedId = subjectNameMap?.get(str) || subjectNameMap?.get(str.replace(/\s*\([EMTK]M\)\s*/g, '').trim()) || '';
+      
+      // If not found and pCode provided, try common patterns: bare name -> "NAME - P0X MC"
+      if (!matchedId && pCode) {
+        const withCode = `${str} - ${pCode} ${medCode}`;
+        matchedId = subjectNameMap?.get(withCode) || '';
+        if (!matchedId) {
+          const withCodeOnly = `${str} - ${pCode}`;
+          matchedId = subjectNameMap?.get(withCodeOnly) || '';
+        }
+      }
       
       if (matchedId) {
           finalId = matchedId;
@@ -6486,24 +6498,23 @@ async function populateStudentSubjectIds(studentData: any, mediumMapsSingle: any
       return { id: finalId, name: finalName };
   };
 
-  const p1 = resolveSubject(studentData.firstLangPaper1, studentData.firstLangPaper1SubjectId);
+  const p1 = resolveSubject(studentData.firstLangPaper1, studentData.firstLangPaper1SubjectId, 'P01');
   studentData.firstLangPaper1 = p1.name;
   studentData.firstLangPaper1SubjectId = p1.id;
 
-  const p2 = resolveSubject(studentData.firstLangPaper2, studentData.firstLangPaper2SubjectId);
+  const p2 = resolveSubject(studentData.firstLangPaper2, studentData.firstLangPaper2SubjectId, 'P02');
   studentData.firstLangPaper2 = p2.name;
   studentData.firstLangPaper2SubjectId = p2.id;
 
-  const p3 = resolveSubject(studentData.secondLang, studentData.secondLanguageSubjectId);
+  const p3 = resolveSubject(studentData.secondLang, studentData.secondLanguageSubjectId, 'P03');
   studentData.secondLang = p3.name;
   studentData.secondLanguageSubjectId = p3.id;
 
-  const p4 = resolveSubject(studentData.thirdLang, studentData.thirdLanguageSubjectId);
+  const p4 = resolveSubject(studentData.thirdLang, studentData.thirdLanguageSubjectId, 'P04');
   studentData.thirdLang = p4.name;
   studentData.thirdLanguageSubjectId = p4.id;
 
   // 3. Resolve core subjects and populate subjectIds array
-  const medCode = mediumMapsSingle.shortNameToCode[String(studentData.medium).trim().toUpperCase()] || 'EM';
   const coreSubjectNames = [
       `SOCIAL SCIENCE - P05 ${medCode}`,
       `PHYSICS - P06 ${medCode}`,
@@ -8109,6 +8120,7 @@ app.get("/api/results/anomalies", async (req, res) => {
       let fullAPlusCount = 0;
       let absentCount = 0;
       let appearedCount = 0;
+      let notEnteredCount = 0;
 
       schoolStudents.forEach(student => {
         const gradesMap = studentMarksMap[student.id] || {};
@@ -9460,7 +9472,7 @@ app.get("/api/school/configured-exams", authenticateToken, async (req: any, res)
 
 // ─── MARKS ENTRY 2 (DYNAMIC) ROUTES ─────────────────────────────────────────
 
-app.get("/api/marks/batch", authenticateToken, async (req, res) => {
+app.get("/api/marks/batch", authenticateToken, async (req: any, res: any) => {
   try {
     const { examId, subjectId, schoolId, className, division } = req.query;
     const effectiveSchoolId = (req.user?.role === 'SCHOOL' || req.user?.role === 'TEACHER')
@@ -9475,7 +9487,7 @@ app.get("/api/marks/batch", authenticateToken, async (req, res) => {
     const query: any = { schoolId: effectiveSchoolId, className: className || '10' };
     if (division) {
       // Allow case-insensitive or exact match
-      query.division = new RegExp(`^${escapeRegex(division)}$`, 'i');
+      query.division = new RegExp(`^${escapeRegex(String(division))}$`, 'i');
     }
 
     const students = await Student.find(query).lean();

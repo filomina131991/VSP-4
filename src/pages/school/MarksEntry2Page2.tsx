@@ -21,8 +21,12 @@ interface Student {
   id: string;
   name: string;
   className: string;
-  globalId: string;
+  globalId?: string;
   division?: string;
+  firstLangPaper1?: string;
+  firstLangPaper2?: string;
+  medium?: string;
+  mediumId?: string;
 }
 
 interface MarkGroup {

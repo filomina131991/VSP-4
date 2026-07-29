@@ -663,9 +663,12 @@ const StudentManagementPage: React.FC = () => {
       const secBase = finalSecondLang.split(' - ')[0];
       const thirdBase = finalThirdLang.split(' - ')[0];
       
+      const hasMediumCode = (n: string) => mediums.some(m => m.code && n.toUpperCase().endsWith(` ${m.code}`));
+      const p01Name = (updates.firstLangPaper1 ?? latestStudent.firstLangPaper1) || '';
+      const p02Name = (updates.firstLangPaper2 ?? latestStudent.firstLangPaper2) || '';
       const newSubjects: string[] = [];
-      if (updates.firstLangPaper1 ?? latestStudent.firstLangPaper1) newSubjects.push(`${updates.firstLangPaper1 ?? latestStudent.firstLangPaper1} ${mediumCode}`.trim());
-      if (updates.firstLangPaper2 ?? latestStudent.firstLangPaper2) newSubjects.push(`${updates.firstLangPaper2 ?? latestStudent.firstLangPaper2} ${mediumCode}`.trim());
+      if (p01Name) newSubjects.push(hasMediumCode(p01Name) ? p01Name.trim() : `${p01Name} ${mediumCode}`.trim());
+      if (p02Name) newSubjects.push(hasMediumCode(p02Name) ? p02Name.trim() : `${p02Name} ${mediumCode}`.trim());
       newSubjects.push(`${secBase} - P03 ${mediumCode}`);
       newSubjects.push(`${thirdBase} - P04 ${mediumCode}`);
       // Dynamically add core subjects from Data Management

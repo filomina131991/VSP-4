@@ -41,6 +41,22 @@ const ChapterManagementPage = React.lazy(() => import('./pages/management/Chapte
 const TaskAssignmentPage = React.lazy(() => import('./pages/repository/TaskAssignmentPage'));
 const BackupDataPage = React.lazy(() => import('./pages/management/BackupDataPage'));
 
+// Help Center PWA Module
+const HelpCenterLayout = React.lazy(() => import('./help-center/layout/HelpCenterLayout'));
+const HelpHomePage = React.lazy(() => import('./help-center/pages/HelpHomePage').then(m => ({ default: m.HelpHomePage })));
+const InteractiveGuidePage = React.lazy(() => import('./help-center/pages/InteractiveGuidePage').then(m => ({ default: m.InteractiveGuidePage })));
+const SearchPage = React.lazy(() => import('./help-center/pages/SearchPage').then(m => ({ default: m.SearchPage })));
+const FaqPage = React.lazy(() => import('./help-center/pages/FaqPage').then(m => ({ default: m.FaqPage })));
+const KnowledgeBasePage = React.lazy(() => import('./help-center/pages/KnowledgeBasePage').then(m => ({ default: m.KnowledgeBasePage })));
+const TroubleshootingWizardPage = React.lazy(() => import('./help-center/pages/TroubleshootingWizardPage').then(m => ({ default: m.TroubleshootingWizardPage })));
+const ErrorLibraryPage = React.lazy(() => import('./help-center/pages/ErrorLibraryPage').then(m => ({ default: m.ErrorLibraryPage })));
+const ErrorDetailPage = React.lazy(() => import('./help-center/pages/ErrorDetailPage').then(m => ({ default: m.ErrorDetailPage })));
+const RoleGuidePage = React.lazy(() => import('./help-center/pages/RoleGuidePage').then(m => ({ default: m.RoleGuidePage })));
+const WorkflowPage = React.lazy(() => import('./help-center/pages/WorkflowPage').then(m => ({ default: m.WorkflowPage })));
+const SupportTicketPage = React.lazy(() => import('./help-center/pages/SupportTicketPage').then(m => ({ default: m.SupportTicketPage })));
+const AboutPage = React.lazy(() => import('./help-center/pages/AboutPage').then(m => ({ default: m.AboutPage })));
+const BookmarksPage = React.lazy(() => import('./help-center/pages/BookmarksPage').then(m => ({ default: m.BookmarksPage })));
+
 const queryClient = new QueryClient();
 
 function PageLoader() {
@@ -69,11 +85,28 @@ export default function App() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
               {/* Public Routes */}
-              <Route path="/" element={<Navigate to="/login" replace />} />
+              <Route path="/" element={<Navigate to="/help" replace />} />
               <Route path="/results" element={<StateResultsPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
+
+              {/* Vijayasree Palakkad Help Center (PWA) Offline Routes */}
+              <Route path="/help" element={<HelpCenterLayout />}>
+                <Route index element={<HelpHomePage />} />
+                <Route path="guide" element={<InteractiveGuidePage />} />
+                <Route path="search" element={<SearchPage />} />
+                <Route path="faq" element={<FaqPage />} />
+                <Route path="kb" element={<KnowledgeBasePage />} />
+                <Route path="wizard" element={<TroubleshootingWizardPage />} />
+                <Route path="errors" element={<ErrorLibraryPage />} />
+                <Route path="errors/:errorId" element={<ErrorDetailPage />} />
+                <Route path="guides/:roleId" element={<RoleGuidePage />} />
+                <Route path="workflow" element={<WorkflowPage />} />
+                <Route path="tickets" element={<SupportTicketPage />} />
+                <Route path="about" element={<AboutPage />} />
+                <Route path="bookmarks" element={<BookmarksPage />} />
+              </Route>
 
               {/* Protected Dashboard Routes with Strict Role Guards */}
               <Route path="/dashboard" element={

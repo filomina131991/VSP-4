@@ -8,9 +8,20 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
+      dedupe: ['react', 'react-dom', 'react-router-dom'],
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-router-dom',
+        'fuse.js',
+        '@tanstack/react-query',
+        'lucide-react'
+      ],
     },
     build: {
       rollupOptions: {
@@ -28,6 +39,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '127.0.0.1',
+      port: 5173,
       proxy: {
         '/api': {
           target: process.env.VITE_API_URL || 'http://127.0.0.1:5000',
@@ -45,7 +57,10 @@ export default defineConfig(({ mode }) => {
           }
         }
       },
-      hmr: process.env.DISABLE_HMR !== 'true',
+      hmr: process.env.DISABLE_HMR === 'true' ? false : {
+        host: '127.0.0.1',
+        protocol: 'ws',
+      },
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
   };
