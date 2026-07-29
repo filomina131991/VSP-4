@@ -8424,15 +8424,16 @@ app.get("/api/marks/entry-status", authenticateToken, async (req, res) => {
         }
       }
       const percentage = subjectTotalStudents > 0 ? Math.round(subjectEffectiveEntered / subjectTotalStudents * 100) : 0;
-      const isSubjectConfirmed = sub.isSubjectConfirmed === true;
-      const workflowStatus = sub.workflowStatus || "NOT_STARTED";
+      const isSchoolConfirmed2 = (exam?.confirmedSchools || []).map(String).includes(String(effectiveSchoolId)) || schoolConfig?.isConfirmed === true || schoolConfig?.isFinalConfirmed === true;
+      const isSubjectConfirmed = sub.isSubjectConfirmed === true || sub.workflowStatus === "CONFIRMED" || sub.workflowStatus === "LOCKED" || isSchoolConfirmed2;
+      const workflowStatus = isSchoolConfirmed2 ? "LOCKED" : sub.workflowStatus || (isSubjectConfirmed ? "CONFIRMED" : "NOT_STARTED");
       let status = "Not Yet Started";
-      if (subjectEffectiveEntered === 0) {
-        status = "Not Yet Started";
-      } else if (subjectEffectiveEntered >= subjectTotalStudents && isSubjectConfirmed) {
+      if (isSubjectConfirmed || isSchoolConfirmed2 || subjectTotalStudents > 0 && subjectEffectiveEntered >= subjectTotalStudents) {
         status = "Completed";
-      } else {
+      } else if (subjectEffectiveEntered > 0) {
         status = "Pending";
+      } else {
+        status = "Not Yet Started";
       }
       const normSubjectName = normalize(subjectName);
       const assignedTeachers = teachers.filter((t) => {
@@ -8464,10 +8465,10 @@ app.get("/api/marks/entry-status", authenticateToken, async (req, res) => {
         displayOrder: subjectDoc?.displayOrder || sortIndex,
         totalStudents: subjectTotalStudents,
         marksEntered: subjectEffectiveEntered,
-        remaining: subjectTotalStudents - subjectEffectiveEntered,
-        percentage,
+        remaining: isSubjectConfirmed ? 0 : Math.max(0, subjectTotalStudents - subjectEffectiveEntered),
+        percentage: isSubjectConfirmed || subjectTotalStudents > 0 && subjectEffectiveEntered >= subjectTotalStudents ? 100 : percentage,
         status,
-        isSubjectConfirmed,
+        isSubjectConfirmed: isSubjectConfirmed || isSchoolConfirmed2,
         workflowStatus,
         assignedTeachers
       });
@@ -8492,20 +8493,26 @@ app.get("/api/marks/entry-status", authenticateToken, async (req, res) => {
         }
       }
     }
-    const overallPercentage = overallExpected > 0 ? Math.round(overallEntered / overallExpected * 100) : 0;
-    let overallStatus = "Not Yet Started";
-    const allCompleted = subjectResults.every((s) => s.status === "Completed");
+    const isSchoolConfirmed = (exam?.confirmedSchools || []).map(String).includes(String(effectiveSchoolId)) || schoolConfig?.isConfirmed === true || schoolConfig?.isFinalConfirmed === true;
+    let overallPercentage = overallExpected > 0 ? Math.round(overallEntered / overallExpected * 100) : 0;
+    const allCompleted = subjectResults.length > 0 && subjectResults.every((s) => s.status === "Completed");
     const anyStarted = subjectResults.some((s) => s.status !== "Not Yet Started");
-    if (allCompleted) {
+    let overallStatus = "Not Yet Started";
+    if (isSchoolConfirmed || allCompleted || overallExpected > 0 && overallEntered >= overallExpected) {
       overallStatus = "Completed";
-    } else if (anyStarted) {
+      overallPercentage = 100;
+    } else if (anyStarted || overallEntered > 0) {
       overallStatus = "Pending";
+    } else {
+      overallStatus = "Not Yet Started";
     }
     res.json({
       subjects: subjectResults,
       overall: {
         totalStudents,
+        totalExpected: overallExpected,
         totalMarksEntered: overallEntered,
+        totalRemaining: isSchoolConfirmed || allCompleted ? 0 : Math.max(0, overallExpected - overallEntered),
         totalSubjects: subjectResults.length,
         confirmedSubjects: subjectResults.filter((s) => s.isSubjectConfirmed).length,
         percentage: overallPercentage,

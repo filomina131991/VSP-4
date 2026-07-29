@@ -169,7 +169,9 @@ const MarkEntryStatusModal: React.FC<MarkEntryStatusModalProps> = ({ isOpen, onC
                 </div>
                 <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-xl p-3 text-center">
                   <div className="text-[9px] font-black text-amber-400 uppercase tracking-wider mb-1">Remaining</div>
-                  <div className="text-xl font-black text-amber-600 dark:text-amber-400">{(overall?.totalStudents || 0) - (overall?.totalMarksEntered || 0)}</div>
+                  <div className="text-xl font-black text-amber-600 dark:text-amber-400">
+                    {(data?.overall as any)?.totalRemaining ?? Math.max(0, ((overall as any)?.totalExpected || overall?.totalStudents || 0) - (overall?.totalMarksEntered || 0))}
+                  </div>
                 </div>
                 <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/50 rounded-xl p-3 text-center">
                   <div className="text-[9px] font-black text-purple-400 uppercase tracking-wider mb-1">Confirmed</div>
