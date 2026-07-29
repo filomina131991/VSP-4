@@ -226,13 +226,15 @@ async function getMediumMaps() {
   const allMediums = await Medium.find({ active: { $ne: false } }).lean();
   const codeToShortName: Record<string, string> = {};
   const shortNameToCode: Record<string, string> = {};
+  const shortNameToId: Record<string, string> = {};
   for (const m of allMediums) {
     if (m.code && m.shortName) {
       codeToShortName[m.code.toUpperCase()] = m.shortName;
       shortNameToCode[m.shortName.toUpperCase()] = m.code.toUpperCase();
+      shortNameToId[m.shortName.toUpperCase()] = String(m._id || m.id || '');
     }
   }
-  _mediumCache = { codeToShortName, shortNameToCode, allCodes: Object.keys(codeToShortName) };
+  _mediumCache = { codeToShortName, shortNameToCode, shortNameToId, allCodes: Object.keys(codeToShortName) };
   _mediumCacheTs = now;
   return _mediumCache;
 }
@@ -1103,6 +1105,14 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
       const { password: _password, refreshToken: _rt, ...userObj } = authenticatedUser.toObject() as any;
       if (userObj.role === 'SCHOOL' && !userObj.schoolId) {
         userObj.schoolId = userObj.id;
+      }
+      if (userObj.role === 'TEACHER' && userObj.schoolId) {
+        const school = await User.findById(userObj.schoolId).lean();
+        if (school) {
+          userObj.subDistrictId = school.subDistrictId || school.eduId;
+          userObj.districtId = school.districtId;
+          userObj.mainDistrictId = school.mainDistrictId;
+        }
       }
       return res.json({ token: accessToken, user: userObj });
     }
@@ -2014,6 +2024,14 @@ app.get("/api/auth/me", async (req: any, res) => {
       if (userObj.role === 'SCHOOL' && !userObj.schoolId) {
         userObj.schoolId = userObj.id;
       }
+      if (userObj.role === 'TEACHER' && userObj.schoolId) {
+        const school = await User.findById(userObj.schoolId).lean();
+        if (school) {
+          userObj.subDistrictId = school.subDistrictId || school.eduId;
+          userObj.districtId = school.districtId;
+          userObj.mainDistrictId = school.mainDistrictId;
+        }
+      }
       // Auto-heal: normalize mediums slugs/codes → shortNames
       if (userObj.role === 'SCHOOL' && Array.isArray(userObj.mediums) && userObj.mediums.length > 0) {
         const allMediumDocs = await Medium.find({ active: { $ne: false } }).lean();
@@ -2301,8 +2319,8 @@ app.post("/api/auth/change-password", authenticateToken, async (req: any, res) =
     const { currentPassword, newPassword } = req.body;
 
     // Validate new password strength
-    if (!newPassword || newPassword.length < 8) {
-      return res.status(400).json({ message: "Password must be at least 8 characters long" });
+    if (!newPassword || newPassword.length < 2) {
+      return res.status(400).json({ message: "Password must be at least 2 characters long" });
     }
     if (newPassword.length > 128) {
       return res.status(400).json({ message: "Password must be less than 128 characters" });
@@ -4740,18 +4758,26 @@ app.get("/api/school/language-validation", authenticateToken, async (req: any, r
         if (noSecondLangSamples.length < 10) noSecondLangSamples.push(stName);
       }
 
-      // P04: from thirdLang
-      const tLang = (st.thirdLang || '').trim();
-      if (tLang) {
-        const slotKey = tLang.toUpperCase();
-        slotCounts['P04'][slotKey] = (slotCounts['P04'][slotKey] || 0) + 1;
+      // P04: from thirdLang or ID
+      const p4Id = st.thirdLanguageSubjectId;
+      if (p4Id && subjectMap.has(p4Id)) {
+        const lang4 = subjectMap.get(p4Id)!;
+        slotCounts['P04'][lang4] = (slotCounts['P04'][lang4] || 0) + 1;
       } else {
-        missingThirdLang++;
-        if (noThirdLangSamples.length < 10) noThirdLangSamples.push(stName);
+        const tLang = (st.thirdLang || '').trim();
+        if (tLang) {
+          const slotKey = tLang.toUpperCase();
+          slotCounts['P04'][slotKey] = (slotCounts['P04'][slotKey] || 0) + 1;
+        } else {
+          missingThirdLang++;
+          if (noThirdLangSamples.length < 10) noThirdLangSamples.push(stName);
+        }
       }
 
       // Medium check
-      if (!(st.medium || '').trim()) {
+      const medId = st.mediumId ? String(st.mediumId).trim() : '';
+      const med = st.medium ? String(st.medium).trim() : '';
+      if (!medId && !med) {
         missingMedium++;
         if (noMediumSamples.length < 10) noMediumSamples.push(stName);
       }
@@ -6183,8 +6209,6 @@ app.get("/api/download-resource/:id", authenticateToken, requireRole('WEBMASTER'
       return res.status(403).json({ message: "This resource is not yet published" });
     }
 
-    console.log(`Found resource: ${resource.title}, PublicID: ${resource.publicId}`);
-    // Increment download count
     resource.downloadCount = (resource.downloadCount || 0) + 1;
     await resource.save();
 
@@ -6217,14 +6241,37 @@ app.get("/api/download-resource/:id", authenticateToken, requireRole('WEBMASTER'
 
 app.get("/api/management/students", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET', 'TEACHER'), async (req, res) => {
   try {
-    const { schoolId, academicYear, className, division } = req.query;
+    const { schoolId, academicYear, className, division, mediumId, medium } = req.query;
     const filter: any = {};
     if (schoolId) filter.schoolId = schoolId;
     if (academicYear && academicYear !== 'ALL') filter.academicYear = academicYear;
     if (className) filter.className = className;
     if (division) filter.division = new RegExp(`^${escapeRegex(division)}$`, 'i');
 
+    if (mediumId) {
+      filter.$or = [{ mediumId: String(mediumId) }, { medium: String(mediumId) }];
+    } else if (medium) {
+      filter.$or = [{ medium: String(medium) }, { mediumId: String(medium) }];
+    }
+
     const students = await Student.find(filter).lean();
+    const mediumMapsSingle = await getMediumMaps();
+
+    const allSubjects = await Subject.find().lean();
+    const subjectNameMap = new Map<string, string>();
+    const subjectIdMap = new Map<string, any>();
+    allSubjects.forEach((s: any) => {
+        const nm = String(s.name).trim().toUpperCase();
+        const id = String(s.id || s._id);
+        subjectNameMap.set(nm, id);
+        subjectNameMap.set(nm.replace(/\s*\([EMTK]M\)\s*/g, '').trim(), id);
+        subjectIdMap.set(id, s);
+    });
+
+    for (const st of students) {
+        await populateStudentSubjectIds(st, mediumMapsSingle, subjectNameMap, subjectIdMap);
+    }
+
     res.json(students);
   } catch (err: any) {
     console.error("GET Students Error:", err);
@@ -6265,6 +6312,101 @@ app.get("/api/management/students/summary", authenticateToken, requireRole('WEBM
   }
 });
 
+async function populateStudentSubjectIds(studentData: any, mediumMapsSingle: any, subjectNameMap?: Map<string, string>, subjectIdMap?: Map<string, any>) {
+  if (!subjectNameMap || !subjectIdMap) {
+      const allSubjects = await Subject.find().lean();
+      subjectNameMap = new Map<string, string>();
+      subjectIdMap = new Map<string, any>();
+      allSubjects.forEach((s: any) => {
+          const nm = String(s.name).trim().toUpperCase();
+          const id = String(s.id || s._id);
+          subjectNameMap!.set(nm, id);
+          subjectNameMap!.set(nm.replace(/\s*\([EMTK]M\)\s*/g, '').trim(), id);
+          subjectIdMap!.set(id, s);
+      });
+  }
+  
+  // 1. Resolve medium and mediumId
+  if (studentData.mediumId && mediumMapsSingle.idToShortName && mediumMapsSingle.idToShortName[studentData.mediumId]) {
+      if (!studentData.medium || studentData.medium === studentData.mediumId) {
+          studentData.medium = mediumMapsSingle.idToShortName[studentData.mediumId];
+      }
+  } else if (studentData.medium) {
+      const medUpper = String(studentData.medium).trim().toUpperCase();
+      if (mediumMapsSingle.idToShortName && mediumMapsSingle.idToShortName[medUpper]) {
+          studentData.mediumId = medUpper;
+          studentData.medium = mediumMapsSingle.idToShortName[medUpper];
+      } else {
+          studentData.mediumId = mediumMapsSingle.shortNameToId[medUpper] || mediumMapsSingle.codeToId[medUpper] || '';
+      }
+  }
+
+  // 2. Resolve language paper names and subject IDs
+  const resolveSubject = (subName: string, subId: string): { id: string; name: string } => {
+      let finalId = subId ? String(subId).trim() : '';
+      let finalName = subName ? String(subName).trim() : '';
+
+      if (finalId && subjectIdMap?.has(finalId)) {
+          const doc = subjectIdMap.get(finalId);
+          if (!finalName || finalName === finalId) finalName = doc.name;
+          return { id: finalId, name: finalName };
+      }
+
+      if (finalName) {
+          let str = finalName.toUpperCase();
+          if (str === 'HINDI' || str.includes('HINDI (THIRD LANGUAGE)')) str = 'HINDI - P04 TM';
+          const matchedId = subjectNameMap?.get(str) || subjectNameMap?.get(str.replace(/\s*\([EMTK]M\)\s*/g, '').trim()) || '';
+          if (matchedId) {
+              finalId = matchedId;
+              if (subjectIdMap?.has(matchedId)) {
+                  finalName = subjectIdMap.get(matchedId).name;
+              }
+          }
+      }
+      return { id: finalId, name: finalName };
+  };
+
+  const p1 = resolveSubject(studentData.firstLangPaper1, studentData.firstLangPaper1SubjectId);
+  studentData.firstLangPaper1 = p1.name;
+  studentData.firstLangPaper1SubjectId = p1.id;
+
+  const p2 = resolveSubject(studentData.firstLangPaper2, studentData.firstLangPaper2SubjectId);
+  studentData.firstLangPaper2 = p2.name;
+  studentData.firstLangPaper2SubjectId = p2.id;
+
+  const p3 = resolveSubject(studentData.secondLang, studentData.secondLanguageSubjectId);
+  studentData.secondLang = p3.name;
+  studentData.secondLanguageSubjectId = p3.id;
+
+  const p4 = resolveSubject(studentData.thirdLang, studentData.thirdLanguageSubjectId);
+  studentData.thirdLang = p4.name;
+  studentData.thirdLanguageSubjectId = p4.id;
+
+  // 3. Resolve core subjects and populate subjectIds array
+  const medCode = mediumMapsSingle.shortNameToCode[String(studentData.medium).trim().toUpperCase()] || 'EM';
+  const coreSubjectNames = [
+      `SOCIAL SCIENCE - P05 ${medCode}`,
+      `PHYSICS - P06 ${medCode}`,
+      `CHEMISTRY - P07 ${medCode}`,
+      `BIOLOGY - P08 ${medCode}`,
+      `MATHEMATICS - P09 ${medCode}`,
+      `INFORMATION TECHNOLOGY - P10 ${medCode}`
+  ];
+
+  const allSubIds: string[] = [];
+  if (p1.id) allSubIds.push(p1.id);
+  if (p2.id) allSubIds.push(p2.id);
+  if (p3.id) allSubIds.push(p3.id);
+  if (p4.id) allSubIds.push(p4.id);
+
+  coreSubjectNames.forEach(cnm => {
+      const cid = subjectNameMap?.get(cnm) || subjectNameMap?.get(cnm.replace(/\s*\([EMTK]M\)\s*/g, '').trim()) || '';
+      if (cid) allSubIds.push(cid);
+  });
+
+  studentData.subjectIds = [...new Set(allSubIds)];
+}
+
 app.post("/api/management/students", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
   try {
     const studentData = req.body;
@@ -6276,6 +6418,9 @@ app.post("/api/management/students", authenticateToken, requireRole('WEBMASTER',
     if (!studentData.schoolId) {
       return res.status(400).json({ message: "School ID is required" });
     }
+
+    // Fetch medium maps FIRST to ensure mediumMapsSingle is available
+    const mediumMapsSingle = await getMediumMaps();
 
     // Use findOne to safely handle both ObjectId and custom string school IDs
     const school = await School.findOne({
@@ -6305,7 +6450,6 @@ app.post("/api/management/students", authenticateToken, requireRole('WEBMASTER',
     let secondLang = studentData.secondLang ? String(studentData.secondLang).trim() : '';
     let thirdLang = studentData.thirdLang ? String(studentData.thirdLang).trim() : '';
 
-
     if (thirdLang.toUpperCase() === 'HINDI' || thirdLang.toUpperCase() === 'HINDI (THIRD LANGUAGE) - P04') thirdLang = 'HINDI - P04 TM';
 
     if (medium && (!paper1 || !paper2)) {
@@ -6314,7 +6458,6 @@ app.post("/api/management/students", authenticateToken, requireRole('WEBMASTER',
       paper2 = paper2 || `${medUpper} BT - P02`;
     }
 
-    const mediumMapsSingle = await getMediumMaps();
     let mediumCode = mediumMapsSingle.shortNameToCode[medium.toUpperCase()] || 'EM';
 
     const studentSubjects: string[] = [];
@@ -6330,7 +6473,6 @@ app.post("/api/management/students", authenticateToken, requireRole('WEBMASTER',
     studentSubjects.push(`INFORMATION TECHNOLOGY - P10 ${mediumCode}`);
 
     // Force-override: use ?? (nullish coalescing) so explicit empty strings from dropdowns are preserved
-    // Only falls back to default when value is null/undefined (not sent), not when empty string (sent from form)
     const mappedData: any = {
       globalId: regNo,
       name: studentData.name,
@@ -6354,14 +6496,22 @@ app.post("/api/management/students", authenticateToken, requireRole('WEBMASTER',
       readingStatus: studentData.readingStatus !== undefined ? Number(studentData.readingStatus) : 0,
       writingStatus: studentData.writingStatus !== undefined ? Number(studentData.writingStatus) : 0,
       medium: medium,
+      mediumId: studentData.mediumId ?? '',
       firstLangPaper1: paper1,
+      firstLangPaper1SubjectId: studentData.firstLangPaper1SubjectId ?? '',
       firstLangPaper2: paper2,
+      firstLangPaper2SubjectId: studentData.firstLangPaper2SubjectId ?? '',
       secondLang: secondLang,
+      secondLanguageSubjectId: studentData.secondLanguageSubjectId ?? '',
       thirdLang: thirdLang,
+      thirdLanguageSubjectId: studentData.thirdLanguageSubjectId ?? '',
       subjects: studentSubjects,
       academicYear: (studentData.academicYear && String(studentData.academicYear).trim()) || defaultAcademicYear,
       active: studentData.active !== undefined ? !!studentData.active : true
     };
+
+    // Populate missing subject IDs and mediumId from language strings / maps
+    await populateStudentSubjectIds(mappedData, mediumMapsSingle);
 
     if (studentData.id || studentData._id) {
       const searchId = studentData.id || studentData._id;
@@ -6466,6 +6616,121 @@ app.post("/api/management/students/bulk-delete", authenticateToken, requireRole(
   }
 });
 
+app.post("/api/management/students/:id/clear-field", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { field, fields } = req.body;
+    
+    const targetFields: string[] = fields || (field ? [field] : []);
+    if (targetFields.length === 0) {
+      return res.status(400).json({ message: "No field specified to clear" });
+    }
+
+    const query = mongoose.Types.ObjectId.isValid(id)
+      ? { $or: [{ id }, { _id: id }] }
+      : { id };
+
+    const student = await Student.findOne(query);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    const update: any = {};
+    targetFields.forEach((f: string) => {
+      if (f === 'medium' || f === 'all') {
+        update.medium = '';
+        update.mediumId = '';
+      }
+      if (f === 'firstLangPaper1' || f === 'all') {
+        update.firstLangPaper1 = '';
+        update.firstLangPaper1SubjectId = '';
+      }
+      if (f === 'firstLangPaper2' || f === 'all') {
+        update.firstLangPaper2 = '';
+        update.firstLangPaper2SubjectId = '';
+      }
+      if (f === 'secondLang' || f === 'all') {
+        update.secondLang = '';
+        update.secondLanguageSubjectId = '';
+      }
+      if (f === 'thirdLang' || f === 'all') {
+        update.thirdLang = '';
+        update.thirdLanguageSubjectId = '';
+      }
+    });
+
+    const updated = await Student.findOneAndUpdate(
+      query,
+      { $set: update },
+      { returnDocument: 'after' }
+    ).lean();
+
+    if (updated) {
+      const mediumMapsSingle = await getMediumMaps();
+      await populateStudentSubjectIds(updated, mediumMapsSingle);
+      await Student.updateOne(query, { $set: { subjectIds: updated.subjectIds } });
+    }
+
+    invalidateSchoolAnalytics(student.schoolId);
+    res.json(updated);
+  } catch (err: any) {
+    console.error("Clear Student Field Error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+app.post("/api/management/students/bulk-clear-fields", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
+  try {
+    const { studentIds, fields } = req.body;
+    if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({ message: "Student IDs array is required" });
+    }
+    if (!fields || !Array.isArray(fields) || fields.length === 0) {
+      return res.status(400).json({ message: "Fields array is required" });
+    }
+
+    const update: any = {};
+    fields.forEach((f: string) => {
+      if (f === 'medium' || f === 'all') {
+        update.medium = '';
+        update.mediumId = '';
+      }
+      if (f === 'firstLangPaper1' || f === 'all') {
+        update.firstLangPaper1 = '';
+        update.firstLangPaper1SubjectId = '';
+      }
+      if (f === 'firstLangPaper2' || f === 'all') {
+        update.firstLangPaper2 = '';
+        update.firstLangPaper2SubjectId = '';
+      }
+      if (f === 'secondLang' || f === 'all') {
+        update.secondLang = '';
+        update.secondLanguageSubjectId = '';
+      }
+      if (f === 'thirdLang' || f === 'all') {
+        update.thirdLang = '';
+        update.thirdLanguageSubjectId = '';
+      }
+    });
+
+    const filter = { id: { $in: studentIds } };
+    await Student.updateMany(filter, { $set: update });
+
+    const mediumMapsSingle = await getMediumMaps();
+    const updatedStudents = await Student.find(filter).lean();
+    for (const st of updatedStudents) {
+      await populateStudentSubjectIds(st, mediumMapsSingle);
+      await Student.updateOne({ id: st.id }, { $set: { subjectIds: st.subjectIds } });
+    }
+
+    invalidateSchoolAnalytics();
+    res.json({ message: `Successfully cleared selected fields for ${studentIds.length} students`, updatedCount: studentIds.length });
+  } catch (err: any) {
+    console.error("Bulk Clear Student Fields Error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
 app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
   try {
     const { students, schoolId } = req.body;
@@ -6498,6 +6763,15 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
     const bulkOps: any[] = [];
     const validMeta: Array<{ rowNum: number; name: string; regNo: string }> = [];
     const batchBase = Date.now();
+    
+    const allSubjects = await Subject.find().lean();
+    const subjectNameMap = new Map<string, string>();
+    allSubjects.forEach((s: any) => {
+        const nm = String(s.name).trim().toUpperCase();
+        const id = String(s.id || s._id);
+        subjectNameMap.set(nm, id);
+        subjectNameMap.set(nm.replace(/\\s*\\([EMTK]M\\)\\s*/g, '').trim(), id);
+    });
 
     // Step 1: Pre-validate every row and build MongoDB bulkOps array
     for (let idx = 0; idx < students.length; idx++) {
@@ -6583,11 +6857,19 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
       studentSubjects.push(`INFORMATION TECHNOLOGY - P10 ${mediumCode}`);
 
       mappedData.medium = medium;
+      if (s.mediumId !== undefined) mappedData.mediumId = s.mediumId;
       mappedData.firstLangPaper1 = paper1;
+      if (s.firstLangPaper1SubjectId !== undefined) mappedData.firstLangPaper1SubjectId = s.firstLangPaper1SubjectId;
       mappedData.firstLangPaper2 = paper2;
+      if (s.firstLangPaper2SubjectId !== undefined) mappedData.firstLangPaper2SubjectId = s.firstLangPaper2SubjectId;
       mappedData.secondLang = secondLang;
+      if (s.secondLanguageSubjectId !== undefined) mappedData.secondLanguageSubjectId = s.secondLanguageSubjectId;
       mappedData.thirdLang = thirdLang;
+      if (s.thirdLanguageSubjectId !== undefined) mappedData.thirdLanguageSubjectId = s.thirdLanguageSubjectId;
       mappedData.subjects = studentSubjects;
+      
+      await populateStudentSubjectIds(mappedData, mediumMapsImport, subjectNameMap);
+
 
       bulkOps.push({
         updateOne: {
@@ -6619,7 +6901,7 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
 app.post("/api/management/students/bulk-update-medium", authenticateToken, async (req: any, res) => {
   try {
     const { schoolId, academicYear, className, division, medium: rawMedium, firstLangPaper1, firstLangPaper2, secondLang: reqSecondLang, thirdLang: reqThirdLang } = req.body;
-    if (!schoolId || !academicYear || !className || !division || !rawMedium) {
+    if (!schoolId || !academicYear || !className || !rawMedium) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
@@ -6654,7 +6936,17 @@ app.post("/api/management/students/bulk-update-medium", authenticateToken, async
       { id: 1, secondLang: 1, thirdLang: 1 }
     ).lean();
 
-    const bulkOps = studentsToUpdate.map((st: any) => {
+    const allSubjects = await Subject.find().lean();
+    const subjectNameMap = new Map<string, string>();
+    allSubjects.forEach((s: any) => {
+        const nm = String(s.name).trim().toUpperCase();
+        const id = String(s.id || s._id);
+        subjectNameMap.set(nm, id);
+        subjectNameMap.set(nm.replace(/\\s*\\([EMTK]M\\)\\s*/g, '').trim(), id);
+    });
+
+    const bulkOps = [];
+    for (const st of studentsToUpdate) {
       const reqSecondLangStr = reqSecondLang || st.secondLang || '';
       const finalSecondLang = reqSecondLangStr;
 
@@ -6675,22 +6967,32 @@ app.post("/api/management/students/bulk-update-medium", authenticateToken, async
       studentSubjects.push(`MATHEMATICS - P09 ${mediumCode}`);
       studentSubjects.push(`INFORMATION TECHNOLOGY - P10 ${mediumCode}`);
 
-      return {
+      const updateData: any = {
+        medium,
+        firstLangPaper1: paper1,
+        firstLangPaper2: paper2,
+        secondLang: finalSecondLang,
+        thirdLang: finalThirdLang,
+        subjects: studentSubjects
+      };
+
+      if (req.body.mediumId !== undefined) updateData.mediumId = req.body.mediumId;
+      if (req.body.firstLangPaper1SubjectId !== undefined) updateData.firstLangPaper1SubjectId = req.body.firstLangPaper1SubjectId;
+      if (req.body.firstLangPaper2SubjectId !== undefined) updateData.firstLangPaper2SubjectId = req.body.firstLangPaper2SubjectId;
+      if (req.body.secondLanguageSubjectId !== undefined) updateData.secondLanguageSubjectId = req.body.secondLanguageSubjectId;
+      if (req.body.thirdLanguageSubjectId !== undefined) updateData.thirdLanguageSubjectId = req.body.thirdLanguageSubjectId;
+
+      await populateStudentSubjectIds(updateData, mediumMaps, subjectNameMap);
+
+      bulkOps.push({
         updateOne: {
           filter: { _id: st._id },
           update: {
-            $set: {
-              medium,
-              firstLangPaper1: paper1,
-              firstLangPaper2: paper2,
-              secondLang: finalSecondLang,
-              thirdLang: finalThirdLang,
-              subjects: studentSubjects
-            }
+            $set: updateData
           }
         }
-      };
-    });
+      });
+    }
 
     let modifiedCount = 0;
     if (bulkOps.length > 0) {
@@ -6702,7 +7004,7 @@ app.post("/api/management/students/bulk-update-medium", authenticateToken, async
     res.json({ message: "Updated successfully", modifiedCount });
   } catch (err: any) {
     console.error("POST Student Bulk Update Medium Error:", err);
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ message: err.message, stack: err.stack });
   }
 });
 
@@ -10387,7 +10689,44 @@ app.get("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: any
       role: { $in: ['TEACHER', 'RESOURCE_PERSON'] },
       schoolId: req.user.id
     }).lean();
-    res.json(teachers);
+
+    const allMediums = await Medium.find().lean();
+    const mediumMap = new Map(allMediums.map(m => [m.id, m.shortName]));
+
+    const allSubjects = await Subject.find().lean();
+    const subjectMap = new Map(allSubjects.map(s => [s._id.toString(), s.name]));
+    // Fallback for custom string ids if any
+    allSubjects.forEach(s => {
+      if ((s as any).id) subjectMap.set((s as any).id, s.name);
+    });
+
+    const enrichedTeachers = teachers.map((t: any) => {
+      let meds = new Set<string>();
+      let subs = new Set<string>();
+      let classes = new Set<string>();
+
+      // Extract from teacherAssignments if present
+      if (t.teacherAssignments && t.teacherAssignments.length > 0) {
+        t.teacherAssignments.forEach((a: any) => {
+          if (a.mediumId) meds.add(mediumMap.get(a.mediumId) || a.mediumId);
+          if (a.subjectId) subs.add(subjectMap.get(a.subjectId) || a.subjectId);
+          if (a.className) classes.add(a.className);
+        });
+      } else {
+        // Fallback to old arrays
+        if (t.mediumIds) t.mediumIds.forEach((id: string) => meds.add(mediumMap.get(id) || id));
+        if (t.teachingSubjectIds) t.teachingSubjectIds.forEach((id: string) => subs.add(subjectMap.get(id) || id));
+        if (t.assignedSubjects) t.assignedSubjects.forEach((c: string) => classes.add(c));
+      }
+
+      t.mediums = Array.from(meds);
+      t.teachingSubjects = Array.from(subs);
+      t.assignedSubjects = Array.from(classes);
+
+      return t;
+    });
+
+    res.json(enrichedTeachers);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
@@ -10489,12 +10828,16 @@ app.get("/api/school/classes-divisions", requireRole('SCHOOL', 'TEACHER', 'WEBMA
     const schoolId = req.query.schoolId || req.user.schoolId || req.user.id.toString();
     const classes = await Student.aggregate([
       { $match: { schoolId: schoolId.toString(), active: { $ne: false } } },
-      { $group: { _id: { className: "$className", division: "$division" } } },
+      { $group: { 
+          _id: { className: "$className", division: "$division" },
+          mediums: { $addToSet: "$medium" }
+      } },
       { $sort: { "_id.className": 1, "_id.division": 1 } }
     ]);
     const formatted = classes.map(c => ({
       className: c._id.className,
-      division: c._id.division
+      division: c._id.division,
+      mediums: c.mediums.filter((m: any) => m)
     }));
     res.json(formatted);
   } catch (err: any) {

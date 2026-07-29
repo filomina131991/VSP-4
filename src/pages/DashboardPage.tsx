@@ -855,13 +855,27 @@ const DashboardPage: React.FC = () => {
                               </div>
                             </div>
                             <div className="shrink-0 mt-0.5">
-                              <span className={`inline-block text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                                isConfirmedExam
-                                  ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400'
-                                  : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400'
-                              }`}>
-                                {isConfirmedExam ? 'Confirmed' : 'Pending'}
-                              </span>
+                              {(() => {
+                                let statusText = ex.status || 'ACTIVE';
+                                let statusColor = 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400';
+                                
+                                if (user?.role === 'SCHOOL' && isConfirmedExam) {
+                                  statusText = 'Confirmed';
+                                  statusColor = 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400';
+                                } else {
+                                  const s = (ex.status || '').toUpperCase();
+                                  if (s === 'PUBLISHED') statusColor = 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400';
+                                  else if (s === 'ACTIVE') statusColor = 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400';
+                                  else if (s === 'DRAFT') statusColor = 'bg-gray-100 dark:bg-gray-900/40 text-gray-700 dark:text-gray-400';
+                                  else if (s === 'COMPLETED' || s === 'ARCHIVED') statusColor = 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400';
+                                }
+
+                                return (
+                                  <span className={`inline-block text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${statusColor}`}>
+                                    {statusText}
+                                  </span>
+                                );
+                              })()}
                             </div>
                           </div>
                         );

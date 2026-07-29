@@ -95,6 +95,7 @@ const ReportsPage: React.FC = () => {
         .map(id => subjects.find((s: any) => s._id === id || s.id === id))
         .filter(Boolean)
         .map((s: any) => ({
+          ...s,
           code: s.shortName || s.code || s.name,
           label: s.shortName || s.name || s.code
         }));
@@ -105,6 +106,7 @@ const ReportsPage: React.FC = () => {
 
     let list = reportData?.exam?.subjects || [];
     let mapped = list.map((s: any) => ({
+      ...s,
       code: s.code || s.name,
       label: s.shortName || s.name || s.code
     }));
@@ -115,6 +117,7 @@ const ReportsPage: React.FC = () => {
     // Fallback: build from all active subjects in DB
     if (subjects.length > 0) {
       const allFromDb = subjects.map((s: any) => ({
+        ...s,
         code: s.shortName || s.code || s.name,
         label: s.shortName || s.name || s.code
       }));
@@ -686,7 +689,7 @@ const ReportsPage: React.FC = () => {
     });
     filteredSchools.forEach((s: any) => {
       s.students.forEach((student: any) => {
-        const gradesString = Object.entries(student.grades).sort(([a], [b]) => sortSubjectsUtil({ shortCode: a }, { shortCode: b })).map(([sub, g]) => `${sub}:${g}`).join(" | ");
+        const gradesString = Object.entries(student.grades).sort(([a], [b]) => sortSubjectsUtil({ shortName: a, code: a, name: a }, { shortName: b, code: b, name: b })).map(([sub, g]) => `${sub}:${g}`).join(" | ");
         rows.push([
           idx++,
           s.code,
@@ -1044,7 +1047,7 @@ const ReportsPage: React.FC = () => {
                                               <td className={`px-4 py-2 text-xs font-bold text-gray-900 dark:text-white ${T_BORDER}`}>{student.name}</td>
                                               <td className={`px-4 py-2 text-xs text-gray-700 dark:text-gray-300 ${T_BORDER}`}>{student.gender}</td>
                                               <td className="px-4 py-2 text-xs font-mono flex flex-wrap gap-1.5">
-                                                {Object.entries(student.grades).sort(([a], [b]) => sortSubjectsUtil({ shortCode: a }, { shortCode: b })).map(([subCode, grade]: any) => (
+                                                {Object.entries(student.grades).sort(([a], [b]) => sortSubjectsUtil({ shortName: a, code: a, name: a }, { shortName: b, code: b, name: b })).map(([subCode, grade]: any) => (
                                                   <span key={subCode} className={cn(
                                                     "px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider",
                                                     grade === 'A+' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' :

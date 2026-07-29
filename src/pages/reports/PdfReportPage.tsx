@@ -23,6 +23,7 @@ import ExamSelect from '../../components/common/ExamSelect';
 import { SearchableSelect, Option } from '../../components/common/SearchableSelect';
 import Dropdown from '../../components/common/Dropdown';
 import { getStudentResult } from '../../lib/resultClassification';
+import { sortSubjects } from '../../lib/subjectUtils';
 import toast from 'react-hot-toast';
 import logoUrl from '../../assets/logo.png';
 
@@ -591,7 +592,7 @@ export default function PdfReportPage() {
           font.sectionHead();
           pdf.text(`Enrolled Student Results (${students.length} Students)`, ML, y);
           y += 4;
-          const uniqueSubjects = Array.from(new Set(students.flatMap((st: any) => Object.keys(st.grades || {})))).sort() as string[];
+          const uniqueSubjects = Array.from(new Set(students.flatMap((st: any) => Object.keys(st.grades || {})))).sort((a: any, b: any) => sortSubjects({ name: a, code: a, shortName: a }, { name: b, code: b, shortName: b })) as string[];
           const studentRows = students.map((st: any, i: number) => {
             const gradesVals = Object.values(st.grades || {}) as string[];
             const status = getStudentResult(gradesVals);
@@ -1466,7 +1467,7 @@ export default function PdfReportPage() {
                 const studentsList = reportData?.students || [];
                 const uniqueSubjectCodes = Array.from(new Set(
                   studentsList.flatMap((st: any) => Object.keys(st.grades || {}))
-                )).sort() as string[];
+                )).sort((a: any, b: any) => sortSubjects({ name: a, code: a, shortName: a }, { name: b, code: b, shortName: b })) as string[];
 
                 const sortedStudents = [...studentsList].sort((a: any, b: any) => {
                   const divA = a.division || 'Z';

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useData, useSchoolMediums, useSchoolSubjects } from '../../context/DataContext';
 import { apiClient } from '../../lib/apiClient';
+import { resolveMediumId } from '../../lib/mediumUtils';
 import toast from 'react-hot-toast';
 import { Building2, Save, KeyRound, Lock, Eye, EyeOff, AlertTriangle, CheckCircle2, Plus, Trash2, User as UserIcon, Phone, Mail, Award, BookOpen, Layers } from 'lucide-react';
 
@@ -36,16 +37,16 @@ const isSubjectEligibleForDesignation = (designation: string, subjectName: strin
            sub.includes(des.replace('hst ', '').trim()) || sub === 'p01' || sub === 'p02' || sub === 'p03' || sub === 'p04';
   }
   if (des.includes('physical science')) {
-    return sub.includes('physics') || sub.includes('chemistry') || sub.includes('physical science') || sub.includes('science') || sub === 'p06';
+    return sub.includes('physics') || sub.includes('chemistry') || sub.includes('physical science') || sub === 'p06' || sub === 'p07';
   }
   if (des.includes('natural science')) {
-    return sub.includes('biology') || sub.includes('botany') || sub.includes('zoology') || sub.includes('natural science') || sub.includes('science') || sub === 'p07';
+    return sub.includes('biology') || sub.includes('botany') || sub.includes('zoology') || sub.includes('natural science') || sub === 'p08';
   }
   if (des.includes('mathematics') || des.includes('maths')) {
     return sub.includes('math') || sub.includes('ganitham') || sub === 'p05';
   }
   if (des.includes('social science') || des.includes('social')) {
-    return sub.includes('social') || sub.includes('history') || sub.includes('geography') || sub.includes('civics') || sub.includes('economics') || sub === 'p08';
+    return sub.includes('social') || sub.includes('history') || sub.includes('geography') || sub.includes('civics') || sub.includes('economics') || sub === 'p09';
   }
 
   return true;
@@ -76,6 +77,7 @@ const TeacherProfilePage: React.FC = () => {
   });
 
   const [availableClasses, setAvailableClasses] = useState<string[]>([]);
+  const [classDivisionsData, setClassDivisionsData] = useState<any[]>([]);
 
   const activeMediums = useMemo(() => {
     return (schoolMediums && schoolMediums.length > 0) ? schoolMediums : dmMediums.filter(m => m.active);
@@ -98,12 +100,23 @@ const TeacherProfilePage: React.FC = () => {
     }
   }, [user]);
 
+  const [classHierarchy, setClassHierarchy] = useState<any>({});
+
   useEffect(() => {
     const fetchClasses = async () => {
       try {
-        const res = await apiClient.get('/school/classes-divisions');
-        if (Array.isArray(res.data) && res.data.length > 0) {
-          const formatted = res.data.map((item: any) => `${item.className}${item.division || ''}`);
+        const [cdRes, hRes] = await Promise.all([
+          apiClient.get('/school/classes-divisions'),
+          apiClient.get('/school/class-hierarchy')
+        ]);
+        
+        if (hRes?.data) {
+          setClassHierarchy(hRes.data);
+        }
+
+        if (Array.isArray(cdRes.data) && cdRes.data.length > 0) {
+          setClassDivisionsData(cdRes.data);
+          const formatted = cdRes.data.map((item: any) => `${item.className}${item.division || ''}`);
           setAvailableClasses(formatted);
         } else {
           setAvailableClasses(['8A', '8B', '9A', '9B', '10A', '10B', '10C', '10D', '10E']);
@@ -174,23 +187,7 @@ const TeacherProfilePage: React.FC = () => {
   }, [user]);
 
   const handleAddAssignment = () => {
-    const defaultMedium = activeMediums.length > 0 ? activeMediums[0].shortName : 'Tamil';
-    const defaultClass = availableClasses.length > 0 ? availableClasses[0] : '10A';
-    
-    const availableSubjectsForMedium = (schoolSubjects.length > 0)
-      ? dmSubjects.filter(s => schoolSubjects.includes(s.name) && s.active)
-      : dmSubjects.filter(s => s.active);
-    
-    const matchedMediumObj = activeMediums.find(m => m.shortName.toLowerCase() === defaultMedium.toLowerCase() || m.name.toLowerCase() === defaultMedium.toLowerCase());
-    const finalMediumSubjects = matchedMediumObj
-      ? availableSubjectsForMedium.filter(s => !s.mediumId || s.mediumId === matchedMediumObj.id)
-      : availableSubjectsForMedium;
-    const allSubjectNames = Array.from(new Set(finalMediumSubjects.map(s => s.name)));
-
-    const eligible = allSubjectNames.filter(sub => isSubjectEligibleForDesignation(profileData.designation, sub));
-    const defaultSub = eligible.length > 0 ? eligible[0] : (allSubjectNames.length > 0 ? allSubjectNames[0] : 'Mathematics');
-
-    setTeacherAssignments(prev => [...prev, { medium: defaultMedium, className: defaultClass, subject: defaultSub }]);
+    setTeacherAssignments(prev => [...prev, { medium: '', className: '', subject: '' }]);
   };
 
   const handleAssignmentChange = (index: number, field: 'medium' | 'className' | 'subject', value: string) => {
@@ -198,15 +195,21 @@ const TeacherProfilePage: React.FC = () => {
       const updated = [...prev];
       updated[index] = { ...updated[index], [field]: value };
 
-      if (field === 'medium') {
-        const matchedMediumObj = activeMediums.find(m => m.shortName.toLowerCase() === value.toLowerCase() || m.name.toLowerCase() === value.toLowerCase());
-        const avail = (schoolSubjects.length > 0) ? dmSubjects.filter(s => schoolSubjects.includes(s.name) && s.active) : dmSubjects.filter(s => s.active);
-        const finalSubjects = matchedMediumObj ? avail.filter(s => !s.mediumId || s.mediumId === matchedMediumObj.id) : avail;
-        const subNames = Array.from(new Set(finalSubjects.map(s => s.name)));
-        const eligible = subNames.filter(sName => isSubjectEligibleForDesignation(profileData.designation, sName));
-        if (!subNames.includes(updated[index].subject)) {
-          updated[index].subject = eligible.length > 0 ? eligible[0] : (subNames.length > 0 ? subNames[0] : '');
+      if (field === 'className') {
+        const cData = classDivisionsData.find(cd => `${cd.className}${cd.division || ''}` === value);
+        if (cData && cData.mediums && cData.mediums.length === 1) {
+          const mId = resolveMediumId(cData.mediums[0], dmMediums);
+          if (mId) {
+            updated[index].medium = mId;
+          } else {
+            updated[index].medium = '';
+          }
+        } else {
+          updated[index].medium = '';
         }
+        updated[index].subject = '';
+      } else if (field === 'medium') {
+        updated[index].subject = '';
       }
 
       return updated;
@@ -501,68 +504,149 @@ const TeacherProfilePage: React.FC = () => {
                   <div className="space-y-3">
                     {teacherAssignments.map((assignment, idx) => {
                       // Filter subjects based on school subjects and medium
-                      const availableSubjectsForMedium = (schoolSubjects.length > 0)
-                        ? dmSubjects.filter(s => schoolSubjects.includes(s.name) && s.active)
-                        : dmSubjects.filter(s => s.active);
+                      const availableSubjectsForMedium = dmSubjects.filter(s => s.active !== false);
                       
                       const matchedMediumObj = activeMediums.find(m => m.shortName.toLowerCase() === assignment.medium?.toLowerCase() || m.name.toLowerCase() === assignment.medium?.toLowerCase());
                       const finalMediumSubjects = matchedMediumObj
-                        ? availableSubjectsForMedium.filter(s => !s.mediumId || s.mediumId === matchedMediumObj.id)
-                        : availableSubjectsForMedium;
-                      const allSubNames = Array.from(new Set(finalMediumSubjects.map(s => s.name))).sort();
+                        ? availableSubjectsForMedium.filter(s => {
+                            const matchId = matchedMediumObj.id || (matchedMediumObj as any)._id;
+                            const sMedId = resolveMediumId(s.mediumId || s.medium || (s as any).mediumName || '', dmMediums);
+                            
+                            const isSmartSuggestion = isSubjectEligibleForDesignation(profileData.designation, s.name);
+                            const desLower = (profileData.designation || '').toLowerCase();
+                            const isLangDes = desLower.includes('english') || desLower.includes('hindi') || desLower.includes('malayalam') || desLower.includes('tamil') || desLower.includes('arabic') || desLower.includes('urdu') || desLower.includes('sanskrit');
 
-                      const eligible = allSubNames.filter(sub => isSubjectEligibleForDesignation(profileData.designation, sub));
-                      const others = allSubNames.filter(sub => !isSubjectEligibleForDesignation(profileData.designation, sub));
+                            let extractedMedName = '';
+                            const upperSubName = (s.name || '').toUpperCase();
+                            if (upperSubName.includes('(EM)')) extractedMedName = 'English';
+                            else if (upperSubName.includes('(TM)')) extractedMedName = 'Tamil';
+                            else if (upperSubName.includes('(MM)')) extractedMedName = 'Malayalam';
+                            else if (upperSubName.includes('(KM)')) extractedMedName = 'Kannada';
+                            else if (upperSubName.includes('(HM)')) extractedMedName = 'Hindi';
+
+                            const effectiveSMedId = extractedMedName ? resolveMediumId(extractedMedName, dmMediums) : sMedId;
+
+                            if (effectiveSMedId && matchId && effectiveSMedId !== matchId) {
+                              // If subject explicitly specifies a medium suffix, strictly enforce match even if it's a smart suggestion
+                              if (extractedMedName) return false;
+                              // Smart suggestion bypasses medium check ONLY for language teachers
+                              if (!isSmartSuggestion || !isLangDes) return false;
+                            }
+                            return true;
+                          })
+                        : availableSubjectsForMedium;
+                      const uniqueSubjects: any[] = [];
+                      const seen = new Set();
+                      for (const s of finalMediumSubjects) {
+                        if (s.name && !seen.has(s.name)) {
+                          seen.add(s.name);
+                          uniqueSubjects.push(s);
+                        }
+                      }
+                      
+                      uniqueSubjects.sort((a, b) => {
+                        const codeA = a.code || a.paperType || '';
+                        const codeB = b.code || b.paperType || '';
+                        if (codeA && codeB && codeA !== codeB) {
+                          return codeA.localeCompare(codeB);
+                        }
+                        return (a.name || '').localeCompare(b.name || '');
+                      });
+
+                      const allSubNames = uniqueSubjects.map(s => s.name);
+
+                      const eligible = uniqueSubjects.filter(sub => isSubjectEligibleForDesignation(profileData.designation, sub.name)).map(s => s.name);
+                      const others = uniqueSubjects.filter(sub => !isSubjectEligibleForDesignation(profileData.designation, sub.name)).map(s => s.name);
+
+                      let isSubjectIneligible = false;
+                      if (assignment.subject) {
+                        isSubjectIneligible = !isSubjectEligibleForDesignation(profileData.designation, assignment.subject);
+                      }
 
                       return (
                         <div key={idx} className="p-4 bg-slate-50 dark:bg-[#0d1117] rounded-xl border border-gray-200 dark:border-gray-800 flex flex-col md:flex-row items-stretch md:items-center gap-3 relative">
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 flex-1">
-                            {/* Medium Select */}
-                            <div className="space-y-1">
-                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-wider ml-1">Medium</label>
-                              <select
-                                value={assignment.medium || (activeMediums.length > 0 ? activeMediums[0].shortName : 'Tamil')}
-                                onChange={e => handleAssignmentChange(idx, 'medium', e.target.value)}
-                                className="w-full bg-white dark:bg-[#161b22] border border-gray-300 dark:border-gray-700 rounded-lg py-2 px-2.5 text-xs font-bold text-gray-900 dark:text-white"
-                              >
-                                {activeMediums.map(m => (
-                                  <option key={m.id || m.shortName} value={m.shortName}>{m.shortName} Medium</option>
-                                ))}
-                              </select>
-                            </div>
-
-                            {/* Class & Division Select */}
+                            {/* Class & Division Select (First) */}
                             <div className="space-y-1">
                               <label className="text-[9px] font-black text-gray-400 uppercase tracking-wider ml-1">Class & Div</label>
                               <select
-                                value={assignment.className || '10A'}
+                                value={assignment.className || ''}
                                 onChange={e => handleAssignmentChange(idx, 'className', e.target.value)}
                                 className="w-full bg-white dark:bg-[#161b22] border border-gray-300 dark:border-gray-700 rounded-lg py-2 px-2.5 text-xs font-bold text-gray-900 dark:text-white"
                               >
-                                {availableClasses.map(cls => (
-                                  <option key={cls} value={cls}>Class {cls}</option>
-                                ))}
+                                <option value="" disabled>Select Class</option>
+                                {(() => {
+                                  const assignMedName = dmMediums.find(m => m.id === assignment.medium)?.name || '';
+                                  const filteredClassesForDropdown = availableClasses.filter(c => {
+                                    if (!assignMedName) return true;
+                                    const cData = classDivisionsData.find(cd => `${cd.className}${cd.division || ''}` === c);
+                                    if (!cData || !cData.mediums || cData.mediums.length === 0) return true;
+                                    return cData.mediums.includes(assignMedName);
+                                  });
+                                  return filteredClassesForDropdown.map(cls => (
+                                    <option key={cls} value={cls}>Class {cls}</option>
+                                  ));
+                                })()}
                                 {!availableClasses.includes(assignment.className) && assignment.className && (
                                   <option value={assignment.className}>Class {assignment.className}</option>
                                 )}
                               </select>
                             </div>
 
-                            {/* Subject Select with Eligible Suggestions */}
+                            {/* Medium Select (Second) */}
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-black text-gray-400 uppercase tracking-wider ml-1">Medium</label>
+                              {(() => {
+                                const selectedClassDiv = classDivisionsData.find(c => `${c.className}${c.division || ''}` === assignment.className);
+                                const availableMediumsForClass = activeMediums.filter(m => {
+                                  if (!selectedClassDiv || !selectedClassDiv.mediums || selectedClassDiv.mediums.length === 0) return true;
+                                  const mId = m.id || (m as any)._id;
+                                  return selectedClassDiv.mediums.some((cm: string) => {
+                                    const cmId = resolveMediumId(cm, dmMediums);
+                                    return (cmId && mId && cmId === mId) || cm.toLowerCase().includes((m.name || '').toLowerCase()) || (m.name || '').toLowerCase().includes(cm.toLowerCase());
+                                  });
+                                });
+                                
+                                return (
+                                  <select
+                                    value={assignment.medium || ''}
+                                    onChange={e => handleAssignmentChange(idx, 'medium', e.target.value)}
+                                    disabled={!assignment.className}
+                                    className="w-full bg-white dark:bg-[#161b22] border border-gray-300 dark:border-gray-700 rounded-lg py-2 px-2.5 text-xs font-bold text-gray-900 dark:text-white disabled:opacity-50"
+                                  >
+                                    <option value="" disabled>Select Medium</option>
+                                    {availableMediumsForClass.map(m => (
+                                      <option key={m.id || (m as any)._id || m.name} value={m.name}>{m.name}</option>
+                                    ))}
+                                    {!availableMediumsForClass.some(m => m.name === assignment.medium) && assignment.medium && (
+                                      <option value={assignment.medium}>{assignment.medium}</option>
+                                    )}
+                                  </select>
+                                );
+                              })()}
+                            </div>
+
+                            {/* Subject Select with Eligible Suggestions (Third) */}
                             <div className="space-y-1">
                               <label className="text-[9px] font-black text-gray-400 uppercase tracking-wider ml-1">Subject</label>
                               <select
                                 value={assignment.subject || ''}
                                 onChange={e => handleAssignmentChange(idx, 'subject', e.target.value)}
-                                className="w-full bg-white dark:bg-[#161b22] border border-gray-300 dark:border-gray-700 rounded-lg py-2 px-2.5 text-xs font-bold text-gray-900 dark:text-white"
+                                disabled={!assignment.medium}
+                                className={`w-full bg-white dark:bg-[#161b22] border rounded-lg py-2 px-2.5 text-xs font-bold dark:text-white disabled:opacity-50 ${
+                                  isSubjectIneligible 
+                                    ? 'border-red-500 text-red-700 focus:border-red-500 focus:ring-1 focus:ring-red-500' 
+                                    : 'border-gray-300 dark:border-gray-700 text-gray-900'
+                                }`}
                               >
+                                <option value="" disabled>Select Subject</option>
                                 <optgroup label="Eligible Subject Suggestions">
                                   {eligible.length > 0 ? (
                                     eligible.map(s => (
                                       <option key={s} value={s} className="font-bold text-indigo-700 dark:text-indigo-400">★ {s}</option>
                                     ))
                                   ) : (
-                                    <option disabled>None matching designation</option>
+                                    <option disabled>{others.length > 0 ? 'None matching this designation' : 'No subjects available for this medium'}</option>
                                   )}
                                 </optgroup>
                                 {others.length > 0 && (
@@ -672,7 +756,7 @@ const TeacherProfilePage: React.FC = () => {
                     type={showNewPassword ? "text" : "password"}
                     value={passwordData.newPassword}
                     onChange={e => setPasswordData(p => ({ ...p, newPassword: e.target.value }))}
-                    placeholder="New password (min. 2 characters)"
+                    placeholder="New password"
                     className="w-full bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-[#30363d] rounded-xl py-3 pl-11 pr-11 text-sm font-medium text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                     required
                   />

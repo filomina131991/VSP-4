@@ -348,6 +348,82 @@ export default function ChecklistDatabasePage() {
     document.body.removeChild(link);
   };
 
+  const handleClearSingleField = async (student: Student, fieldKey: 'medium' | 'firstLangPaper1' | 'firstLangPaper2' | 'secondLang' | 'thirdLang', fieldLabel: string) => {
+    const result = await Swal.fire({
+      title: `Delete ${fieldLabel}?`,
+      text: `Are you sure you want to delete ${fieldLabel} for "${student.name}"?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: `Yes, delete ${fieldLabel}`
+    });
+
+    if (result.isConfirmed) {
+      setIsLoading(true);
+      try {
+        const res = await apiClient.post(`/management/students/${student.id}/clear-field`, {
+          field: fieldKey
+        });
+        setStudents(prev => prev.map(s => s.id === student.id ? { ...s, ...res.data } : s));
+        Swal.fire('Deleted!', `${fieldLabel} has been deleted for ${student.name}.`, 'success');
+      } catch (err) {
+        console.error(err);
+        Swal.fire('Error', `Failed to delete ${fieldLabel}.`, 'error');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const handleBulkClearFields = async (fieldKey: string, fieldLabel: string) => {
+    if (selectedStudentIds.size === 0) return;
+
+    const fieldsToClear = fieldKey === 'all' 
+      ? ['medium', 'firstLangPaper1', 'firstLangPaper2', 'secondLang', 'thirdLang'] 
+      : [fieldKey];
+
+    const result = await Swal.fire({
+      title: `Clear ${fieldLabel}?`,
+      text: `Are you sure you want to clear ${fieldLabel} for ${selectedStudentIds.size} selected students?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: `Yes, clear for all ${selectedStudentIds.size} students`
+    });
+
+    if (result.isConfirmed) {
+      setIsLoading(true);
+      try {
+        await apiClient.post('/management/students/bulk-clear-fields', {
+          studentIds: Array.from(selectedStudentIds),
+          fields: fieldsToClear
+        });
+
+        setStudents(prev => prev.map(s => {
+          if (!selectedStudentIds.has(s.id)) return s;
+          const updated = { ...s };
+          fieldsToClear.forEach(f => {
+            if (f === 'medium') updated.medium = '';
+            if (f === 'firstLangPaper1') updated.firstLangPaper1 = '';
+            if (f === 'firstLangPaper2') updated.firstLangPaper2 = '';
+            if (f === 'secondLang') updated.secondLang = '';
+            if (f === 'thirdLang') updated.thirdLang = '';
+          });
+          return updated;
+        }));
+
+        Swal.fire('Cleared!', `Successfully cleared ${fieldLabel} for ${selectedStudentIds.size} students.`, 'success');
+      } catch (err) {
+        console.error(err);
+        Swal.fire('Error', `Failed to clear ${fieldLabel}.`, 'error');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="mb-6 border-b border-gray-100 dark:border-[#30363d] pb-4 flex justify-between items-end">
@@ -595,14 +671,43 @@ export default function ChecklistDatabasePage() {
               Export CSV
             </button>
             {selectedStudentIds.size > 0 && (
-              <button
-                onClick={handleBulkDelete}
-                disabled={isLoading}
-                className="px-4 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 font-black text-xs uppercase tracking-wider rounded-md border border-rose-200 flex items-center gap-1.5 transition-colors"
-              >
-                <Trash2 size={14} />
-                Delete Selected
-              </button>
+              <div className="flex items-center gap-2">
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const val = e.target.value;
+                      const labelMap: Record<string, string> = {
+                        medium: 'Medium',
+                        firstLangPaper1: 'P01 (1st Lang)',
+                        firstLangPaper2: 'P02 (1st Lang)',
+                        secondLang: 'P03 (2nd Lang)',
+                        thirdLang: 'P04 (3rd Lang)',
+                        all: 'All Languages & Medium'
+                      };
+                      handleBulkClearFields(val, labelMap[val] || val);
+                      e.target.value = '';
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-amber-50 text-amber-700 font-black text-xs uppercase tracking-wider rounded-md border border-amber-200 cursor-pointer outline-none"
+                >
+                  <option value="">Clear Medium/Language...</option>
+                  <option value="medium">Clear Medium</option>
+                  <option value="firstLangPaper1">Clear P01 (1st Lang)</option>
+                  <option value="firstLangPaper2">Clear P02 (1st Lang)</option>
+                  <option value="secondLang">Clear P03 (2nd Lang)</option>
+                  <option value="thirdLang">Clear P04 (3rd Lang)</option>
+                  <option value="all">Clear All Languages & Medium</option>
+                </select>
+
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={isLoading}
+                  className="px-4 py-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 font-black text-xs uppercase tracking-wider rounded-md border border-rose-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Trash2 size={14} />
+                  Delete Selected
+                </button>
+              </div>
             )}
           </div>
           
@@ -746,29 +851,84 @@ export default function ChecklistDatabasePage() {
                         )}
                       </td>
                       <td className="p-4 text-center">
-                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-                          {student.medium || '-'}
-                        </span>
+                        {student.medium ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                            <span>{student.medium}</span>
+                            <button
+                              onClick={() => handleClearSingleField(student, 'medium', 'Medium')}
+                              className="text-indigo-400 hover:text-rose-600 transition-colors cursor-pointer p-0.5 hover:bg-rose-50 rounded ml-0.5"
+                              title="Delete Medium"
+                            >
+                              <X size={11} />
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs font-bold">-</span>
+                        )}
                       </td>
                       <td className="p-4">
-                        <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100">
-                          {student.firstLangPaper1 || '-'}
-                        </span>
+                        {student.firstLangPaper1 ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100">
+                            <span>{student.firstLangPaper1}</span>
+                            <button
+                              onClick={() => handleClearSingleField(student, 'firstLangPaper1', 'P01 (1st Lang)')}
+                              className="text-red-400 hover:text-rose-700 transition-colors cursor-pointer p-0.5 hover:bg-red-100 rounded ml-0.5"
+                              title="Delete P01 Language"
+                            >
+                              <X size={11} />
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs font-bold">-</span>
+                        )}
                       </td>
                       <td className="p-4">
-                        <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100">
-                          {student.firstLangPaper2 || '-'}
-                        </span>
+                        {student.firstLangPaper2 ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100">
+                            <span>{student.firstLangPaper2}</span>
+                            <button
+                              onClick={() => handleClearSingleField(student, 'firstLangPaper2', 'P02 (1st Lang)')}
+                              className="text-red-400 hover:text-rose-700 transition-colors cursor-pointer p-0.5 hover:bg-red-100 rounded ml-0.5"
+                              title="Delete P02 Language"
+                            >
+                              <X size={11} />
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs font-bold">-</span>
+                        )}
                       </td>
                       <td className="p-4">
-                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                          {student.secondLang || '-'}
-                        </span>
+                        {student.secondLang ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                            <span>{student.secondLang}</span>
+                            <button
+                              onClick={() => handleClearSingleField(student, 'secondLang', 'P03 (2nd Lang)')}
+                              className="text-blue-400 hover:text-rose-700 transition-colors cursor-pointer p-0.5 hover:bg-blue-100 rounded ml-0.5"
+                              title="Delete P03 Language"
+                            >
+                              <X size={11} />
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs font-bold">-</span>
+                        )}
                       </td>
                       <td className="p-4">
-                        <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100">
-                          {student.thirdLang || '-'}
-                        </span>
+                        {student.thirdLang ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-100">
+                            <span>{student.thirdLang}</span>
+                            <button
+                              onClick={() => handleClearSingleField(student, 'thirdLang', 'P04 (3rd Lang)')}
+                              className="text-amber-500 hover:text-rose-700 transition-colors cursor-pointer p-0.5 hover:bg-amber-100 rounded ml-0.5"
+                              title="Delete P04 Language"
+                            >
+                              <X size={11} />
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs font-bold">-</span>
+                        )}
                       </td>
                       <td className="p-4 text-right">
                         {isEditing ? (
