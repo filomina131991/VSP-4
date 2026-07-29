@@ -25,7 +25,7 @@ import { cn } from '../../lib/utils';
 import PageLoader from '../../components/common/PageLoader';
 import ExamSelect from '../../components/common/ExamSelect';
 import { getStudentResult } from '../../lib/resultClassification';
-import { sortSubjects as sortSubjectsUtil } from '../../lib/subjectUtils';
+import { sortSubjects as sortSubjectsUtil, getSubjectPCode } from '../../lib/subjectUtils';
 
 
 interface StudentResult {
@@ -79,55 +79,53 @@ const ReportsPage: React.FC = () => {
   const [configuredExamIds, setConfiguredExamIds] = useState<string[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const SUBJECTS = React.useMemo(() => {
-    const sortSubjects = (arr: { code: string; label: string }[]) => {
-      const seen = new Set<string>();
-      const unique = arr.filter(s => {
-        const key = s.code.toUpperCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      return sortSubjectsUtil(unique);
-    };
+    const pCodeSet = new Set<string>();
 
-    if (configuredSubjectIds.length > 0 && subjects.length > 0) {
-      const fromConfig = configuredSubjectIds
-        .map(id => subjects.find((s: any) => s._id === id || s.id === id))
-        .filter(Boolean)
-        .map((s: any) => ({
-          ...s,
-          code: s.shortName || s.code || s.name,
-          label: s.shortName || s.name || s.code
-        }));
-      if (fromConfig.length > 0) {
-        return sortSubjects(fromConfig);
-      }
-    }
-
-    let list = reportData?.exam?.subjects || [];
-    let mapped = list.map((s: any) => ({
-      ...s,
-      code: s.code || s.name,
-      label: s.shortName || s.name || s.code
-    }));
-    if (mapped.length > 0) {
-      return sortSubjects(mapped);
-    }
-
-    // Fallback: build from all active subjects in DB
     if (subjects.length > 0) {
-      const allFromDb = subjects.map((s: any) => ({
-        ...s,
-        code: s.shortName || s.code || s.name,
-        label: s.shortName || s.name || s.code
-      }));
-      if (allFromDb.length > 0) {
-        return sortSubjects(allFromDb);
-      }
+      subjects.forEach((s: any) => {
+        const p = getSubjectPCode(s);
+        if (p) pCodeSet.add(p);
+      });
     }
 
-    return [];
-  }, [reportData?.exam?.subjects, configuredSubjectIds, subjects]);
+    if (reportData?.results) {
+      reportData.results.forEach((r: any) => {
+        const keys = [...Object.keys(r.marks || {}), ...Object.keys(r.grades || {})];
+        keys.forEach(k => {
+          const sub = subjects.find((s: any) => s._id?.toString() === k || s.id === k || s.code === k || s.shortName === k || s.name === k);
+          const p = sub ? getSubjectPCode(sub) : (k.startsWith('P') ? k : getSubjectPCode({ name: k, shortName: k }));
+          if (p) pCodeSet.add(p);
+        });
+      });
+    }
+
+    if (reportData?.exam?.maxMarks) {
+      const maxMarkKeys = typeof reportData.exam.maxMarks.keys === 'function'
+        ? Array.from(reportData.exam.maxMarks.keys())
+        : Object.keys(reportData.exam.maxMarks);
+      maxMarkKeys.forEach((k: any) => {
+        const sub = subjects.find((s: any) => s._id?.toString() === k || s.id === k || s.code === k || s.shortName === k || s.name === k);
+        const p = sub ? getSubjectPCode(sub) : (k.startsWith('P') ? k : getSubjectPCode({ name: k, shortName: k }));
+        if (p) pCodeSet.add(p);
+      });
+    }
+
+    if (pCodeSet.size === 0) {
+      ['P01', 'P02', 'P03', 'P04', 'P05', 'P06', 'P07', 'P08', 'P09', 'P10'].forEach(c => pCodeSet.add(c));
+    }
+
+    const sortedCodes = Array.from(pCodeSet).sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, '')) || 0;
+      const numB = parseInt(b.replace(/\D/g, '')) || 0;
+      return numA - numB;
+    });
+
+    return sortedCodes.map(code => ({
+      code,
+      label: code,
+      subjectId: code
+    }));
+  }, [configuredSubjectIds, subjects, reportData]);
 
 
   const activeSchoolId = user?.role === 'SCHOOL' ? (user.schoolId || '') : selectedSchId;
@@ -402,7 +400,7 @@ const ReportsPage: React.FC = () => {
         r.division || '-',
         r.name.replace(/,/g, ''),
         genderScribe,
-        ...SUBJECTS.map(sub => r.grades[sub.code] || ''),
+        ...SUBJECTS.map(sub => getCalculatedGrade(r, sub, exam) || ''),
         pct
       ];
       return row.join(',');
@@ -445,13 +443,96 @@ const ReportsPage: React.FC = () => {
       || 50;
   };
 
+  const getSubjectMarkRecord = (result: StudentResult, sub: any) => {
+    if (!result) return { mark: null, grade: '' };
+    const targetPCode = typeof sub === 'string' ? sub : (sub?.code || getSubjectPCode(sub));
+
+    const matchingSubjects = subjects.filter((s: any) => getSubjectPCode(s) === targetPCode);
+
+    const possibleKeys = new Set<string>();
+    possibleKeys.add(targetPCode);
+    if (typeof sub === 'object' && sub) {
+      if (sub.subjectId) possibleKeys.add(String(sub.subjectId));
+      if (sub._id) possibleKeys.add(String(sub._id));
+      if (sub.code) possibleKeys.add(String(sub.code));
+      if (sub.shortName) possibleKeys.add(String(sub.shortName));
+      if (sub.paperType) possibleKeys.add(String(sub.paperType));
+      if (sub.name) possibleKeys.add(String(sub.name));
+    }
+
+    matchingSubjects.forEach((s: any) => {
+      if (s._id) possibleKeys.add(String(s._id));
+      if (s.id) possibleKeys.add(String(s.id));
+      if (s.code) possibleKeys.add(String(s.code));
+      if (s.shortName) possibleKeys.add(String(s.shortName));
+      if (s.paperType) possibleKeys.add(String(s.paperType));
+      if (s.name) possibleKeys.add(String(s.name));
+    });
+
+    const keysArray = Array.from(possibleKeys);
+
+    const foundMarks: number[] = [];
+    const foundGrades: string[] = [];
+
+    keysArray.forEach(k => {
+      if (result.marks && result.marks[k] !== undefined && result.marks[k] !== null && String(result.marks[k]).trim() !== '') {
+        const num = Number(result.marks[k]);
+        if (!isNaN(num)) foundMarks.push(num);
+      }
+      if (result.grades && result.grades[k] !== undefined && result.grades[k] !== null && String(result.grades[k]).trim() !== '') {
+        const valStr = String(result.grades[k]).trim();
+        if (isNaN(Number(valStr))) {
+          foundGrades.push(valStr);
+        } else if (foundMarks.length === 0) {
+          foundMarks.push(Number(valStr));
+        }
+      }
+    });
+
+    if (foundGrades.length > 1 || foundMarks.length > 1) {
+      console.warn(`[Data Integrity Warning] Student ${result.name} (${result.studentId}) has multiple filled entries for Subject Code ${targetPCode}:`, { foundGrades, foundMarks });
+    }
+
+    const mark = foundMarks.length > 0 ? foundMarks[0] : null;
+    const grade = foundGrades.length > 0 ? foundGrades[0] : '';
+
+    return { mark, grade };
+  };
+
+  const getCalculatedGrade = (result: StudentResult, sub: any, examObj: any = reportData?.exam) => {
+    if (!result) return '';
+    const { mark, grade } = getSubjectMarkRecord(result, sub);
+    if (grade && isNaN(Number(grade))) {
+      return grade;
+    }
+
+    if (mark === null && !grade) return '';
+    
+    const subObj = typeof sub === 'string' ? { code: sub, shortName: sub, name: sub } : sub;
+    const subCode = subObj?.code || subObj?.shortName || subObj?.name || '';
+    const maxMark = resolveMaxMark(subCode, examObj);
+    const valToConvert = mark !== null ? Number(mark) : Number(grade);
+    if (isNaN(valToConvert)) return grade;
+
+    const pct = Math.round((valToConvert * 100) / maxMark);
+    if (pct >= 90) return 'A+';
+    if (pct >= 80) return 'A';
+    if (pct >= 70) return 'B+';
+    if (pct >= 60) return 'B';
+    if (pct >= 50) return 'C+';
+    if (pct >= 40) return 'C';
+    if (pct >= 30) return 'D+';
+    if (pct >= 20) return 'D';
+    return 'E';
+  };
+
   const getStudentPassStatus = (result: StudentResult) => {
     if (SUBJECTS.length === 0) {
       return { status: 'Incomplete', style: 'bg-amber-100 text-amber-800 border-amber-200' };
     }
     
     const grades = SUBJECTS.map(sub => {
-      const g = getCalculatedGrade(result, sub.code);
+      const g = getCalculatedGrade(result, sub);
       return typeof g === 'string' ? g : '';
     }).filter(g => g !== '');
 
@@ -472,31 +553,22 @@ const ReportsPage: React.FC = () => {
     return { status: 'Pass', style: 'bg-emerald-100 text-emerald-800 border-emerald-200 font-black' };
   };
 
-  // Safe percentage calculator based purely on grades or actual marks if available
   const getStudentPercentage = (result: StudentResult, examInfo: any) => {
     const gradeValues: Record<string, number> = {
-      'A+': 95,
-      'A': 85,
-      'B+': 75,
-      'B': 65,
-      'C+': 55,
-      'C': 45,
-      'D+': 35,
-      'D': 25,
-      'E': 15,
-      'Ab': 0
+      'A+': 95, 'A': 85, 'B+': 75, 'B': 65, 'C+': 55, 'C': 45, 'D+': 35, 'D': 25, 'E': 15, 'Ab': 0
     };
     
     let totalScoredMarks = 0;
     let totalMaxMarksForGraded = 0;
-    let totalPointsFallback = 0; // for purely grade-based fallback
+    let totalPointsFallback = 0;
     let gradedSubjects = 0;
     let hasActualMarks = false;
     
     SUBJECTS.forEach(sub => {
-      const grade = result.grades[sub.code];
-      const mark = result.marks && result.marks[sub.code] !== undefined && result.marks[sub.code] !== null ? result.marks[sub.code] : null;
-      const maxMark = resolveMaxMark(sub.code, examInfo);
+      const { mark } = getSubjectMarkRecord(result, sub);
+      const grade = getCalculatedGrade(result, sub, examInfo);
+      const subCode = typeof sub === 'string' ? sub : (sub.code || sub.shortName || sub.name);
+      const maxMark = resolveMaxMark(subCode, examInfo);
       
       if (mark !== null && !isNaN(Number(mark))) {
         totalScoredMarks += Number(mark);
@@ -504,58 +576,16 @@ const ReportsPage: React.FC = () => {
         gradedSubjects++;
         hasActualMarks = true;
       } else if (grade) {
-        const gradeNum = Number(grade);
-        if (!isNaN(gradeNum) && String(grade).trim() !== '') {
-          // It's a number masquerading as a grade (from bulk import issue)
-          totalScoredMarks += gradeNum;
-          totalMaxMarksForGraded += maxMark;
-          gradedSubjects++;
-          hasActualMarks = true;
-        } else {
-          totalPointsFallback += gradeValues[grade.trim().toUpperCase()] !== undefined ? gradeValues[grade.trim().toUpperCase()] : 0;
-          gradedSubjects++;
-        }
+        totalPointsFallback += gradeValues[grade.trim().toUpperCase()] !== undefined ? gradeValues[grade.trim().toUpperCase()] : 0;
+        gradedSubjects++;
       }
     });
     
     if (gradedSubjects === 0) return 0;
-    if (hasActualMarks) {
+    if (hasActualMarks && totalMaxMarksForGraded > 0) {
       return (totalScoredMarks / totalMaxMarksForGraded) * 100;
     }
     return totalPointsFallback / gradedSubjects;
-  };
-
-  const getCalculatedGrade = (result: StudentResult, subCode: string, examObj: any = reportData?.exam) => {
-    // 1. If backend already provided a valid non-numeric grade, trust the backend.
-    const dbGrade = result.grades && result.grades[subCode] ? String(result.grades[subCode]).trim() : '';
-    const isDbGradeNonNumeric = dbGrade !== '' && isNaN(Number(dbGrade));
-    if (isDbGradeNonNumeric) {
-      return dbGrade;
-    }
-
-    // 2. Fallback to calculation if somehow the backend didn't provide a grade but provided a mark.
-    const mark = result.marks && result.marks[subCode] !== undefined && result.marks[subCode] !== null ? result.marks[subCode] : null;
-    let valToUse = mark !== null ? mark : result.grades[subCode];
-    if (valToUse === undefined || valToUse === null || valToUse === '') return '';
-    
-    let gradeStr = String(valToUse).trim();
-    let gradeNum = Number(gradeStr);
-    
-    if (mark !== null || (!isNaN(gradeNum) && gradeStr !== '')) {
-      const maxMark = resolveMaxMark(subCode, examObj);
-      const valToConvert = mark !== null ? Number(mark) : gradeNum;
-      const pct = Math.round((valToConvert * 100) / maxMark);
-      if (pct >= 90) return 'A+';
-      if (pct >= 80) return 'A';
-      if (pct >= 70) return 'B+';
-      if (pct >= 60) return 'B';
-      if (pct >= 50) return 'C+';
-      if (pct >= 40) return 'C';
-      if (pct >= 35) return 'D+';
-      if (pct >= 30) return 'D';
-      return 'E';
-    }
-    return gradeStr;
   };
 
   const getGradeBadge = (val: string) => {
@@ -598,13 +628,13 @@ const ReportsPage: React.FC = () => {
   const fullFailCount = 0; // Deprecated, all fails are counted under FAIL.
   const absentCount = filteredResults.filter((r: StudentResult) => {
     return SUBJECTS.some(sub => {
-      const g = getCalculatedGrade(r, sub.code);
+      const g = getCalculatedGrade(r, sub);
       return g && ['AB', 'ABSENT', 'ABS', 'AA'].includes(g.trim().toUpperCase());
     });
   }).length;
   const scribeCount = filteredResults.filter((r: StudentResult) => r.isScribe).length;
   const fullAPlusCount = filteredResults.filter((r: StudentResult) => {
-    const validGrades = SUBJECTS.map(sub => getCalculatedGrade(r, sub.code));
+    const validGrades = SUBJECTS.map(sub => getCalculatedGrade(r, sub));
     return validGrades.length > 0 && validGrades.every(g => g === 'A+');
   }).length;
 
@@ -623,7 +653,6 @@ const ReportsPage: React.FC = () => {
     let isBoy = genderUpper.startsWith('B') || genderUpper.startsWith('M');
     let isGirl = genderUpper.startsWith('G') || genderUpper.startsWith('F');
 
-    // Default to Boy if gender is missing or unrecognized to ensure counts aren't lost
     if (!isBoy && !isGirl) {
       isBoy = true;
     }
@@ -631,11 +660,9 @@ const ReportsPage: React.FC = () => {
     let hasCountedAb = false;
 
     SUBJECTS.forEach(sub => {
-      const subCode = sub.code;
-      let gradeStr = getCalculatedGrade(r, subCode);
+      let gradeStr = getCalculatedGrade(r, sub);
       if (!gradeStr) return;
       
-      // Match case-insensitively and ignoring whitespace
       const matchedKey = Object.keys(gradeCounts).find(k => k.toLowerCase() === gradeStr.toLowerCase());
       
       if (matchedKey !== undefined) {
@@ -1474,9 +1501,9 @@ const ReportsPage: React.FC = () => {
                             </div>
                           </td>
                           {SUBJECTS.map(sub => {
-                            const score = getCalculatedGrade(r, sub.code, exam);
+                            const score = getCalculatedGrade(r, sub, exam);
                             return (
-                              <td key={sub.code} className="px-1 py-3.5 border-r border-gray-100 dark:border-[#30363d] text-center font-bold">
+                              <td key={sub.code || sub.subjectId || sub.name} className="px-1 py-3.5 border-r border-gray-100 dark:border-[#30363d] text-center font-bold">
                                 <span className={getGradeBadge(score)}>{score || '-'}</span>
                               </td>
                             );

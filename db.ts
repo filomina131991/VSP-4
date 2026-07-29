@@ -215,8 +215,8 @@ const ExamSchema = new Schema({
   active:           { type: Boolean, default: true },
   isDefault:        { type: Boolean, default: false },
   confirmedSchools: { type: [String], default: [] }, // Array used as Set logic in API
-  confirmations:    { type: Map, of: String, default: {} },
-  confirmedSubjects:{ type: Map, of: [String], default: {} }, // SchoolId -> array of confirmed subject IDs
+  confirmations:    { type: Object, default: {} },
+  confirmedSubjects:{ type: Object, default: {} }, // SchoolId -> array of confirmed subject IDs
   maxMarks:         { type: Map, of: Number, default: {} },
   includeCEMarks:   { type: Boolean, default: false },
   includeICT:       { type: Boolean, default: false },
@@ -373,6 +373,7 @@ const MarkSchema = new Schema({
   examId:     { type: String, required: true },
   studentId:  { type: String, required: true },
   subjectId:  { type: String, required: true },
+  subjectCode:{ type: String, index: true },
   className:  { type: String },
   
   // New Marks Entry 2.0 fields
@@ -814,16 +815,17 @@ async function seedInitialData() {
         { grade: 'B',  min: 60, range: '60-69',   scores: { '25': '15-17', '30': '18-20', '35': '21-24', '40': '24-27', '80': '48-55' } },
         { grade: 'C+', min: 50, range: '50-59',   scores: { '25': '13-14', '30': '15-17', '35': '18-20', '40': '20-23', '80': '40-47' } },
         { grade: 'C',  min: 40, range: '40-49',   scores: { '25': '10-12', '30': '12-14', '35': '14-17', '40': '16-19', '80': '32-39' } },
-        { grade: 'D+', min: 35, range: '35-44',   scores: { '25': '9',     '30': '11',    '35': '12-13', '40': '14-15', '80': '28-31' } },
-        { grade: 'D',  min: 30, range: '30-39',   scores: { '25': '8',     '30': '9-10',  '35': '11',    '40': '12-13', '80': '24-27' } },
-        { grade: 'E',  min: 0,  range: '0-0',     scores: { '25': '0-7',   '30': '0-8',   '35': '0-10',  '40': '0-11',  '80': '0-23' } },
+        { grade: 'D+', min: 30, range: '30-39',   scores: { '25': '8-9',   '30': '9-11',  '35': '11-13', '40': '12-15', '80': '24-31' } },
+        { grade: 'D',  min: 20, range: '20-29',   scores: { '25': '5-7',   '30': '6-8',   '35': '7-10',  '40': '8-11',  '80': '16-23' } },
+        { grade: 'E',  min: 0,  range: '0-19',    scores: { '25': '0-4',   '30': '0-5',   '35': '0-6',   '40': '0-7',   '80': '0-15' } },
       ],
       std8: [
         { grade: 'A', min: 80, range: 'Above 80%', scores: { '20': '16-20', '40': '32-40', '50': '40-50', '60': '48-60', '80': '64-80' } },
         { grade: 'B', min: 60, range: '60%-79%', scores: { '20': '12-15', '40': '24-31', '50': '30-39', '60': '36-47', '80': '48-63' } },
         { grade: 'C', min: 40, range: '40%-59%', scores: { '20': '8-11', '40': '16-23', '50': '20-29', '60': '24-35', '80': '32-47' } },
-        { grade: 'D', min: 30, range: '30-39%', scores: { '20': '6-7', '40': '12-15', '50': '15-19', '60': '18-23', '80': '24-31' } },
-        { grade: 'E', min: 0,  range: 'Below 30%', scores: { '20': 'Below 6', '40': 'Below 12', '50': 'Below 15', '60': 'Below 18', '80': 'Below 24' } },
+        { grade: 'D+', min: 30, range: '30-39%', scores: { '20': '6-7', '40': '12-15', '50': '15-19', '60': '18-23', '80': '24-31' } },
+        { grade: 'D', min: 20, range: '20-29%', scores: { '20': '4-5', '40': '8-11', '50': '10-14', '60': '12-17', '80': '16-23' } },
+        { grade: 'E', min: 0,  range: 'Below 20%', scores: { '20': 'Below 4', '40': 'Below 8', '50': 'Below 10', '60': 'Below 12', '80': 'Below 16' } },
       ]
     },
     { upsert: true, returnDocument: 'after' }
@@ -863,8 +865,8 @@ export async function recalculateAllGrades() {
       if (pct >= 60) return 'B';
       if (pct >= 50) return 'C+';
       if (pct >= 40) return 'C';
-      if (pct >= 35) return 'D+';
-      if (pct >= 30) return 'D';
+      if (pct >= 30) return 'D+';
+      if (pct >= 20) return 'D';
       return 'E';
     };
 

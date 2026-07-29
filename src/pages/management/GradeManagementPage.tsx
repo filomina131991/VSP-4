@@ -275,7 +275,7 @@ const GradeManagementPage: React.FC = () => {
       </div>
 
       {/* Grade Tables */}
-      {renderGradeTable('Grading Scale — Std. 9 & 10', 'STD 9-10', grades?.std9_10 || [], ['25', '30', '35', '40', '80'])}
+      {renderGradeTable('Grading Scale — Std. 9 & 10', 'STD 9-10', grades?.std9_10 || [], ['20', '25', '30', '35', '40', '80'])}
       {renderGradeTable('Grading Scale — Std. 8', 'STD 8', grades?.std8 || [], ['20', '40', '50', '60', '80'])}
 
       {/* Info Note */}

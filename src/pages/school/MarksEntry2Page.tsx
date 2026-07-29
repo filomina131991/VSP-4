@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Save, AlertCircle, FileEdit, Settings2, Eye, EyeOff, Plus, Trash2, CheckSquare, X, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle, Search, Users, BarChart3 } from 'lucide-react';
+import { Save, AlertCircle, FileEdit, Settings2, Eye, EyeOff, Plus, Trash2, CheckSquare, X, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertTriangle, Search, Users, BarChart3, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Modal from '../../components/common/Modal';
 import { apiClient } from '../../lib/apiClient';
@@ -96,6 +96,8 @@ const MarksEntry2Page: React.FC = () => {
   const [isResettingSubjects, setIsResettingSubjects] = useState<boolean>(false);
   const [showExamConfigModal, setShowExamConfigModal] = useState<boolean>(false);
   const [showMarkEntryStatusModal, setShowMarkEntryStatusModal] = useState<boolean>(false);
+  const unsavedInputKeysRef = useRef<Set<string>>(new Set());
+  const [recentlySavedInputKeys, setRecentlySavedInputKeys] = useState<Set<string>>(new Set());
   const [configuredExamIds, setConfiguredExamIds] = useState<string[]>([]);
   const [isSubjectsCollapsed, setIsSubjectsCollapsed] = useState<boolean>(true);
   const [langValidation, setLangValidation] = useState<any>(null);
@@ -268,7 +270,7 @@ const MarksEntry2Page: React.FC = () => {
             const rawAllowed = user?.role === 'TEACHER' && teacherMeds.length > 0 ? Array.from(new Set(teacherMeds)) : allMediumNames;
             const allowedMediums = rawAllowed.map(resolveMed);
             const availableMeds = Array.from(studentMediums).filter(m => allowedMediums.includes(m));
-            if (availableMeds.length === 1) {
+            if (availableMeds.length > 0) {
               setSelectedMedium(availableMeds[0]);
             }
           }
@@ -731,6 +733,8 @@ const MarksEntry2Page: React.FC = () => {
       };
     });
 
+    unsavedInputKeysRef.current.add(`${studentId}-${subjectId}-${groupName}`);
+
     if (isInvalid) {
       setTimeout(() => {
         const currentInput = document.getElementById(`input-${studentIdx}-${subIdx}-${groupIdx}`) as HTMLInputElement;
@@ -795,8 +799,8 @@ const MarksEntry2Page: React.FC = () => {
     if (pct >= 60) return 'B';
     if (pct >= 50) return 'C+';
     if (pct >= 40) return 'C';
-    if (pct >= 35) return 'D+';
-    if (pct >= 30) return 'D';
+    if (pct >= 30) return 'D+';
+    if (pct >= 20) return 'D';
     return 'E';
   };
 
@@ -888,7 +892,7 @@ const MarksEntry2Page: React.FC = () => {
 
 
 
-  const handleSave = async (confirmSubmit: boolean = false, skipConflictCheck: boolean = false) => {
+  const handleSave = async (confirmSubmit: boolean = false, skipConflictCheck: boolean = false, autoSave: boolean = false) => {
     if (!selectedExamId || selectedSubjectIds.length === 0) return;
 
     const subjectIdsToSave = isSchoolUser
@@ -1024,14 +1028,53 @@ const MarksEntry2Page: React.FC = () => {
 
       setHasUnsavedChanges(false);
       if (confirmSubmit) setLockedSubjects(prev => Array.from(new Set([...prev, ...subjectIdsToSave])));
-      toast.success(confirmSubmit ? 'Marks Confirmed & Locked!' : 'Draft saved successfully');
+      
+      if (confirmSubmit || !autoSave) toast.success(confirmSubmit ? 'Marks Confirmed & Locked!' : 'Draft saved successfully');
+      
+      if (unsavedInputKeysRef.current.size > 0) {
+        setRecentlySavedInputKeys(new Set(unsavedInputKeysRef.current));
+        unsavedInputKeysRef.current.clear();
+        setTimeout(() => {
+          setRecentlySavedInputKeys(new Set());
+        }, 3000);
+      }
+
       await refetchExams();
+      if (selectedExamId) {
+        await reloadExamConfig(selectedExamId);
+      }
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to save marks on server. Please try again.', { duration: 5000 });
+      if (!autoSave) toast.error(err.response?.data?.message || 'Failed to save marks on server. Please try again.', { duration: 5000 });
     } finally {
       setIsSaving(false);
     }
   };
+
+  // --- Auto-Save for School Users ---
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialMount = useRef(true);
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+
+    if (user?.role === 'SCHOOL' && Object.keys(marksData).length > 0 && hasUnsavedChanges) {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+      autoSaveTimerRef.current = setTimeout(() => {
+        handleSave(false, false, true); // (confirmSubmit, skipConflictCheck, autoSave)
+      }, 2000); // 2 seconds debounce
+    }
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [marksData, hasUnsavedChanges]); // Trigger on changes
 
   const handleBulkSave = async (marksDataList: any[], confirm: boolean, finalConfirm: boolean) => {
     setIsSaving(true);
@@ -2114,21 +2157,29 @@ const MarksEntry2Page: React.FC = () => {
                               <React.Fragment key={subId}>
                                 {data.markGroups.map((g: any, groupIdx: number) => (
                                   <td key={groupIdx} className={`px-2 py-2 text-center border-r border-gray-100 dark:border-[#30363d] ${isAbs ? 'bg-gray-50 dark:bg-[#1f242c]/30' : ''}`}>
-                                    <input
-                                      id={`input-${studentIdx}-${subIdx}-${groupIdx}`}
-                                      type="text"
-                                      inputMode="decimal"
-                                      value={isAbs ? '' : g.marksObtained}
-                                      onChange={(e) => handleMarkChange(student.id, subId, g.name, e.target.value, studentIdx, subIdx, groupIdx, g.total)}
-                                      disabled={lockedSubjects.includes(subId) || isFinalLocked || isAbs || (isSchoolUser && !schoolCanEditSubject(subId))}
-                                      className={`w-[4rem] px-2 py-1 text-center text-sm font-bold border-2 rounded-lg bg-transparent text-slate-800 dark:text-white outline-none disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:opacity-60 ${rejectedInputs.has(`${student.id}-${subId}-${g.name}`)
-                                        ? 'border-red-500 focus:border-red-600 focus:ring-red-500 text-red-600 animate-pulse'
-                                        : (g.marksObtained === '' || g.marksObtained === null || g.marksObtained === undefined)
-                                          ? 'border-blue-400 dark:border-blue-500 focus:border-blue-500 focus:ring-0'
-                                          : 'border-gray-200 dark:border-gray-700 focus:border-indigo-500 focus:ring-0'
-                                        }`}
-                                      placeholder={isAbs ? "Ab" : "-"}
-                                    />
+                                    <div className="relative inline-block w-full">
+                                      <input
+                                        id={`input-${studentIdx}-${subIdx}-${groupIdx}`}
+                                        type="text"
+                                        inputMode="decimal"
+                                        value={isAbs ? '' : g.marksObtained}
+                                        onChange={(e) => handleMarkChange(student.id, subId, g.name, e.target.value, studentIdx, subIdx, groupIdx, g.total)}
+                                        disabled={lockedSubjects.includes(subId) || isFinalLocked || isAbs || (isSchoolUser && !schoolCanEditSubject(subId))}
+                                        className={`w-[4rem] px-2 py-1 text-center text-sm font-bold border-2 rounded-lg bg-transparent text-slate-800 dark:text-white outline-none disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:opacity-60 ${rejectedInputs.has(`${student.id}-${subId}-${g.name}`)
+                                          ? 'border-red-500 focus:border-red-600 focus:ring-red-500 text-red-600 animate-pulse'
+                                          : (g.marksObtained === '' || g.marksObtained === null || g.marksObtained === undefined)
+                                            ? 'border-blue-400 dark:border-blue-500 focus:border-blue-500 focus:ring-0'
+                                            : 'border-gray-200 dark:border-gray-700 focus:border-indigo-500 focus:ring-0'
+                                          }`}
+                                        placeholder={isAbs ? "Ab" : "-"}
+                                      />
+                                      {recentlySavedInputKeys.has(`${student.id}-${subId}-${g.name}`) && (
+                                        <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2">
+                                          <div className="absolute inline-flex w-2.5 h-2.5 bg-green-400 rounded-full animate-ping opacity-75"></div>
+                                          <div className="relative inline-flex w-2.5 h-2.5 bg-green-500 rounded-full border border-white dark:border-[#161b22]"></div>
+                                        </div>
+                                      )}
+                                    </div>
                                   </td>
                                 ))}
                               </React.Fragment>
@@ -2193,37 +2244,85 @@ const MarksEntry2Page: React.FC = () => {
             </div>
       ) : null}
 
-      {/* SCHOOL USER: Teacher Confirmation Pending Banner */}
+      {/* SCHOOL USER: Teacher Confirmation Status Banner */}
       {isSchoolUser && schoolAllSelectedLocked && !showExamConfigModal && selectedExamId && !isFinalLocked && selectedSubjectIds.length > 0 && (
-        <div className="bg-amber-50 dark:bg-amber-950/20 border-2 border-amber-200 dark:border-amber-800 rounded-xl p-4">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/50 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-              <AlertCircle size={18} className="text-amber-600 dark:text-amber-400" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-black text-amber-800 dark:text-amber-300 uppercase tracking-wider mb-1">
-                Teacher Confirmation Pending
-              </h3>
-              <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 mb-2">
-                The following subjects have not yet been confirmed by the assigned teacher. Mark entry fields are <strong>disabled</strong> until the teacher confirms.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {selectedSubjectIds
-                  .filter(subId => !schoolTeacherConfirmedSubjectIds.has(subId))
-                  .map(subId => {
-                    const subObj = availableSubjects.find(s => s.id === subId);
-                    const wfStatus = subjectWorkflowStatuses[subId] || 'NOT_STARTED';
-                    return (
-                      <span key={subId} className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-200 dark:border-amber-800">
-                        {subObj?.name || subObj?.shortName || subId}
-                        <span className="text-[8px] font-bold opacity-70">
-                          ({wfStatus === 'NOT_STARTED' ? 'Not Started' : wfStatus === 'IN_PROGRESS' ? 'In Progress' : wfStatus})
-                        </span>
-                      </span>
-                    );
-                  })}
+        <div className="bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] rounded-xl p-4 my-4 shadow-sm">
+          <div className="flex flex-col gap-4">
+            
+            {/* Pending Subjects */}
+            {selectedSubjectIds.filter(subId => !schoolTeacherConfirmedSubjectIds.has(subId)).length > 0 && (
+              <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/20 p-3 rounded-lg border border-amber-100 dark:border-amber-900/50">
+                <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/50 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertCircle size={18} className="text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-black text-amber-800 dark:text-amber-300 uppercase tracking-wider mb-1">
+                    Teacher Confirmation Pending
+                  </h3>
+                  <p className="text-[11px] font-bold text-amber-700 dark:text-amber-400 mb-2">
+                    The following subjects have not yet been confirmed by the assigned teacher. Mark entry fields are <strong>disabled</strong> until the teacher confirms.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedSubjectIds
+                      .filter(subId => !schoolTeacherConfirmedSubjectIds.has(subId))
+                      .map(subId => {
+                        const subObj = availableSubjects.find(s => s.id === subId);
+                        const wfStatus = subjectWorkflowStatuses[subId] || 'NOT_STARTED';
+                        return (
+                          <span key={subId} className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 rounded-lg border border-amber-200 dark:border-amber-800">
+                            {subObj?.name || subObj?.shortName || subId}
+                            <span className="text-[8px] font-bold opacity-70">
+                              ({wfStatus === 'NOT_STARTED' ? 'Not Started' : wfStatus === 'IN_PROGRESS' ? 'In Progress' : wfStatus})
+                            </span>
+                          </span>
+                        );
+                      })}
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Confirmed Subjects */}
+            {selectedSubjectIds.filter(subId => schoolTeacherConfirmedSubjectIds.has(subId)).length > 0 && (
+              <div className="flex items-start gap-3 bg-emerald-50 dark:bg-emerald-950/20 p-3 rounded-lg border border-emerald-100 dark:border-emerald-900/50">
+                <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/50 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                  <CheckCircle size={18} className="text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-black text-emerald-800 dark:text-emerald-300 uppercase tracking-wider mb-1">
+                    Teacher Confirmed Subjects
+                  </h3>
+                  <div className="flex flex-col gap-2 mt-2">
+                    {selectedSubjectIds
+                      .filter(subId => schoolTeacherConfirmedSubjectIds.has(subId))
+                      .map(subId => {
+                        const subObj = availableSubjects.find(s => s.id === subId);
+                        const subConfig = schoolConfig.find((s: any) => s.subjectId === subId);
+                        let confirmedAt = 'Date N/A';
+                        if (subConfig?.teacherConfirmedAt) {
+                          const dateObj = new Date(subConfig.teacherConfirmedAt);
+                          confirmedAt = dateObj.toLocaleDateString('en-IN', {
+                            day: '2-digit', month: 'short', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit'
+                          });
+                        }
+                        return (
+                          <div key={subId} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 py-2 bg-white dark:bg-[#161b22] border border-emerald-200 dark:border-emerald-800/60 rounded-lg shadow-sm">
+                            <span className="text-[11px] font-black uppercase text-emerald-900 dark:text-emerald-300 flex items-center gap-2">
+                              <CheckCircle size={14} className="text-emerald-500" />
+                              {subObj?.name || subObj?.shortName || subId}
+                            </span>
+                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-500 bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 rounded">
+                              Confirmed on: {confirmedAt}
+                            </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              </div>
+            )}
+            
           </div>
         </div>
       )}

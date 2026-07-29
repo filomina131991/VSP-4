@@ -30,6 +30,7 @@ import Swal from 'sweetalert2';
 import { useAuth } from '../../context/AuthContext';
 import PageLoader from '../../components/common/PageLoader';
 import { generateSchoolSubmissionPdf, printSchoolSubmissionWindow, formatDateTime } from '../../lib/pdfGenerator';
+import { getSubjectPCode } from '../../lib/subjectUtils';
 
 interface Exam {
   id: string;
@@ -144,28 +145,35 @@ const ExamManagementPage: React.FC = () => {
   const [selectedModalEduId, setSelectedModalEduId] = useState<string>('ALL');
   const [isMarksSectionOpen, setIsMarksSectionOpen] = useState(false);
 
+  const getSubjectCode = (sub: SubjectEntry): string => {
+    return getSubjectPCode(sub) || ((sub as any).code || (sub as any).paperType || sub.shortName || '').toUpperCase().trim();
+  };
+
   const availableCodes = React.useMemo(() => {
     const codeSet = new Set<string>();
     Object.values(subjectsByMedium).forEach(group => {
       [...(group.p01 || []), ...(group.p02 || []), ...(group.p03 || []), ...(group.p04 || []), ...(group.core || [])].forEach(sub => {
-        const code = ((sub as any).code || (sub as any).paperType || sub.shortName || '').toUpperCase().trim();
+        const code = getSubjectCode(sub);
         if (code && /^P\d{2}$/i.test(code)) codeSet.add(code);
       });
     });
+    ['P01', 'P02', 'P03', 'P04', 'P05', 'P06', 'P07', 'P08', 'P09', 'P10'].forEach(c => codeSet.add(c));
     return Array.from(codeSet).sort((a, b) => parseInt(a.replace('P', '')) - parseInt(b.replace('P', '')));
   }, [subjectsByMedium]);
 
-  const getSubjectCode = (sub: SubjectEntry): string => {
-    return ((sub as any).code || (sub as any).paperType || sub.shortName || '').toUpperCase().trim();
-  };
-
   const applyCodeMarksToSubjects = (updatedCodeMarks: Record<string, number>, withCE: boolean = false) => {
     const nextMarks: Record<string, number> = {};
+
+    Object.keys(updatedCodeMarks).forEach(code => {
+      const base = updatedCodeMarks[code];
+      nextMarks[code] = withCE ? Math.round(base * 1.25) : base;
+    });
+
     Object.values(subjectsByMedium).forEach(group => {
       [...(group.p01 || []), ...(group.p02 || []), ...(group.p03 || []), ...(group.p04 || []), ...(group.core || [])].forEach(sub => {
         const subId = (sub._id || sub.id) as string;
         const code = getSubjectCode(sub);
-        const baseMarks = updatedCodeMarks[code] || 100;
+        const baseMarks = updatedCodeMarks[code] || (code === 'P01' ? (updatedCodeMarks['P01'] || 100) : 100);
         nextMarks[subId] = withCE ? Math.round(baseMarks * 1.25) : baseMarks;
       });
     });

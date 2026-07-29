@@ -1499,9 +1499,9 @@ const StudentManagementPage: React.FC = () => {
           if (/URDU/.test(allLangs) && !invalidRules.includes('Tamil Medium → Urdu')) invalidRules.push('Tamil Medium → Urdu');
         }
       } else if (med === 'Malayalam') {
-        if (/TAMIL/.test(allLangs)) {
+        if (/TAMIL/.test(allLangs) && !/TAMIL.*\(\s*MM\s*\)/.test(allLangs)) {
           invalidStudents.push(s.name || s.regNo || 'Unknown');
-          if (!invalidRules.includes('Malayalam Medium → Tamil')) invalidRules.push('Malayalam Medium → Tamil');
+          if (!invalidRules.includes('Malayalam Medium → Tamil (TM)')) invalidRules.push('Malayalam Medium → Tamil (TM)');
         }
       }
     }
@@ -1513,7 +1513,7 @@ const StudentManagementPage: React.FC = () => {
     const med = resolveMediumShortName(s.medium || '', mediums) || (s.medium || '').trim();
     const allLangs = `${s.firstLangPaper1 || ''} ${s.firstLangPaper2 || ''} ${s.secondLang || ''} ${s.thirdLang || ''}`.toUpperCase();
     if (med === 'Tamil') return /MALAYALAM|ARABIC|SANSKRIT|URDU/.test(allLangs);
-    if (med === 'Malayalam') return /TAMIL/.test(allLangs);
+    if (med === 'Malayalam') return /TAMIL/.test(allLangs) && !/TAMIL.*\(\s*MM\s*\)/.test(allLangs);
     return false;
   };
 

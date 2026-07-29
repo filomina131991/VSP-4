@@ -24,6 +24,7 @@ import {
   Search,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
   Languages,
   Check,
   FileText,
@@ -155,6 +156,7 @@ const DashboardPage: React.FC = () => {
   const [isSubjectCountsLoading, setIsSubjectCountsLoading] = useState(false);
   const [schoolTypeCounts, setSchoolTypeCounts] = useState<any>(null);
   const [isSchoolTypeLoading, setIsSchoolTypeLoading] = useState(false);
+  const [isAllMediumsExpanded, setIsAllMediumsExpanded] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const filteredExams = useMemo(() => {
@@ -297,7 +299,7 @@ const DashboardPage: React.FC = () => {
   // Region Analytics fetch
   useEffect(() => {
     const fetchRegionAnalytics = async () => {
-      if (user?.role === 'SCHOOL' || selectedSchoolId || selectedEduId ||
+      if (['SCHOOL', 'TEACHER', 'RESOURCE_PERSON'].includes(user?.role) || selectedSchoolId || selectedEduId ||
           (selectedDistrict && selectedDistrict !== 'ALL')) return;
       if (!selectedExamId) return;
       setIsRegionLoading(true);
@@ -316,7 +318,7 @@ const DashboardPage: React.FC = () => {
   // Subject-wise counts (admin only)
   useEffect(() => {
     const fetchSubjectCounts = async () => {
-      if (user?.role === 'SCHOOL' || selectedSchoolId) return;
+      if (['SCHOOL', 'TEACHER', 'RESOURCE_PERSON'].includes(user?.role) || selectedSchoolId) return;
       if (!selectedExamId) return;
       setIsSubjectCountsLoading(true);
       try {
@@ -337,7 +339,7 @@ const DashboardPage: React.FC = () => {
   // School type wise counts (admin only)
   useEffect(() => {
     const fetchSchoolTypeCounts = async () => {
-      if (user?.role === 'SCHOOL' || selectedSchoolId) return;
+      if (['SCHOOL', 'TEACHER', 'RESOURCE_PERSON'].includes(user?.role) || selectedSchoolId) return;
       if (!selectedExamId) return;
       setIsSchoolTypeLoading(true);
       try {
@@ -1301,7 +1303,7 @@ const DashboardPage: React.FC = () => {
                   );
                 })()}
               </div>
-              <div className="space-y-1 mt-2 pt-2 border-t border-gray-100 dark:border-[#30363d] max-h-[120px] overflow-y-auto">
+              <div className="space-y-1 mt-2 pt-2 border-t border-gray-100 dark:border-[#30363d]">
                 {(() => {
                   const langData = schoolAnalysis?.languageDistribution || [];
                   const LANG_COLORS = ['#06b6d4','#8b5cf6','#f43f5e','#10b981','#f59e0b','#6366f1','#ec4899','#14b8a6','#f97316'];
@@ -1839,176 +1841,221 @@ const DashboardPage: React.FC = () => {
         </>
       )}
 
-      {/* ======== ADMIN: MEDIUM-WISE GENDER COUNTS ======== */}
-      {user?.role !== 'SCHOOL' && !selectedSchoolId && (
+      {/* ======== ADMIN: FIRST LANGUAGES (P01 - P04) DISTRIBUTION ======== */}
+      {user?.role !== 'SCHOOL' && !selectedSchoolId && subjectCounts?.firstLanguages && (
         <div className="animate-in slide-in-from-bottom duration-500 delay-50">
+          <div className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-xl overflow-hidden mb-5 shadow-xs">
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-[#30363d] flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BookOpen size={16} className="text-cyan-500" />
+                <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                  First Language & Paper Distribution (P01 - P04)
+                </h3>
+              </div>
+              <span className="text-[10px] font-bold text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+                {(subjectCounts.totalStudents || 0).toLocaleString()} Total Enrolled
+              </span>
+            </div>
+
+            <div className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                {(subjectCounts.firstLanguages || []).map((langGroup: any, gIdx: number) => {
+                  const slotColors = [
+                    { bar: 'bg-cyan-500', text: 'text-cyan-600 dark:text-cyan-400', bg: 'bg-cyan-50/60 dark:bg-cyan-950/20', border: 'border-cyan-100 dark:border-cyan-800' },
+                    { bar: 'bg-violet-500', text: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50/60 dark:bg-violet-950/20', border: 'border-violet-100 dark:border-violet-800' },
+                    { bar: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50/60 dark:bg-emerald-950/20', border: 'border-emerald-100 dark:border-emerald-800' },
+                    { bar: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50/60 dark:bg-amber-950/20', border: 'border-amber-100 dark:border-amber-800' },
+                  ];
+                  const col = slotColors[gIdx % slotColors.length];
+                  const totalInSlot = langGroup.data.reduce((s: number, d: any) => s + d.count, 0);
+
+                  return (
+                    <div key={langGroup.code} className={`${col.bg} border ${col.border} rounded-xl p-3.5`}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className={`text-[11px] font-black ${col.text} uppercase tracking-wider`}>{langGroup.code}</span>
+                        <span className="text-[10px] font-black text-gray-700 dark:text-gray-300 bg-white dark:bg-[#161b22] px-2 py-0.5 rounded-full shadow-2xs">
+                          {totalInSlot.toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-[9px] font-bold text-gray-400 mb-3 uppercase tracking-tight">{langGroup.label}</p>
+                      <div className="space-y-2">
+                        {langGroup.data.slice(0, 5).map((lang: any, i: number) => {
+                          const pct = totalInSlot > 0 ? Math.round((lang.count / totalInSlot) * 100) : 0;
+                          return (
+                            <div key={i} className="bg-white/80 dark:bg-[#161b22]/80 p-2 rounded-lg border border-gray-100 dark:border-[#30363d]">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[11px] font-extrabold text-gray-800 dark:text-gray-200 truncate max-w-[70%]">{lang._id}</span>
+                                <div className="flex items-center gap-1.5 text-[10px]">
+                                  <span className="text-blue-600 dark:text-blue-400 font-bold" title="Boys">M:{lang.male || 0}</span>
+                                  <span className="text-gray-300 dark:text-gray-600">|</span>
+                                  <span className="text-rose-600 dark:text-rose-400 font-bold" title="Girls">F:{lang.female || 0}</span>
+                                  <span className="text-gray-300 dark:text-gray-600">|</span>
+                                  <span className="text-gray-900 dark:text-white font-black">{lang.count.toLocaleString()}</span>
+                                </div>
+                              </div>
+                              <div className="h-1.5 bg-gray-100 dark:bg-[#30363d] rounded-full overflow-hidden">
+                                <div className={`h-full ${col.bar} rounded-full transition-all duration-500`} style={{ width: `${pct}%` }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {langGroup.data.length > 5 && (
+                          <div className="text-[9px] font-bold text-gray-400 text-center pt-1">+{langGroup.data.length - 5} more languages</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======== ADMIN: MEDIUM-WISE INDIVIDUAL CARDS WITH UNIQUE SUBJECTS ======== */}
+      {user?.role !== 'SCHOOL' && !selectedSchoolId && (
+        <div className="animate-in slide-in-from-bottom duration-500 delay-75">
           {isSubjectCountsLoading ? (
-            <div className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-xl p-6">
-              <div className="flex items-center justify-center">
-                <div className="flex items-center gap-3 text-[11px] font-black uppercase tracking-wider text-gray-400">
-                  <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                  Loading Medium Counts...
+            <div className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-2xl p-8 mb-6 shadow-xs">
+              <div className="flex flex-col items-center justify-center py-6 text-center">
+                <div className="relative flex items-center justify-center mb-4">
+                  <div className="w-14 h-14 rounded-full border-4 border-indigo-100 dark:border-indigo-950 border-t-indigo-600 dark:border-t-indigo-400 animate-spin" />
+                  <div className="absolute w-7 h-7 rounded-full bg-indigo-500/20 dark:bg-indigo-400/20 animate-ping" />
+                  <GraduationCap className="absolute text-indigo-600 dark:text-indigo-400" size={22} />
+                </div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                  Loading Medium-wise Subject Data...
+                </h4>
+                <p className="text-[10px] font-bold text-gray-400 max-w-xs">
+                  Fetching enrollment statistics for English, Malayalam, and Tamil Mediums...
+                </p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full mt-6">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="bg-slate-50 dark:bg-[#1a1f26] p-4 rounded-xl border border-gray-100 dark:border-[#30363d] animate-pulse space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded-md" />
+                        <div className="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded-full" />
+                      </div>
+                      <div className="h-6 w-24 bg-gray-200 dark:bg-gray-700 rounded-md" />
+                      <div className="space-y-1.5 pt-2">
+                        <div className="h-3 w-full bg-gray-200 dark:bg-gray-700 rounded" />
+                        <div className="h-3 w-full bg-gray-200 dark:bg-gray-700 rounded" />
+                        <div className="h-3 w-3/4 bg-gray-200 dark:bg-gray-700 rounded" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           ) : subjectCounts?.mediumCounts && subjectCounts.mediumCounts.length > 0 && (
-            <div className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 dark:border-[#30363d] flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <GraduationCap size={16} className="text-violet-500" />
-                  <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">Medium-wise Student Counts</h3>
-                </div>
-                <span className="text-[10px] font-bold text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{subjectCounts.mediumCounts.length} Mediums</span>
-              </div>
+            <div className="mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {subjectCounts.mediumCounts.map((med: any) => {
+                  const mediumStyles: Record<string, { gradient: string; accent: string; ring: string; badgeBg: string }> = {
+                    EM: { gradient: 'from-blue-50/80 to-cyan-50/40 dark:from-blue-950/30 dark:to-cyan-950/10', accent: 'text-blue-600 dark:text-blue-400', ring: 'border-blue-200 dark:border-blue-800', badgeBg: 'bg-blue-500 text-white' },
+                    MM: { gradient: 'from-emerald-50/80 to-teal-50/40 dark:from-emerald-950/30 dark:to-teal-950/10', accent: 'text-emerald-600 dark:text-emerald-400', ring: 'border-emerald-200 dark:border-emerald-800', badgeBg: 'bg-emerald-500 text-white' },
+                    TM: { gradient: 'from-orange-50/80 to-amber-50/40 dark:from-orange-950/30 dark:to-amber-950/10', accent: 'text-orange-600 dark:text-orange-400', ring: 'border-orange-200 dark:border-orange-800', badgeBg: 'bg-orange-500 text-white' },
+                  };
+                  const st = mediumStyles[med.code] || { gradient: 'from-gray-50 to-slate-50 dark:from-gray-950/20 dark:to-slate-950/10', accent: 'text-gray-600', ring: 'border-gray-200 dark:border-[#30363d]', badgeBg: 'bg-gray-600 text-white' };
 
-              <div className="p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                  {(() => {
-                    const mediumStyles: Record<string, { gradient: string; accent: string; maleBar: string; femaleBar: string; ring: string }> = {
-                      TM: { gradient: 'from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/10', accent: 'text-orange-600', maleBar: 'bg-blue-500', femaleBar: 'bg-pink-500', ring: 'ring-orange-200 dark:ring-orange-800' },
-                      EM: { gradient: 'from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/10', accent: 'text-blue-600', maleBar: 'bg-blue-500', femaleBar: 'bg-rose-500', ring: 'ring-blue-200 dark:ring-blue-800' },
-                      MM: { gradient: 'from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/10', accent: 'text-emerald-600', maleBar: 'bg-emerald-500', femaleBar: 'bg-fuchsia-500', ring: 'ring-emerald-200 dark:ring-emerald-800' },
-                      KM: { gradient: 'from-purple-50 to-violet-50 dark:from-purple-950/20 dark:to-violet-950/10', accent: 'text-purple-600', maleBar: 'bg-purple-500', femaleBar: 'bg-rose-400', ring: 'ring-purple-200 dark:ring-purple-800' },
-                    };
-                    const defaultStyle = { gradient: 'from-gray-50 to-slate-50 dark:from-gray-950/20 dark:to-slate-950/10', accent: 'text-gray-600', maleBar: 'bg-gray-500', femaleBar: 'bg-pink-400', ring: 'ring-gray-200 dark:ring-gray-800' };
-                    const totalAll = subjectCounts.totalStudents || 1;
+                  const allSubjects = med.subjects || [];
+                  const displayedSubjects = isAllMediumsExpanded ? allSubjects : allSubjects.slice(0, 5);
+                  const remainingCount = allSubjects.length - 5;
 
-                    return subjectCounts.mediumCounts.map((med: any, i: number) => {
-                      const st = mediumStyles[med.code] || defaultStyle;
-                      const typePct = Math.round((med.total / totalAll) * 100);
-                      const malePct = med.total > 0 ? Math.round((med.male / med.total) * 100) : 0;
-                      const femalePct = med.total > 0 ? 100 - malePct : 0;
-
-                      return (
-                        <div key={med.code} className={`bg-gradient-to-br ${st.gradient} rounded-xl p-4 border border-gray-100 dark:border-[#30363d] transition-all hover:shadow-md hover:ring-2 ${st.ring} duration-300`}>
-                          {/* Header */}
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className={`w-9 h-9 rounded-lg bg-white dark:bg-[#161b22] shadow-sm flex items-center justify-center ring-1 ring-gray-100 dark:ring-gray-800`}>
-                                <span className={`text-[10px] font-black ${st.accent}`}>{med.code}</span>
-                              </div>
-                              <div>
-                                <h4 className="text-[11px] font-black text-gray-900 dark:text-white uppercase tracking-wider leading-tight">{med.name}</h4>
-                                <p className="text-[9px] font-bold text-gray-400">{typePct}% of total</p>
-                              </div>
-                            </div>
+                  return (
+                    <div key={med.code} className={`bg-gradient-to-br ${st.gradient} border ${st.ring} rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between`}>
+                      {/* Card Header */}
+                      <div className="p-4 border-b border-gray-100/80 dark:border-[#30363d]">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${st.badgeBg}`}>
+                              {med.code}
+                            </span>
+                            <h4 className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-wider">
+                              {med.name}
+                            </h4>
                           </div>
-
-                          {/* Total */}
-                          <div className="mb-3">
-                            <div className="text-2xl font-black text-gray-900 dark:text-white leading-none">{med.total.toLocaleString()}</div>
-                            <div className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">Total Students</div>
-                          </div>
-
-                          {/* Male / Female Row */}
-                          <div className="grid grid-cols-2 gap-2 mb-3">
-                            <div className="bg-white/60 dark:bg-[#161b22]/60 rounded-lg p-2 text-center">
-                              <div className="text-[9px] font-black text-blue-500 uppercase tracking-wider mb-0.5">Male</div>
-                              <div className="text-sm font-black text-blue-700 dark:text-blue-400">{med.male.toLocaleString()}</div>
-                            </div>
-                            <div className="bg-white/60 dark:bg-[#161b22]/60 rounded-lg p-2 text-center">
-                              <div className="text-[9px] font-black text-pink-500 uppercase tracking-wider mb-0.5">Female</div>
-                              <div className="text-sm font-black text-pink-700 dark:text-pink-400">{med.female.toLocaleString()}</div>
-                            </div>
-                          </div>
-
-                          {/* Gender Bar */}
-                          <div className="space-y-1">
-                            <div className="h-2.5 bg-white dark:bg-[#161b22] rounded-full overflow-hidden flex">
-                              <div className={`h-full ${st.maleBar} rounded-l-full transition-all duration-700`} style={{ width: `${malePct}%` }} />
-                              <div className={`h-full ${st.femaleBar} rounded-r-full transition-all duration-700`} style={{ width: `${femalePct}%` }} />
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-[8px] font-bold text-blue-500">M {malePct}%</span>
-                              <span className="text-[8px] font-bold text-pink-500">F {femalePct}%</span>
-                            </div>
-                          </div>
+                          <span className="text-[10px] font-black text-gray-500 bg-white/80 dark:bg-[#161b22]/80 px-2 py-0.5 rounded-full border border-gray-200/50 dark:border-gray-700">
+                            {med.total.toLocaleString()} Students
+                          </span>
                         </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* ======== ADMIN: SUBJECT-WISE COUNTS ======== */}
-      {user?.role !== 'SCHOOL' && !selectedSchoolId && (
-        <div className="animate-in slide-in-from-bottom duration-500 delay-75">
-          {isSubjectCountsLoading ? (
-            <div className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-xl p-8">
-              <div className="flex items-center justify-center">
-                <div className="flex items-center gap-3 text-[11px] font-black uppercase tracking-wider text-gray-400">
-                  <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-                  Loading Subject-wise Counts...
-                </div>
-              </div>
-            </div>
-          ) : subjectCounts && (
-            <div className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 dark:border-[#30363d] flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Languages size={16} className="text-cyan-500" />
-                  <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">Subject-wise Student Counts</h3>
-                </div>
-                <span className="text-[10px] font-bold text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{(subjectCounts.totalStudents || 0).toLocaleString()} Total Students</span>
-              </div>
+                        {/* Gender Breakdown Row */}
+                        <div className="flex items-center justify-between text-[11px] bg-white/70 dark:bg-[#161b22]/70 px-3 py-1.5 rounded-xl border border-gray-100 dark:border-[#30363d] mt-2">
+                          <span className="text-blue-600 dark:text-blue-400 font-extrabold flex items-center gap-1">
+                            Boys: <span className="font-black">{med.male.toLocaleString()}</span>
+                          </span>
+                          <span className="text-rose-600 dark:text-rose-400 font-extrabold flex items-center gap-1">
+                            Girls: <span className="font-black">{med.female.toLocaleString()}</span>
+                          </span>
+                        </div>
+                      </div>
 
-              <div className="p-4">
-                {/* ===== First Language Section (P01-P04) ===== */}
-                <div className="mb-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-6 h-6 bg-cyan-100 dark:bg-cyan-900/30 rounded-md flex items-center justify-center">
-                      <BookOpen size={12} className="text-cyan-600" />
-                    </div>
-                    <h4 className="text-[11px] font-black uppercase tracking-wider text-cyan-700 dark:text-cyan-400">First Language Distribution (P01 - P04)</h4>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {(subjectCounts.firstLanguages || []).map((langGroup: any, gIdx: number) => {
-                      const slotColors = [
-                        { bar: 'bg-cyan-500', text: 'text-cyan-600', bg: 'bg-cyan-50 dark:bg-cyan-950/20', border: 'border-cyan-100 dark:border-cyan-800', dot: 'bg-cyan-500' },
-                        { bar: 'bg-violet-500', text: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-950/20', border: 'border-violet-100 dark:border-violet-800', dot: 'bg-violet-500' },
-                        { bar: 'bg-emerald-500', text: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/20', border: 'border-emerald-100 dark:border-emerald-800', dot: 'bg-emerald-500' },
-                        { bar: 'bg-amber-500', text: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/20', border: 'border-amber-100 dark:border-amber-800', dot: 'bg-amber-500' },
-                      ];
-                      const col = slotColors[gIdx % slotColors.length];
-                      const totalInSlot = langGroup.data.reduce((s: number, d: any) => s + d.count, 0);
-                      const langColors = ['#06b6d4', '#8b5cf6', '#22c55e', '#f59e0b', '#ef4444', '#3b82f6', '#ec4899', '#14b8a6', '#f97316'];
+                      {/* Card Body - Subject List */}
+                      <div className="p-4 flex-1">
+                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2.5 flex items-center justify-between">
+                          <span>Subject Code & Name</span>
+                          <span>Student Breakdown</span>
+                        </div>
 
-                      return (
-                        <div key={langGroup.code} className={`${col.bg} border ${col.border} rounded-xl p-3`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className={`text-[10px] font-black ${col.text} uppercase tracking-wider`}>{langGroup.code}</span>
-                            <span className="text-[10px] font-black text-gray-500 bg-white dark:bg-[#161b22] px-1.5 py-0.5 rounded-full">{totalInSlot.toLocaleString()}</span>
-                          </div>
-                          <p className="text-[9px] font-bold text-gray-400 mb-2 uppercase">{langGroup.label}</p>
-                          <div className="space-y-1.5">
-                            {langGroup.data.slice(0, 6).map((lang: any, i: number) => {
-                              const pct = totalInSlot > 0 ? Math.round((lang.count / totalInSlot) * 100) : 0;
-                              return (
-                                <div key={i}>
-                                  <div className="flex items-center justify-between mb-0.5">
-                                    <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400 truncate max-w-[80%]">{lang._id}</span>
-                                    <span className="text-[10px] font-black text-gray-900 dark:text-white">{lang.count.toLocaleString()}</span>
-                                  </div>
-                                  <div className="h-1.5 bg-white dark:bg-[#161b22] rounded-full overflow-hidden">
-                                    <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: langColors[i % langColors.length] }} />
-                                  </div>
-                                  <div className="text-[8px] font-bold text-gray-400 text-right">{pct}%</div>
+                        {displayedSubjects.length > 0 ? (
+                          <div className="space-y-2">
+                            {displayedSubjects.map((subItem: any, idx: number) => (
+                              <div key={subItem.pCode + subItem.subjectName + idx} className="bg-white/80 dark:bg-[#161b22]/80 p-2.5 rounded-xl border border-gray-100 dark:border-[#30363d] flex items-center justify-between shadow-2xs hover:border-gray-300 dark:hover:border-gray-600 transition-all">
+                                <div className="flex items-center gap-1.5 truncate max-w-[150px]">
+                                  <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800">
+                                    {subItem.pCode}
+                                  </span>
+                                  <span className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-tight truncate" title={subItem.subjectName}>
+                                    {subItem.subjectName}
+                                  </span>
                                 </div>
-                              );
-                            })}
-                            {langGroup.data.length > 6 && (
-                              <div className="text-[9px] font-bold text-gray-400 text-center">+{langGroup.data.length - 6} more</div>
-                            )}
+                                <div className="flex items-center gap-1.5 text-[11px]">
+                                  <span className="text-blue-600 dark:text-blue-400 font-bold" title="Boys">
+                                    M:{subItem.male.toLocaleString()}
+                                  </span>
+                                  <span className="text-gray-300 dark:text-gray-600 font-normal">|</span>
+                                  <span className="text-rose-600 dark:text-rose-400 font-bold" title="Girls">
+                                    F:{subItem.female.toLocaleString()}
+                                  </span>
+                                  <span className="text-gray-300 dark:text-gray-600 font-normal">|</span>
+                                  <span className="text-gray-900 dark:text-white font-black bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+                                    Total: {subItem.total.toLocaleString()}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
                           </div>
+                        ) : (
+                          <p className="text-[11px] font-medium text-gray-400 py-3 text-center">No subjects recorded for this medium.</p>
+                        )}
+                      </div>
+
+                      {/* Card Footer - Expandable More Toggle (Synchronized Across All Mediums) */}
+                      {allSubjects.length > 5 && (
+                        <div className="p-3 bg-white/40 dark:bg-[#161b22]/40 border-t border-gray-100/60 dark:border-[#30363d] text-center">
+                          <button
+                            type="button"
+                            onClick={() => setIsAllMediumsExpanded(!isAllMediumsExpanded)}
+                            className="inline-flex items-center gap-1 text-[11px] font-black text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors uppercase tracking-wider cursor-pointer"
+                          >
+                            {isAllMediumsExpanded ? (
+                              <>
+                                <ChevronUp size={14} /> Show less (Collapse All)
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown size={14} /> + {remainingCount} more subjects (Expand All)
+                              </>
+                            )}
+                          </button>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

@@ -7,7 +7,7 @@ import Swal from 'sweetalert2';
 import Papa from 'papaparse';
 import PageLoader from '../../components/common/PageLoader';
 import { useAuth } from '../../context/AuthContext';
-import { getSubjectShortLabel } from '../../lib/subjectUtils';
+import { getSubjectShortLabel, getSubjectPCode } from '../../lib/subjectUtils';
 interface MarksEntryBulkGridProps {
   selectedExam: any;
   availableSubjects: any[];
@@ -206,7 +206,7 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
     let totalAbsent = 0;
     let totalPctSum = 0;
     const gradeCounts: Record<string, number> = {
-      'A+': 0, 'A': 0, 'B+': 0, 'B': 0, 'C': 0, 'D': 0, 'E': 0, 'Pass': 0, 'Fail': 0
+      'A+': 0, 'A': 0, 'B+': 0, 'B': 0, 'C+': 0, 'C': 0, 'D+': 0, 'D': 0, 'E': 0, 'Pass': 0, 'Fail': 0
     };
 
     students.forEach(st => {
@@ -229,14 +229,16 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
           } else {
             const num = Number(val);
             const max = resolveMaxMark(sub) || 100;
-            const pct = (num / max) * 100;
+            const pct = Math.round((num / max) * 100);
             totalPctSum += pct;
             if (pct >= 90) gradeCounts['A+']++;
             else if (pct >= 80) gradeCounts['A']++;
             else if (pct >= 70) gradeCounts['B+']++;
             else if (pct >= 60) gradeCounts['B']++;
-            else if (pct >= 50) gradeCounts['C']++;
-            else if (pct >= 40) gradeCounts['D']++;
+            else if (pct >= 50) gradeCounts['C+']++;
+            else if (pct >= 40) gradeCounts['C']++;
+            else if (pct >= 30) gradeCounts['D+']++;
+            else if (pct >= 20) gradeCounts['D']++;
             else gradeCounts['E']++;
           }
         }
@@ -573,11 +575,42 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
 
   const confirmSingleSubject = (subjectId: string) => {
     if (!onConfirmSubject) return;
-    const subjectMarksData = students.map(st => {
+    
+    let hasValidationError = false;
+    let missingStudentName = '';
+    
+    const subjectMarksData = students.filter(st => {
+      if (isSubjectApplicable && !isSubjectApplicable(st.id, subjectId)) return false;
+      const sub = availableSubjects.find(x => x.id === subjectId);
+      if (sub) {
+        const currentPCode = getSubjectPCode(sub);
+        
+        const sameCodeSubjects = availableSubjects.filter(x => {
+            const code = getSubjectPCode(x);
+            return code && code === currentPCode && x.id !== sub.id;
+        });
+        const sameCodeHasMarks = sameCodeSubjects.some(x => {
+          const val = gridData[st.id]?.[x.id];
+          return val !== '' && val !== undefined && val !== null;
+        });
+        const val = gridData[st.id]?.[subjectId];
+        const hasThisMarks = val !== '' && val !== undefined && val !== null;
+        if (sameCodeHasMarks && !hasThisMarks) {
+          return false;
+        }
+      }
+      return true;
+    }).map(st => {
       const val = gridData[st.id]?.[subjectId];
       let grade = '';
       let isAbsent = false;
       let markNum = 0;
+      
+      if (!val) {
+        hasValidationError = true;
+        missingStudentName = st.name;
+      }
+      
       if (val) {
         if (val.toLowerCase() === 'ab' || val.toLowerCase() === 'absent') {
            isAbsent = true;
@@ -597,6 +630,12 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
         isEmpty: !val
       };
     });
+    
+    if (hasValidationError) {
+      toast.error(`Validation Failed: Missing marks for ${missingStudentName}. Please enter all marks or mark as Absent before confirming.`);
+      return;
+    }
+    
     onConfirmSubject(subjectId, subjectMarksData);
   };
 
@@ -725,53 +764,6 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header section with optional CSV upload (School only) */}
-      {isAllComplete && user?.role === 'SCHOOL' && (
-        <div className="flex flex-col sm:flex-row justify-between items-center bg-white dark:bg-[#161b22] p-6 rounded-3xl border border-gray-100 dark:border-[#30363d] shadow-sm">
-          <div>
-            <h2 className="text-lg font-black uppercase tracking-widest flex items-center gap-2 dark:text-white">
-              <FileText className="text-indigo-600" />
-              Consolidated Marks Entry
-            </h2>
-            <p className="text-sm text-gray-500 font-bold mt-1">
-              {selectedExam?.allow_csv_upload !== false
-                ? "Upload CSV or enter grades manually for all subjects."
-                : "Enter grades manually for all subjects."}
-            </p>
-          </div>
-          
-          {!isFinalLocked && (
-            <div className="flex items-center gap-3">
-              {selectedExam?.allow_csv_upload !== false && (
-                <div className="relative">
-                  <input
-                    type="file"
-                    accept=".csv"
-                    onChange={handleFileUpload}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                    disabled={isUploading}
-                  />
-                  <button
-                    type="button"
-                    disabled={isUploading}
-                    className="flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 px-6 py-2.5 rounded-xl font-black uppercase tracking-widest transition-all"
-                  >
-                    {isUploading ? (
-                      <span className="animate-pulse">Parsing CSV...</span>
-                    ) : (
-                      <>
-                        <Upload size={18} />
-                        Upload CSV
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {/* ── Final Confirmation panel (moved above table) ─────────────── */}
       {isAllInputsCompleted && !isFinalLocked && user?.role === 'SCHOOL' && (
         <div className="bg-white dark:bg-[#161b22] rounded-3xl border border-indigo-200 dark:border-indigo-900 shadow-sm overflow-hidden">
@@ -854,6 +846,15 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
                                 <CheckCircle size={12} /> Locked
                               </div>
                             )
+                          ) : (isComplete && user?.role === 'TEACHER') ? (
+                            <button
+                              onClick={() => confirmSingleSubject(sub.id)}
+                              disabled={isSaving || hasUnsavedChanges}
+                              title={hasUnsavedChanges ? "Save your progress first before confirming" : "Confirm and lock marks for this subject"}
+                              className="px-3 py-1 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 rounded-lg text-xs font-black uppercase tracking-wider transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                            >
+                              <CheckCircle size={12} /> Confirm
+                            </button>
                           ) : null}
                         </div>
                       )}
@@ -913,10 +914,14 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
                     const maxMark = resolveMaxMark(sub);
                     const val = gridData[student.id]?.[sub.id];
                     const notApplicable = isSubjectApplicable && !isSubjectApplicable(student.id, sub.id);
-
-                    const sameCodeSubjects = availableSubjects.filter(s => s.shortName === sub.shortName && s.id !== sub.id);
-                    const sameCodeHasMarks = sameCodeSubjects.some(s => {
-                      const otherVal = gridData[student.id]?.[s.id];
+                    
+                    const currentPCode = getSubjectPCode(sub);
+                    const sameCodeSubjects = availableSubjects.filter(x => {
+                      const code = getSubjectPCode(x);
+                      return code && code === currentPCode && x.id !== sub.id;
+                    });
+                    const sameCodeHasMarks = sameCodeSubjects.some(x => {
+                      const otherVal = gridData[student.id]?.[x.id];
                       return otherVal && otherVal.toString().trim() !== '';
                     });
                     const mutuallyExcluded = !notApplicable && sameCodeHasMarks && (!val || val.toString().trim() === '');
@@ -925,13 +930,15 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
                     
                     let displayGrade = '-';
                     if (val && val.toLowerCase() !== 'ab' && !isNaN(Number(val))) {
-                      const pct = (Number(val) / maxMark) * 100;
+                      const pct = Math.round((Number(val) / maxMark) * 100);
                       if (pct >= 90) displayGrade = 'A+';
                       else if (pct >= 80) displayGrade = 'A';
                       else if (pct >= 70) displayGrade = 'B+';
                       else if (pct >= 60) displayGrade = 'B';
-                      else if (pct >= 50) displayGrade = 'C';
-                      else if (pct >= 40) displayGrade = 'D';
+                      else if (pct >= 50) displayGrade = 'C+';
+                      else if (pct >= 40) displayGrade = 'C';
+                      else if (pct >= 30) displayGrade = 'D+';
+                      else if (pct >= 20) displayGrade = 'D';
                       else displayGrade = 'E';
                     } else if (val && val.toLowerCase() === 'ab') {
                       displayGrade = 'AB';
@@ -1165,14 +1172,16 @@ export const MarksEntryBulkGrid: React.FC<MarksEntryBulkGridProps> = ({
                   <span>Grade Distribution</span>
                   <span className="text-indigo-400 font-bold">{students.length} Total Students</span>
                 </div>
-                <div className="grid grid-cols-4 gap-2.5">
+                <div className="grid grid-cols-5 gap-2.5">
                   {[
                     { label: 'A+ Grade', count: gradeAnalytics.gradeCounts['A+'], color: 'from-emerald-500/20 to-teal-500/10 text-emerald-300 border-emerald-500/30' },
                     { label: 'A Grade', count: gradeAnalytics.gradeCounts['A'], color: 'from-blue-500/20 to-cyan-500/10 text-blue-300 border-blue-500/30' },
                     { label: 'B+ Grade', count: gradeAnalytics.gradeCounts['B+'], color: 'from-indigo-500/20 to-purple-500/10 text-indigo-300 border-indigo-500/30' },
                     { label: 'B Grade', count: gradeAnalytics.gradeCounts['B'], color: 'from-purple-500/20 to-fuchsia-500/10 text-purple-300 border-purple-500/30' },
-                    { label: 'C Grade', count: gradeAnalytics.gradeCounts['C'], color: 'from-amber-500/20 to-orange-500/10 text-amber-300 border-amber-500/30' },
-                    { label: 'D Grade', count: gradeAnalytics.gradeCounts['D'], color: 'from-orange-500/20 to-red-500/10 text-orange-300 border-orange-500/30' },
+                    { label: 'C+ Grade', count: gradeAnalytics.gradeCounts['C+'], color: 'from-amber-500/20 to-yellow-500/10 text-amber-300 border-amber-500/30' },
+                    { label: 'C Grade', count: gradeAnalytics.gradeCounts['C'], color: 'from-yellow-500/20 to-orange-500/10 text-yellow-300 border-yellow-500/30' },
+                    { label: 'D+ Grade', count: gradeAnalytics.gradeCounts['D+'], color: 'from-orange-500/20 to-red-500/10 text-orange-300 border-orange-500/30' },
+                    { label: 'D Grade', count: gradeAnalytics.gradeCounts['D'], color: 'from-rose-500/20 to-pink-500/10 text-rose-300 border-rose-500/30' },
                     { label: 'E Grade', count: gradeAnalytics.gradeCounts['E'], color: 'from-red-500/20 to-rose-500/10 text-red-300 border-red-500/30' },
                     { label: 'Absent', count: gradeAnalytics.totalAbsent, color: 'from-slate-500/20 to-gray-500/10 text-slate-300 border-slate-500/30' },
                   ].map((item, idx) => (

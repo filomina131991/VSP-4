@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { FileText, ChevronDown, Search, Check } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 interface Exam {
   id: string;
@@ -7,6 +8,7 @@ interface Exam {
   academicYear?: string;
   standard?: string;
   confirmedSchools?: string[];
+  status?: string;
 }
 
 interface ExamSelectProps {
@@ -28,6 +30,7 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
   className = '',
   configuredIds = [],
 }) => {
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedIdx, setHighlightedIdx] = useState(-1);
@@ -84,6 +87,41 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
   }, [isOpen, filteredExams, highlightedIdx, onSelect]);
 
   const isConfigured = selectedExamId ? configuredIds.includes(selectedExamId) : false;
+  const isSchoolView = user?.role === 'SCHOOL';
+
+  const renderStatusBadge = (exam: any, isSelected: boolean) => {
+    if (isSchoolView) {
+      const configured = configuredIds.includes(exam.id);
+      return (
+        <span className={`inline-block text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${configured ? 'bg-emerald-600 text-white shadow-xs' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400'}`}>
+          {configured ? '✓ Configured' : 'Configure Required'}
+        </span>
+      );
+    }
+
+    // For Admin users, show the actual exam status
+    let statusText = exam.status || 'ACTIVE';
+    let statusColor = 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400';
+    const s = (exam.status || '').toUpperCase();
+    if (s === 'PUBLISHED') statusColor = 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400';
+    else if (s === 'ACTIVE') statusColor = 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400';
+    else if (s === 'DRAFT') statusColor = 'bg-gray-100 dark:bg-gray-900/40 text-gray-700 dark:text-gray-400';
+    else if (s === 'COMPLETED' || s === 'ARCHIVED') statusColor = 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400';
+
+    return (
+      <span className={`inline-block text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${statusColor}`}>
+        {statusText}
+      </span>
+    );
+  };
+
+  const getBorderClasses = (exam: any) => {
+    if (!isSchoolView) return 'bg-white dark:bg-[#161b22] border-gray-200 dark:border-[#30363d] hover:border-gray-300 dark:hover:border-gray-600';
+    const configured = configuredIds.includes(exam.id);
+    return configured 
+      ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-400 dark:border-emerald-600/80 hover:border-emerald-500 shadow-emerald-500/10'
+      : 'bg-white dark:bg-[#161b22] border-gray-200 dark:border-[#30363d] hover:border-gray-300 dark:hover:border-gray-600';
+  };
 
   return (
     <div ref={dropdownRef} className={`relative ${className}`}>
@@ -91,11 +129,7 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
         type="button"
         onClick={() => { setIsOpen(prev => !prev); setSearchQuery(''); setHighlightedIdx(-1); }}
         onKeyDown={(e) => { if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); setIsOpen(true); } }}
-        className={`w-full text-left px-3.5 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer border ${
-          isConfigured
-            ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-400 dark:border-emerald-600/80 hover:border-emerald-500 shadow-emerald-500/10'
-            : 'bg-white dark:bg-[#161b22] border-gray-200 dark:border-[#30363d] hover:border-gray-300 dark:hover:border-gray-600'
-        }`}
+        className={`w-full text-left px-3.5 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer border ${selectedExam ? getBorderClasses(selectedExam) : 'bg-white dark:bg-[#161b22] border-gray-200 dark:border-[#30363d] hover:border-gray-300 dark:hover:border-gray-600'}`}
       >
         <div className="flex items-start gap-2">
           <FileText size={15} className={`${isConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-500 dark:text-indigo-400'} shrink-0 mt-0.5`} />
@@ -105,9 +139,7 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
             </div>
             {selectedExam && (
               <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                <span className={`inline-block text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${isConfigured ? 'bg-emerald-600 text-white shadow-xs' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400'}`}>
-                  {isConfigured ? '✓ Configured' : 'Configure Required'}
-                </span>
+                {renderStatusBadge(selectedExam, true)}
                 {selectedExam.academicYear && (
                   <span className="text-[9px] font-bold text-gray-400 dark:text-gray-500">{selectedExam.academicYear}</span>
                 )}

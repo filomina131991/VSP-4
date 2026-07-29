@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Save, AlertCircle, FileEdit, Settings2, Eye, EyeOff, Plus, Trash2, CheckSquare, X, ChevronDown, ChevronUp, CheckCircle2, XCircle } from 'lucide-react';
+import { Save, AlertCircle, FileEdit, Settings2, Eye, EyeOff, Plus, Trash2, CheckSquare, X, ChevronDown, ChevronUp, CheckCircle2, XCircle, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Modal from '../../components/common/Modal';
 import { apiClient } from '../../lib/apiClient';
@@ -80,6 +80,8 @@ const MarksEntry2Page: React.FC = () => {
   const [showExamConfigModal, setShowExamConfigModal] = useState<boolean>(false);
   const [isSubjectsCollapsed, setIsSubjectsCollapsed] = useState<boolean>(true);
   const [rejectedInputs, setRejectedInputs] = useState<Set<string>>(new Set());
+  const unsavedInputKeysRef = useRef<Set<string>>(new Set());
+  const [recentlySavedInputKeys, setRecentlySavedInputKeys] = useState<Set<string>>(new Set());
   const [configuredExamIds, setConfiguredExamIds] = useState<string[]>([]);
   const [classStudents, setClassStudents] = useState<any[]>([]);
 
@@ -173,7 +175,9 @@ const MarksEntry2Page: React.FC = () => {
 
   const reloadExamConfig = async (examId: string) => {
     try {
-      const res = await apiClient.get(`/school/exam-config/${examId}`);
+      const res = await apiClient.get(`/school/exam-config/${examId}`, {
+        params: { schoolId: user?.schoolId || user?.id }
+      });
       const savedConfig = res.data || {};
       setSchoolConfig(savedConfig);
     } catch (err) {
@@ -199,13 +203,74 @@ const MarksEntry2Page: React.FC = () => {
       isPaper: true
     }));
 
+    if (selectedMedium) {
+      const normSel = selectedMedium.trim().toLowerCase();
+      const selMedObj = mediums.find(m => 
+        m.id === selectedMedium || 
+        m.shortName.toLowerCase() === normSel || 
+        m.code.toLowerCase() === normSel || 
+        m.name.toLowerCase() === normSel
+      );
+      const targetShortName = selMedObj ? selMedObj.shortName.toLowerCase() : normSel;
+
+      let reqSuffix = '';
+      if (targetShortName === 'tamil') reqSuffix = 'TM';
+      else if (targetShortName === 'english') reqSuffix = 'EM';
+      else if (targetShortName === 'malayalam') reqSuffix = 'MM';
+      else if (targetShortName === 'kannada') reqSuffix = 'KM';
+      else if (targetShortName === 'urdu') reqSuffix = 'UR';
+      else if (targetShortName === 'arabic') reqSuffix = 'AR';
+
+      const allSuffixes = ['TM', 'EM', 'MM', 'KM', 'UR', 'AR', 'HI'];
+
+      subs = subs.filter(s => {
+        const nameUpper = (s.name || '').trim().toUpperCase();
+        const shortUpper = (s.shortName || '').trim().toUpperCase();
+        const sMedium = (s.medium || '').trim().toUpperCase();
+
+        if (s.mediumId && selMedObj && (String(s.mediumId) === String(selMedObj.id) || String(s.mediumId) === String(selMedObj._id))) {
+          return true;
+        }
+
+        if (sMedium) {
+          if (sMedium.toLowerCase() === targetShortName || sMedium.toLowerCase() === reqSuffix.toLowerCase()) return true;
+          if (targetShortName === 'tamil' && (sMedium === 'TM' || sMedium.includes('TAMIL'))) return true;
+          if (targetShortName === 'english' && (sMedium === 'EM' || sMedium.includes('ENGLISH'))) return true;
+          if (targetShortName === 'malayalam' && (sMedium === 'MM' || sMedium.includes('MALAYALAM'))) return true;
+          if (targetShortName === 'kannada' && (sMedium === 'KM' || sMedium.includes('KANNADA'))) return true;
+          if (targetShortName === 'urdu' && (sMedium === 'UR' || sMedium.includes('URDU'))) return true;
+          if (targetShortName === 'arabic' && (sMedium === 'AR' || sMedium.includes('ARABIC'))) return true;
+          return false;
+        }
+
+        const endingSuffix = allSuffixes.find(suf => nameUpper.endsWith(' ' + suf) || nameUpper.endsWith('-' + suf));
+        if (endingSuffix) {
+          return reqSuffix ? (nameUpper.endsWith(' ' + reqSuffix) || nameUpper.endsWith('-' + reqSuffix)) : true;
+        }
+
+        if ((shortUpper === 'P01' || shortUpper === 'P02') && students.length > 0) {
+          const langs = new Set<string>();
+          students.forEach(st => {
+            if (st.firstLangPaper1) langs.add(st.firstLangPaper1.trim().toUpperCase());
+            if (st.firstLangPaper2) langs.add(st.firstLangPaper2.trim().toUpperCase());
+          });
+          if (langs.size > 0) {
+            const baseName = nameUpper.replace(/\s+(TM|EM|MM|KM|UR|AR|HI)\b/g, '').trim();
+            return langs.has(baseName) || Array.from(langs).some(l => baseName.includes(l) || l.includes(baseName));
+          }
+        }
+
+        return true;
+      });
+    }
+
     if (user?.role === 'TEACHER' && user?.teachingSubjects && Array.isArray(user.teachingSubjects)) {
       // In dynamic mode, teachers might just get all papers, but we can filter if needed.
       // For now, let's keep all papers accessible to teachers, or you can filter by paper name.
       // As per prompt, all columns should be generated. 
     }
     return sortSubjects(subs);
-  }, [schoolConfig, user, selectedMedium]);
+  }, [schoolConfig, user, selectedMedium, students]);
 
   const currentSchoolConfirmedSubjects = useMemo(() => {
     const selectedExam = exams.find(e => e.id === selectedExamId);
@@ -284,6 +349,23 @@ const MarksEntry2Page: React.FC = () => {
     if (!applicable) return true; // Default to true if not found to avoid blocking
     return applicable.has(subjectId);
   }, [studentSubjectApplicability]);
+
+  useEffect(() => {
+    if (!selectedMedium && students.length > 0) {
+      const studentMediums = new Set<string>();
+      students.forEach(st => { if (st.medium) studentMediums.add(st.medium); });
+      const availableMeds = Array.from(studentMediums);
+      
+      if (user?.role === 'TEACHER' && (user as any).mediums) {
+        const teacherMeds = (user as any).mediums as string[];
+        const resolvedTeacherMeds = teacherMeds.map(val => mediums.find(m => m.id === val || m.name === val || m.code === val || m.shortName === val)?.shortName ?? val);
+        const validMeds = availableMeds.filter(m => resolvedTeacherMeds.includes(m));
+        if (validMeds.length > 0) setSelectedMedium(validMeds[0]);
+      } else if (availableMeds.length > 0) {
+        setSelectedMedium(availableMeds[0]);
+      }
+    }
+  }, [students, selectedMedium, user, mediums]);
 
 
   useEffect(() => {
@@ -472,6 +554,8 @@ const MarksEntry2Page: React.FC = () => {
       }
     }));
 
+    unsavedInputKeysRef.current.add(`${studentId}-${subjectId}-${groupName}`);
+
     if (isInvalid) {
       setTimeout(() => {
         const currentInput = document.getElementById(`input-${studentIdx}-${subIdx}-${groupIdx}`) as HTMLInputElement;
@@ -536,8 +620,8 @@ const MarksEntry2Page: React.FC = () => {
     if (pct >= 60) return 'B';
     if (pct >= 50) return 'C+';
     if (pct >= 40) return 'C';
-    if (pct >= 35) return 'D+';
-    if (pct >= 30) return 'D';
+    if (pct >= 30) return 'D+';
+    if (pct >= 20) return 'D';
     return 'E';
   };
 
@@ -559,12 +643,32 @@ const MarksEntry2Page: React.FC = () => {
     });
   };
 
-  const handleSave = async (confirmSubmit: boolean = false) => {
+  const handleSave = async (confirmSubmit: boolean = false, autoSave: boolean = false) => {
     if (!selectedExamId || selectedSubjectIds.length === 0) return;
 
     if (confirmSubmit) {
       for (const subId of selectedSubjectIds) {
         const incompleteStudent = displayedStudents.find(s => {
+          if (!isSubjectApplicable(s.id, subId)) return false;
+          const sub = availableSubjects.find(x => x.id === subId);
+          if (sub) {
+            const getPCode = (s: any) => {
+              const str = `${s.shortName || ''} ${s.name || ''}`.toUpperCase();
+              const match = str.match(/P\d{2}/);
+              return match ? match[0] : s.shortName;
+            };
+            const currentPCode = getPCode(sub);
+            const sameCodeSubjects = availableSubjects.filter(x => getPCode(x) === currentPCode && x.id !== sub.id);
+            const sameCodeHasMarks = sameCodeSubjects.some(x => {
+              const otherData = marksData[s.id]?.[x.id];
+              return otherData && otherData.markGroups && otherData.markGroups.some((g: any) => g.marksObtained !== '' && g.marksObtained !== null && g.marksObtained !== undefined);
+            });
+            const data = marksData[s.id]?.[subId];
+            const hasThisMarks = data && data.markGroups && data.markGroups.some((g: any) => g.marksObtained !== '' && g.marksObtained !== null && g.marksObtained !== undefined);
+            if (sameCodeHasMarks && !hasThisMarks) {
+              return false; // Mutually excluded
+            }
+          }
           const data = marksData[s.id]?.[subId];
           if (!data) return true;
           if (data.isAbsent) return false;
@@ -595,10 +699,32 @@ const MarksEntry2Page: React.FC = () => {
     try {
       let allComp = false;
       for (const subId of selectedSubjectIds) {
-        const payload = displayedStudents.map(s => {
+        const payload = displayedStudents.filter(s => {
+          if (!isSubjectApplicable(s.id, subId)) return false;
+          const sub = availableSubjects.find(x => x.id === subId);
+          if (sub) {
+            const getPCode = (s: any) => {
+              const str = `${s.shortName || ''} ${s.name || ''}`.toUpperCase();
+              const match = str.match(/P\d{2}/);
+              return match ? match[0] : s.shortName;
+            };
+            const currentPCode = getPCode(sub);
+            const sameCodeSubjects = availableSubjects.filter(x => getPCode(x) === currentPCode && x.id !== sub.id);
+            const sameCodeHasMarks = sameCodeSubjects.some(x => {
+              const otherData = marksData[s.id]?.[x.id];
+              return otherData && otherData.markGroups && otherData.markGroups.some((g: any) => g.marksObtained !== '' && g.marksObtained !== null && g.marksObtained !== undefined);
+            });
+            const data = marksData[s.id]?.[subId];
+            const hasThisMarks = data && data.markGroups && data.markGroups.some((g: any) => g.marksObtained !== '' && g.marksObtained !== null && g.marksObtained !== undefined);
+            if (sameCodeHasMarks && !hasThisMarks) {
+              return false; // Mutually excluded
+            }
+          }
+          return true;
+        }).map(s => {
           const data = marksData[s.id]?.[subId] || { isAbsent: false, markGroups: getGroupsForSubject(subId).map(g => ({ ...g, marksObtained: '' })) };
           if (data.isAbsent) {
-            return { studentId: s.id, className: s.className, ...data, totalObtained: 0, grade: 'Ab' };
+            return { studentId: s.id, className: s.className, ...data, totalObtained: 0, grade: 'Ab', isEmpty: false };
           }
           let rowTotal = 0;
           let maxRowTotal = 0;
@@ -679,14 +805,51 @@ const MarksEntry2Page: React.FC = () => {
 
       setAllSubjectsCompleted(allComp && allInputsFilled);
       if (confirmSubmit) setLockedSubjects(prev => Array.from(new Set([...prev, ...selectedSubjectIds])));
-      toast.success(confirmSubmit ? 'Marks Confirmed & Locked!' : 'Draft saved successfully');
+      
+      // Only show success toast if it's a manual save or confirm, avoid spamming on auto-save
+      if (confirmSubmit || !autoSave) toast.success(confirmSubmit ? 'Marks Confirmed & Locked!' : 'Draft saved successfully');
+      
+      if (unsavedInputKeysRef.current.size > 0) {
+        setRecentlySavedInputKeys(new Set(unsavedInputKeysRef.current));
+        unsavedInputKeysRef.current.clear();
+        setTimeout(() => {
+          setRecentlySavedInputKeys(new Set());
+        }, 3000);
+      }
+
       await refetchExams();
     } catch (err) {
-      toast.error('Failed to finalize subject entry');
+      if (!autoSave) toast.error('Failed to finalize subject entry');
     } finally {
       setIsSaving(false);
     }
   };
+
+  // --- Auto-Save for School Users ---
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitialMount = useRef(true);
+
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+
+    if (user?.role === 'SCHOOL' && Object.keys(marksData).length > 0) {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+      autoSaveTimerRef.current = setTimeout(() => {
+        handleSave(false, true); // true indicates it's an auto-save
+      }, 2000); // 2 seconds debounce
+    }
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [marksData]); // Trigger on marksData change
 
   const handleBulkSave = async (marksDataList: any[], confirm: boolean, finalConfirm: boolean) => {
     setIsSaving(true);
@@ -750,6 +913,9 @@ const MarksEntry2Page: React.FC = () => {
       setLockedSubjects(prev => Array.from(new Set([...prev, subjectId])));
       toast.success('Subject Confirmed & Locked!');
       await refetchExams();
+      if (selectedExamId) {
+        await reloadExamConfig(selectedExamId);
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to confirm subject');
     } finally {
@@ -904,6 +1070,32 @@ const MarksEntry2Page: React.FC = () => {
     }
 
     let filtered = students;
+
+    if (selectedMedium) {
+      const normSel = selectedMedium.trim().toLowerCase();
+      const selMedObj = mediums.find(m => 
+        m.id === selectedMedium || 
+        m.shortName.toLowerCase() === normSel || 
+        m.code.toLowerCase() === normSel || 
+        m.name.toLowerCase() === normSel
+      );
+      const targetShortName = selMedObj ? selMedObj.shortName.toLowerCase() : normSel;
+      const targetCode = selMedObj ? selMedObj.code.toLowerCase() : normSel;
+      const targetName = selMedObj ? selMedObj.name.toLowerCase() : normSel;
+
+      filtered = filtered.filter(s => {
+        if (!s.medium) return true;
+        const stMed = s.medium.trim().toLowerCase();
+        return stMed === targetShortName || stMed === targetCode || stMed === targetName ||
+          (targetShortName === 'tamil' && (stMed === 'tm' || stMed.includes('tamil'))) ||
+          (targetShortName === 'english' && (stMed === 'em' || stMed.includes('english'))) ||
+          (targetShortName === 'malayalam' && (stMed === 'mm' || stMed.includes('malayalam'))) ||
+          (targetShortName === 'kannada' && (stMed === 'km' || stMed.includes('kannada'))) ||
+          (targetShortName === 'urdu' && (stMed === 'ur' || stMed.includes('urdu'))) ||
+          (targetShortName === 'arabic' && (stMed === 'ar' || stMed.includes('arabic')));
+      });
+    }
+
     if (selectedDivision) {
       filtered = filtered.filter(s => (s.division || '').toUpperCase() === selectedDivision.toUpperCase());
     }
@@ -963,18 +1155,40 @@ const MarksEntry2Page: React.FC = () => {
   }, [displayedStudents, marksData, selectedSubjectIds]);
 
   const isAllVisibleInputsComplete = useMemo(() => {
-    if (displayedStudents.length === 0 || selectedSubjectIds.length === 0) return false;
-    for (const s of displayedStudents) {
+    if (students.length === 0 || selectedSubjectIds.length === 0) return false;
+    for (const s of students) {
       for (const subId of selectedSubjectIds) {
+        if (!isSubjectApplicable(s.id, subId)) continue;
+        
+        const sub = availableSubjects.find(x => x.id === subId);
+        if (sub) {
+          const getPCode = (s: any) => {
+            const str = `${s.shortName || ''} ${s.name || ''}`.toUpperCase();
+            const match = str.match(/P\d{2}/);
+            return match ? match[0] : s.shortName;
+          };
+          const currentPCode = getPCode(sub);
+          const sameCodeSubjects = availableSubjects.filter(x => getPCode(x) === currentPCode && x.id !== sub.id);
+          const sameCodeHasMarks = sameCodeSubjects.some(x => {
+            const otherData = marksData[s.id]?.[x.id];
+            return otherData && otherData.markGroups && otherData.markGroups.some((g: any) => g.marksObtained !== '' && g.marksObtained !== null && g.marksObtained !== undefined);
+          });
+          const data = marksData[s.id]?.[subId];
+          const hasThisMarks = data && data.markGroups && data.markGroups.some((g: any) => g.marksObtained !== '' && g.marksObtained !== null && g.marksObtained !== undefined);
+          if (sameCodeHasMarks && !hasThisMarks) {
+            continue; // Mutually excluded
+          }
+        }
+
         const data = marksData[s.id]?.[subId];
         if (!data) return false; // Not even initialized
         if (data.isAbsent) continue;
-        const hasEmpty = data.markGroups.some(g => g.marksObtained === '' || g.marksObtained === null || g.marksObtained === undefined);
+        const hasEmpty = data.markGroups.some((g: any) => g.marksObtained === '' || g.marksObtained === null || g.marksObtained === undefined);
         if (hasEmpty) return false;
       }
     }
     return true;
-  }, [displayedStudents, marksData, selectedSubjectIds]);
+  }, [students, marksData, selectedSubjectIds, isSubjectApplicable, availableSubjects]);
 
   const isLocked = selectedSubjectIds.length > 0 && selectedSubjectIds.every(id => lockedSubjects.includes(id));
 
@@ -1246,7 +1460,7 @@ const MarksEntry2Page: React.FC = () => {
               className="min-w-[350px]"
             />
 
-            {user?.role === 'TEACHER' && (user as any).mediums && (
+            {true && (
               <Dropdown
                 minWidth={120}
                 ariaLabel="Select Medium"
@@ -1255,7 +1469,12 @@ const MarksEntry2Page: React.FC = () => {
                 onChange={(v) => { setSelectedMedium(v); setSelectedSubjectIds([]); }}
                 options={(() => {
                   const resolveMed = (val: string) => mediums.find(m => m.id === val || m.name === val || m.code === val || m.shortName === val)?.name ?? val;
-                  return (user as any).mediums.map((m: string) => ({ value: resolveMed(m), label: resolveMed(m) }));
+                  if (user?.role === 'TEACHER' && (user as any).mediums) {
+                    return (user as any).mediums.map((m: string) => ({ value: resolveMed(m), label: resolveMed(m) }));
+                  }
+                  const studentMediums = new Set<string>();
+                  students.forEach(st => { if (st.medium) studentMediums.add(st.medium); });
+                  return Array.from(studentMediums).map((m: string) => ({ value: m, label: resolveMed(m) }));
                 })()}
               />
             )}
@@ -1266,7 +1485,7 @@ const MarksEntry2Page: React.FC = () => {
               placeholder="Select Class"
               value={selectedClass}
               disabled={dbClasses.length === 0}
-              onChange={(v) => { setSelectedClass(v); setSelectedDivision(''); }}
+              onChange={(v) => { setSelectedClass(v); setSelectedDivision(''); setSelectedMedium(''); }}
               options={
                 dbClasses.length === 0
                   ? []
@@ -1506,27 +1725,35 @@ const MarksEntry2Page: React.FC = () => {
                                     type="checkbox"
                                     checked={!!data.isAbsent}
                                     onChange={() => toggleAbsent(student.id, subId)}
-                                    disabled={lockedSubjects.includes(subId) || isFinalLocked}
+                                    disabled={(user?.role === 'TEACHER' ? lockedSubjects.includes(subId) : !lockedSubjects.includes(subId)) || isFinalLocked}
                                     className="w-5 h-5 rounded border-gray-300 dark:border-gray-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                   />
                                 </td>
                                 {data.markGroups.map((g: any, groupIdx: number) => (
                                   <td key={groupIdx} className={`px-1 py-3 text-center ${data.isAbsent ? 'bg-gray-50 dark:bg-[#1f242c]/30' : ''}`}>
-                                    <input
-                                      id={`input-${studentIdx}-${subIdx}-${groupIdx}`}
-                                      type="text"
-                                      inputMode="numeric"
-                                      value={data.isAbsent ? '' : g.marksObtained}
-                                      onChange={(e) => handleMarkChange(student.id, subId, g.name, e.target.value, studentIdx, subIdx, groupIdx, g.total)}
-                                      disabled={lockedSubjects.includes(subId) || isFinalLocked || data.isAbsent}
-                                      className={`w-full min-w-[2.5rem] max-w-[4rem] mx-auto px-1 py-1 text-center text-sm font-bold border-2 rounded-lg bg-transparent text-slate-800 dark:text-white outline-none disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:opacity-60 ${rejectedInputs.has(`${student.id}-${subId}-${g.name}`)
-                                        ? 'border-red-500 focus:border-red-600 focus:ring-red-500 text-red-600 animate-pulse'
-                                        : (g.marksObtained === '' || g.marksObtained === null || g.marksObtained === undefined)
-                                          ? 'border-blue-400 dark:border-blue-500 focus:border-blue-500 focus:ring-0'
-                                          : 'border-gray-200 dark:border-gray-700 focus:border-indigo-500 focus:ring-0'
-                                        }`}
-                                      placeholder={data.isAbsent ? "Ab" : "-"}
-                                    />
+                                    <div className="relative inline-block w-full">
+                                      <input
+                                        id={`input-${studentIdx}-${subIdx}-${groupIdx}`}
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={data.isAbsent ? '' : g.marksObtained}
+                                        onChange={(e) => handleMarkChange(student.id, subId, g.name, e.target.value, studentIdx, subIdx, groupIdx, g.total)}
+                                        disabled={(user?.role === 'TEACHER' ? lockedSubjects.includes(subId) : !lockedSubjects.includes(subId)) || isFinalLocked || data.isAbsent}
+                                        className={`w-full min-w-[2.5rem] max-w-[4rem] mx-auto px-1 py-1 text-center text-sm font-bold border-2 rounded-lg bg-transparent text-slate-800 dark:text-white outline-none disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:opacity-60 ${rejectedInputs.has(`${student.id}-${subId}-${g.name}`)
+                                          ? 'border-red-500 focus:border-red-600 focus:ring-red-500 text-red-600 animate-pulse'
+                                          : (g.marksObtained === '' || g.marksObtained === null || g.marksObtained === undefined)
+                                            ? 'border-blue-400 dark:border-blue-500 focus:border-blue-500 focus:ring-0'
+                                            : 'border-gray-200 dark:border-gray-700 focus:border-indigo-500 focus:ring-0'
+                                          }`}
+                                        placeholder={data.isAbsent ? "Ab" : "-"}
+                                      />
+                                      {recentlySavedInputKeys.has(`${student.id}-${subId}-${g.name}`) && (
+                                        <div className="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2">
+                                          <div className="absolute inline-flex w-2.5 h-2.5 bg-green-400 rounded-full animate-ping opacity-75"></div>
+                                          <div className="relative inline-flex w-2.5 h-2.5 bg-green-500 rounded-full border border-white dark:border-[#161b22]"></div>
+                                        </div>
+                                      )}
+                                    </div>
                                   </td>
                                 ))}
                                 <td className={`px-2 py-3 text-center border-l border-r border-gray-200 dark:border-[#30363d] bg-gray-50 dark:bg-[#1f242c]/50 ${data.isAbsent ? 'opacity-70' : ''}`}>

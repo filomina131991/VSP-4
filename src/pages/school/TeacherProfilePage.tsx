@@ -199,8 +199,9 @@ const TeacherProfilePage: React.FC = () => {
         const cData = classDivisionsData.find(cd => `${cd.className}${cd.division || ''}` === value);
         if (cData && cData.mediums && cData.mediums.length === 1) {
           const mId = resolveMediumId(cData.mediums[0], dmMediums);
-          if (mId) {
-            updated[index].medium = mId;
+          const matchedMed = dmMediums.find(m => m.id === mId || (m as any)._id === mId);
+          if (matchedMed) {
+            updated[index].medium = matchedMed.name;
           } else {
             updated[index].medium = '';
           }
@@ -526,13 +527,18 @@ const TeacherProfilePage: React.FC = () => {
 
                             const effectiveSMedId = extractedMedName ? resolveMediumId(extractedMedName, dmMediums) : sMedId;
 
+                            const isCoreSubject = (s as any).isCore || (s.code || '').startsWith('P');
+                            const isLanguageSubject = ['TAMIL', 'ENGLISH', 'MALAYALAM', 'ARABIC', 'URDU', 'SANSKRIT', 'HINDI'].some(lang => (s.name || '').toUpperCase().includes(lang));
+                            
+                            const meetsDesignationCriteria = desLower.includes('language') || desLower.includes('pet')
+                              ? isSmartSuggestion 
+                              : (isSmartSuggestion || isLanguageSubject || isCoreSubject);
+
                             if (effectiveSMedId && matchId && effectiveSMedId !== matchId) {
-                              // If subject explicitly specifies a medium suffix, strictly enforce match even if it's a smart suggestion
                               if (extractedMedName) return false;
-                              // Smart suggestion bypasses medium check ONLY for language teachers
                               if (!isSmartSuggestion || !isLangDes) return false;
                             }
-                            return true;
+                            return meetsDesignationCriteria;
                           })
                         : availableSubjectsForMedium;
                       const uniqueSubjects: any[] = [];

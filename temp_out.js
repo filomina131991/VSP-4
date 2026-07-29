@@ -1,24 +1,47 @@
-// Polyfill browser-native globals for Vercel/Node.js environment (needed by pdfjs-dist)
-if (typeof (globalThis as any).DOMMatrix === 'undefined') {
-  (globalThis as any).DOMMatrix = class DOMMatrix {
-    a = 1; b = 0; c = 0; d = 1; e = 0; f = 0;
-    static fromMatrix() { return new DOMMatrix(); }
-    static fromFloat32Array() { return new DOMMatrix(); }
-    static fromFloat64Array() { return new DOMMatrix(); }
-    translate() { return this; }
-    scale() { return this; }
-    multiply() { return this; }
-    inverse() { return this; }
-    transformPoint(p: any) { return p; }
+if (typeof globalThis.DOMMatrix === "undefined") {
+  globalThis.DOMMatrix = class DOMMatrix {
+    constructor() {
+      this.a = 1;
+      this.b = 0;
+      this.c = 0;
+      this.d = 1;
+      this.e = 0;
+      this.f = 0;
+    }
+    static fromMatrix() {
+      return new DOMMatrix();
+    }
+    static fromFloat32Array() {
+      return new DOMMatrix();
+    }
+    static fromFloat64Array() {
+      return new DOMMatrix();
+    }
+    translate() {
+      return this;
+    }
+    scale() {
+      return this;
+    }
+    multiply() {
+      return this;
+    }
+    inverse() {
+      return this;
+    }
+    transformPoint(p) {
+      return p;
+    }
   };
 }
-if (typeof (globalThis as any).ImageData === 'undefined') {
-  (globalThis as any).ImageData = class ImageData { };
+if (typeof globalThis.ImageData === "undefined") {
+  globalThis.ImageData = class ImageData {
+  };
 }
-if (typeof (globalThis as any).Path2D === 'undefined') {
-  (globalThis as any).Path2D = class Path2D { };
+if (typeof globalThis.Path2D === "undefined") {
+  globalThis.Path2D = class Path2D {
+  };
 }
-
 import express from "express";
 import { createServer } from "http";
 import path from "path";
@@ -31,66 +54,52 @@ import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import axios from "axios";
-import { v2 as cloudinary } from 'cloudinary';
-import multer from 'multer';
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
+import { v2 as cloudinary } from "cloudinary";
+import multer from "multer";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
 import rateLimit from "express-rate-limit";
 import pLimit from "p-limit";
-import { createRequire } from 'module';
+import { createRequire } from "module";
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { getStudentResult } from "./src/lib/resultClassification.js";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
-
-process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION:', err);
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
 });
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('UNHANDLED REJECTION:', reason);
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("UNHANDLED REJECTION:", reason);
 });
-
-// Helper to get Puppeteer browser instance (environment-aware for local vs. Vercel)
 async function getBrowserInstance() {
-  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
-    // Set runtime environment variable for @sparticuz/chromium before dynamically importing it
-    process.env.AWS_LAMBDA_JS_RUNTIME = 'nodejs20.x';
-    // Vercel/Production: use puppeteer-core and @sparticuz/chromium via ESM dynamic imports
-    const { default: chromium } = await import('@sparticuz/chromium');
-    const { default: puppeteerCore } = await import('puppeteer-core');
-
-    // Disable WebGL graphics mode to prevent extracting swiftshader.tar.br and reduce memory overhead on Vercel
+  if (process.env.VERCEL || false) {
+    process.env.AWS_LAMBDA_JS_RUNTIME = "nodejs20.x";
+    const { default: chromium } = await import("@sparticuz/chromium");
+    const { default: puppeteerCore } = await import("puppeteer-core");
     chromium.setGraphicsMode = false;
-
-    let binPath = path.join(process.cwd(), 'node_modules', '@sparticuz', 'chromium', 'bin');
+    let binPath = path.join(process.cwd(), "node_modules", "@sparticuz", "chromium", "bin");
     if (!fs.existsSync(binPath)) {
       try {
         let currentDir = "";
         if (typeof __dirname !== "undefined") {
           currentDir = __dirname;
         } else {
-          currentDir = path.dirname(fileURLToPath((typeof import.meta !== "undefined" && import.meta.url) ? import.meta.url : 'file://' + process.cwd() + '/server.ts'));
+          currentDir = path.dirname(fileURLToPath(typeof import.meta !== "undefined" && import.meta.url ? import.meta.url : "file://" + process.cwd() + "/server.ts"));
         }
-        binPath = path.join(currentDir, '..', 'node_modules', '@sparticuz', 'chromium', 'bin');
+        binPath = path.join(currentDir, "..", "node_modules", "@sparticuz", "chromium", "bin");
       } catch (e) {
-        // ignore
       }
     }
     if (!fs.existsSync(binPath)) {
-      binPath = undefined;
+      binPath = void 0;
     }
-
-    let isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true' || !!process.env.VERCEL;
+    let isVercel = process.env.VERCEL === "1" || process.env.VERCEL === "true" || !!process.env.VERCEL;
     const arch = process.arch;
-    const chromiumVersion = '149.0.0';
+    const chromiumVersion = "149.0.0";
     let packUrl = isVercel ? `https://github.com/Sparticuz/chromium/releases/download/v${chromiumVersion}/chromium-v${chromiumVersion}-pack.${arch}.tar` : binPath;
-
-    // As a fallback, if we are not on Vercel but binPath doesn't exist, try using the URL
     if (!isVercel && !binPath) {
       packUrl = `https://github.com/Sparticuz/chromium/releases/download/v${chromiumVersion}/chromium-v${chromiumVersion}-pack.${arch}.tar`;
     }
-
     const executablePath = await chromium.executablePath(packUrl);
-
     return await puppeteerCore.launch({
       args: chromium.args,
       defaultViewport: {
@@ -99,85 +108,71 @@ async function getBrowserInstance() {
         height: 1080,
         isLandscape: true,
         isMobile: false,
-        width: 1920,
+        width: 1920
       },
       executablePath,
-      headless: (chromium as any).headless,
+      headless: chromium.headless
     });
   } else {
-    // Local: use standard Edge via puppeteer-core to completely avoid Chrome profile locking issues
     console.log("Local env detected. Launching msedge.exe...");
-    const puppeteerCore = requireFn('puppeteer-core');
+    const puppeteerCore = requireFn("puppeteer-core");
     const browser = await puppeteerCore.launch({
       headless: true,
-      executablePath: process.platform === 'win32' ? 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' : undefined,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      executablePath: process.platform === "win32" ? "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" : void 0,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
     console.log("msedge.exe launched successfully.");
     return browser;
   }
 }
-
-let requireFn: any;
+let requireFn;
 if (typeof require !== "undefined") {
   requireFn = require;
 } else {
-  requireFn = createRequire((typeof import.meta !== "undefined" && import.meta.url) ? import.meta.url : 'file://' + process.cwd() + '/server.ts');
+  requireFn = createRequire(typeof import.meta !== "undefined" && import.meta.url ? import.meta.url : "file://" + process.cwd() + "/server.ts");
 }
-
-// Load environment variables
 dotenv.config();
-
-// Nodemailer Configuration
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.gmail.com",
   port: Number(process.env.SMTP_PORT) || 587,
   secure: Number(process.env.SMTP_PORT) === 465,
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
+    pass: process.env.EMAIL_PASS
+  }
 });
-
-// Cloudinary Configuration
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
-
-// Multer Storage for Cloudinary
 const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
+  cloudinary,
   params: async (req, file) => {
-    // Sanitize filename for public_id
-    const baseName = file.originalname.split('.')[0].replace(/[^a-z0-9]/gi, '_').toLowerCase();
-
+    const baseName = file.originalname.split(".")[0].replace(/[^a-z0-9]/gi, "_").toLowerCase();
     return {
-      folder: 'vsp_resources',
+      folder: "vsp_resources",
       // Always use 'raw' for documents (PDF, DOCX, etc.) to bypass strict image transformation rules
       // and allow secure, direct downloads.
-      resource_type: 'raw',
+      resource_type: "raw",
       public_id: `res-${Date.now()}-${baseName}`
     };
-  },
+  }
 });
-
 const upload = multer({
-  storage: storage,
+  storage,
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf') || file.originalname.toLowerCase().endsWith('.docx') || file.originalname.toLowerCase().endsWith('.doc')) {
+    if (file.mimetype === "application/pdf" || file.originalname.toLowerCase().endsWith(".pdf") || file.originalname.toLowerCase().endsWith(".docx") || file.originalname.toLowerCase().endsWith(".doc")) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only PDF and Word documents are allowed.'));
+      cb(new Error("Invalid file type. Only PDF and Word documents are allowed."));
     }
   },
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
+    fileSize: 10 * 1024 * 1024
+    // 10MB limit
   }
 });
-
-// Connect MongoDB and models
 import mongoose from "mongoose";
 import {
   connectDB,
@@ -202,7 +197,6 @@ import {
   AdminMarkGroupConfig,
   SchoolExamConfig,
   Question,
-  QuestionFamily,
   DashboardSummary,
   SchoolSummary,
   RegionAnalyticsSummary,
@@ -213,35 +207,30 @@ import {
   QuestionPaperBlueprint,
   AuditLog
 } from "./db.js";
-
-// ─── Dynamic Medium Resolution Helpers ─────────────────────────────────────
-// Cache for medium maps to avoid repeated DB queries within a single request
-let _mediumCache: { codeToShortName: Record<string, string>; shortNameToCode: Record<string, string>; allCodes: string[] } | null = null;
-const MEDIUM_CACHE_TTL_MS = 60_000;
+let _mediumCache = null;
+const MEDIUM_CACHE_TTL_MS = 6e4;
 let _mediumCacheTs = 0;
-
 async function getMediumMaps() {
   const now = Date.now();
   if (_mediumCache && now - _mediumCacheTs < MEDIUM_CACHE_TTL_MS) return _mediumCache;
   const allMediums = await Medium.find({ active: { $ne: false } }).lean();
-  const codeToShortName: Record<string, string> = {};
-  const shortNameToCode: Record<string, string> = {};
-  const shortNameToId: Record<string, string> = {};
+  const codeToShortName = {};
+  const shortNameToCode = {};
+  const shortNameToId = {};
   for (const m of allMediums) {
     if (m.code && m.shortName) {
       codeToShortName[m.code.toUpperCase()] = m.shortName;
       shortNameToCode[m.shortName.toUpperCase()] = m.code.toUpperCase();
-      shortNameToId[m.shortName.toUpperCase()] = String(m._id || m.id || '');
+      shortNameToId[m.shortName.toUpperCase()] = String(m._id || m.id || "");
     }
   }
   _mediumCache = { codeToShortName, shortNameToCode, shortNameToId, allCodes: Object.keys(codeToShortName) };
   _mediumCacheTs = now;
   return _mediumCache;
 }
-
-async function resolveMediumShortName(input: string): Promise<string> {
-  const upper = (input || '').toUpperCase().trim();
-  if (!upper) return '';
+async function resolveMediumShortName(input) {
+  const upper = (input || "").toUpperCase().trim();
+  if (!upper) return "";
   const maps = await getMediumMaps();
   if (maps.codeToShortName[upper]) return maps.codeToShortName[upper];
   if (maps.shortNameToCode[upper]) {
@@ -250,98 +239,73 @@ async function resolveMediumShortName(input: string): Promise<string> {
   }
   return input;
 }
-
-async function resolveMediumSuffix(input: string): Promise<string> {
+async function resolveMediumSuffix(input) {
   const shortName = await resolveMediumShortName(input);
   const maps = await getMediumMaps();
   const code = maps.shortNameToCode[shortName.toUpperCase()];
-  return code ? ` ${code}` : '';
+  return code ? ` ${code}` : "";
 }
-
-// Helper to resolve Subject expert teachingSubjects (which can be IDs, names, or codes)
-async function resolveExpertSubjects(teachingSubjects: string[]): Promise<any[]> {
+async function resolveExpertSubjects(teachingSubjects) {
   if (!teachingSubjects || teachingSubjects.length === 0) return [];
-  const orConditions: any[] = [];
-
-  teachingSubjects.forEach((ts: string) => {
+  const orConditions = [];
+  teachingSubjects.forEach((ts) => {
     if (!ts) return;
     const tsStr = String(ts).trim();
     if (!tsStr) return;
-
-    // 1. If it's a valid MongoDB ObjectId hex string (24 chars)
     if (mongoose.Types.ObjectId.isValid(tsStr)) {
       orConditions.push({ _id: tsStr });
       try {
         orConditions.push({ _id: new mongoose.Types.ObjectId(tsStr) });
-      } catch (e) { }
+      } catch (e) {
+      }
     }
-
-    // 2. Exact match on 'id' (like 'p01', 'p02')
     orConditions.push({ id: tsStr });
-
-    // 3. Exact match on 'shortName' (like 'P01')
     orConditions.push({ shortName: tsStr });
-
-    // 4. Case-insensitive regex match on 'name'
-    orConditions.push({ name: new RegExp(tsStr, 'i') });
+    orConditions.push({ name: new RegExp(tsStr, "i") });
   });
-
   if (orConditions.length === 0) return [];
   return await Subject.find({ $or: orConditions }).lean();
 }
-
 const app = express();
-app.set('trust proxy', 1);
+app.set("trust proxy", 1);
 const httpServer = createServer(app);
-
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const PORT = Number(process.env.PORT) || 5000;
-
+const PORT = Number(process.env.PORT) || 5e3;
 const ACCESS_TOKEN_SECRET = process.env.JWT_SECRET;
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 if (!ACCESS_TOKEN_SECRET || !REFRESH_TOKEN_SECRET) {
   console.error("FATAL: JWT_SECRET and REFRESH_TOKEN_SECRET environment variables must be set.");
   process.exit(1);
 }
-
-// Helper to escape regex special characters (prevents ReDoS injection)
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-
-// Middleware
 app.use(cors({
   origin: (origin, callback) => {
-    const allowedOrigins = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
-    // In production: reject requests with no origin (curl, Postman, server-to-server)
-    if (!origin && process.env.NODE_ENV === 'production') {
-      return callback(new Error('Not allowed by CORS — no origin'));
+    const allowedOrigins = (process.env.CORS_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+    if (!origin && false) {
+      return callback(new Error("Not allowed by CORS \u2014 no origin"));
     }
-    // Allow requests with no origin in development only
     if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error("Not allowed by CORS"));
     }
   },
   credentials: true
 }));
 app.use(express.json({ limit: "50mb" }));
 app.use(cookieParser());
-
-// Request Logger
-app.use((req: any, res: any, next) => {
+app.use((req, res, next) => {
   const start = Date.now();
-  res.on('finish', () => {
+  res.on("finish", () => {
     const duration = Date.now() - start;
     if (res.statusCode >= 400) {
-      console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+      console.log(`[${(/* @__PURE__ */ new Date()).toISOString()}] ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
     }
   });
   next();
 });
-
-// Vercel DB Connection Middleware
 if (process.env.VERCEL) {
   app.use(async (req, res, next) => {
     try {
@@ -352,102 +316,80 @@ if (process.env.VERCEL) {
     }
   });
 }
-
-app.get('/favicon.ico', (req, res) => {
+app.get("/favicon.ico", (req, res) => {
   res.status(204).end();
 });
-
 app.get("/api/ping", (req, res) => {
-  res.json({ status: "ok", time: new Date().toISOString() });
+  res.json({ status: "ok", time: (/* @__PURE__ */ new Date()).toISOString() });
 });
-
-// Helper to map DB subjects to frontend codes
-let cachedSubjectMapping: { idToCode: Record<string, string>; codeToId: Record<string, string>, timestamp: number } | null = null;
-
+let cachedSubjectMapping = null;
 async function getSubjectMapping() {
-  // Cache for 1 minute to avoid DB hits on every request but allow dynamic updates
-  if (cachedSubjectMapping && Date.now() - cachedSubjectMapping.timestamp < 60000) {
+  if (cachedSubjectMapping && Date.now() - cachedSubjectMapping.timestamp < 6e4) {
     return cachedSubjectMapping;
   }
   const subjects = await Subject.find().lean() || [];
-  const idToCode: Record<string, string> = {};
-  const codeToId: Record<string, string> = {};
-
-  subjects.forEach((sub: any) => {
-    let code = sub.code || sub.shortName || sub.name || '';
+  const idToCode = {};
+  const codeToId = {};
+  subjects.forEach((sub) => {
+    let code = sub.code || sub.shortName || sub.name || "";
     idToCode[sub._id.toString()] = code;
     codeToId[code] = sub._id.toString();
     if (sub.shortName) codeToId[sub.shortName] = sub._id.toString();
     if (sub.paperType) codeToId[sub.paperType] = sub._id.toString();
   });
-
   cachedSubjectMapping = { idToCode, codeToId, timestamp: Date.now() };
   return cachedSubjectMapping;
 }
-
-
-const getResolvedMaxMark = (exam: any, subjectId: string, shortCode: string, defaultMax = 50) => {
+const getResolvedMaxMark = (exam, subjectId, shortCode, defaultMax = 50) => {
   if (!exam || !exam.maxMarks) return defaultMax;
-  const getVal = (k: string) => {
-    if (!k) return undefined;
-    if (typeof exam.maxMarks.get === 'function') return exam.maxMarks.get(k);
+  const getVal = (k) => {
+    if (!k) return void 0;
+    if (typeof exam.maxMarks.get === "function") return exam.maxMarks.get(k);
     return exam.maxMarks[k];
   };
-
-  const c = (shortCode || '').toUpperCase();
-  const isP01 = c.includes('P01') || c === 'AT' || c.includes(' AT') || c.includes('(AT)') || c.includes('TAMIL AT') || c.includes('MALAYALAM AT') || c.includes('FIRST');
+  const c = (shortCode || "").toUpperCase();
+  const isP01 = c.includes("P01") || c === "AT" || c.includes(" AT") || c.includes("(AT)") || c.includes("TAMIL AT") || c.includes("MALAYALAM AT") || c.includes("FIRST");
   if (isP01) {
-    const p1Val = getVal('P01') ?? getVal('Lan I');
-    if (p1Val !== undefined) return p1Val;
+    const p1Val = getVal("P01") ?? getVal("Lan I");
+    if (p1Val !== void 0) return p1Val;
   }
-
-  const isP02 = c.includes('P02') || c === 'BT' || c.includes(' BT') || c.includes('(BT)') || c.includes('TAMIL BT') || c.includes('MALAYALAM BT');
+  const isP02 = c.includes("P02") || c === "BT" || c.includes(" BT") || c.includes("(BT)") || c.includes("TAMIL BT") || c.includes("MALAYALAM BT");
   if (isP02) {
-    const p2Val = getVal('P02') ?? getVal('Lan II');
-    if (p2Val !== undefined) return p2Val;
+    const p2Val = getVal("P02") ?? getVal("Lan II");
+    if (p2Val !== void 0) return p2Val;
   }
-
   let val = getVal(subjectId);
-  if (val !== undefined) return val;
+  if (val !== void 0) return val;
   val = getVal(shortCode);
-  if (val !== undefined) return val;
-
-  const shortCodeMap: Record<string, string> = { 'P01': 'Lan I', 'P02': 'Lan II', 'P03': 'Eng', 'P04': 'Hin', 'P05': 'SS', 'P06': 'Phy', 'P07': 'Che', 'P08': 'Bio', 'P09': 'Mat' };
+  if (val !== void 0) return val;
+  const shortCodeMap = { "P01": "Lan I", "P02": "Lan II", "P03": "Eng", "P04": "Hin", "P05": "SS", "P06": "Phy", "P07": "Che", "P08": "Bio", "P09": "Mat" };
   let mappedCode = shortCodeMap[shortCode] || shortCodeMap[c] || c;
   val = getVal(mappedCode);
-  if (val !== undefined) return val;
-
-  const p01Fallback = getVal('P01');
-  if (p01Fallback !== undefined) return p01Fallback;
-
+  if (val !== void 0) return val;
+  const p01Fallback = getVal("P01");
+  if (p01Fallback !== void 0) return p01Fallback;
   return defaultMax;
 };
-
-
-// Helper to query and group marks by student
-async function findMarksGroupedByStudent(examId: string, studentIds: string[]) {
+async function findMarksGroupedByStudent(examId, studentIds) {
   const { idToCode } = await getSubjectMapping();
   const markentries = await Mark.find({ examId, studentId: { $in: studentIds } }).lean();
-
-  const studentMarksMap: Record<string, Record<string, any>> = {};
-  markentries.forEach((entry: any) => {
+  const studentMarksMap = {};
+  markentries.forEach((entry) => {
     const studentId = entry.studentId;
     let subjectCode = idToCode[entry.subjectId?.toString()] || entry.subjectId?.toString();
     if (!studentMarksMap[studentId]) {
       studentMarksMap[studentId] = {};
     }
-    const newGrade = entry.grade || '';
-    const newMark = entry.mark !== undefined ? entry.mark : (entry.grade ? '' : '');
-    const isNewInvalid = (newGrade === 'N/A' || newGrade === 'NA' || newGrade === '') && (newMark === '' || newMark === null);
-
+    const newGrade = entry.grade || "";
+    const newMark = entry.mark !== void 0 ? entry.mark : entry.grade ? "" : "";
+    const isNewInvalid = (newGrade === "N/A" || newGrade === "NA" || newGrade === "") && (newMark === "" || newMark === null);
     if (studentMarksMap[studentId][subjectCode]) {
       const existing = studentMarksMap[studentId][subjectCode];
-      const isExistingInvalid = (existing.grade === 'N/A' || existing.grade === 'NA' || existing.grade === '') && (existing.mark === '' || existing.mark === null);
+      const isExistingInvalid = (existing.grade === "N/A" || existing.grade === "NA" || existing.grade === "") && (existing.mark === "" || existing.mark === null);
       if (!isExistingInvalid && isNewInvalid) {
-        return; // Don't overwrite valid mark with N/A or empty
+        return;
       }
     }
-
     studentMarksMap[studentId][subjectCode] = {
       grade: newGrade,
       mark: newMark,
@@ -458,15 +400,13 @@ async function findMarksGroupedByStudent(examId: string, studentIds: string[]) {
       rawMaximum: entry.rawMaximum
     };
   });
-
   return Object.entries(studentMarksMap).map(([studentId, data]) => {
-    const grades = new Map();
-    const marks = new Map();
-    const rawScores = new Map();
-    const normalizedScores = new Map();
-    const presentStatus = new Map();
-    const rawMaxes = new Map();
-
+    const grades = /* @__PURE__ */ new Map();
+    const marks = /* @__PURE__ */ new Map();
+    const rawScores = /* @__PURE__ */ new Map();
+    const normalizedScores = /* @__PURE__ */ new Map();
+    const presentStatus = /* @__PURE__ */ new Map();
+    const rawMaxes = /* @__PURE__ */ new Map();
     for (const [subjectCode, vals] of Object.entries(data)) {
       grades.set(subjectCode, vals.grade);
       marks.set(subjectCode, vals.mark);
@@ -486,20 +426,17 @@ async function findMarksGroupedByStudent(examId: string, studentIds: string[]) {
     };
   });
 }
-
-export async function calculateStatsForScope(examId: string, scopeFilter: any) {
+export async function calculateStatsForScope(examId, scopeFilter) {
   let finalFilter = { ...scopeFilter };
-
   if (finalFilter.schoolId) {
-    let schoolIdValues: string[] = [];
-    if (typeof finalFilter.schoolId === 'string') {
+    let schoolIdValues = [];
+    if (typeof finalFilter.schoolId === "string") {
       schoolIdValues = [finalFilter.schoolId];
     } else if (finalFilter.schoolId.$in) {
       schoolIdValues = finalFilter.schoolId.$in;
     }
-
     if (schoolIdValues.length > 0) {
-      const isObjIdList = schoolIdValues.filter(id => mongoose.Types.ObjectId.isValid(id));
+      const isObjIdList = schoolIdValues.filter((id) => mongoose.Types.ObjectId.isValid(id));
       const schools = await School.find({
         $or: [
           { _id: { $in: isObjIdList } },
@@ -507,16 +444,13 @@ export async function calculateStatsForScope(examId: string, scopeFilter: any) {
           { schoolCode: { $in: schoolIdValues } }
         ]
       }).lean();
-
       const expandedIds = new Set(schoolIdValues);
-      schools.forEach((s: any) => {
+      schools.forEach((s) => {
         if (s._id) expandedIds.add(s._id.toString());
         if (s.id) expandedIds.add(s.id);
         if (s.schoolCode) expandedIds.add(s.schoolCode);
       });
-
       const matchedIds = Array.from(expandedIds).filter(Boolean);
-
       delete finalFilter.schoolId;
       finalFilter.$or = [
         { schoolId: { $in: matchedIds } },
@@ -524,163 +458,149 @@ export async function calculateStatsForScope(examId: string, scopeFilter: any) {
       ];
     }
   }
-
   const students = await Student.find(finalFilter).lean();
-  const studentIds = students.map((s: any) => s.id || s._id.toString());
-
+  const studentIds = students.map((s) => s.id || s._id.toString());
   const exam = await Exam.findOne({ id: examId }).lean();
-
-  const maleCount = students.filter(s => s.gender === 'Male' || s.gender === 'Boy').length;
-  const femaleCount = students.filter(s => s.gender === 'Female' || s.gender === 'Girl').length;
-  const scribeCount = students.filter(s => s.scribe).length;
-
+  const maleCount = students.filter((s) => s.gender === "Male" || s.gender === "Boy").length;
+  const femaleCount = students.filter((s) => s.gender === "Female" || s.gender === "Girl").length;
+  const scribeCount = students.filter((s) => s.scribe).length;
   const marksList = await findMarksGroupedByStudent(examId, studentIds);
-
-  const schoolIds = Array.from(new Set(students.map(s => s.schoolId)));
+  const schoolIds = Array.from(new Set(students.map((s) => s.schoolId)));
   const schoolsForScope = await School.find({ _id: { $in: schoolIds } }).lean();
-  const schoolCodes = schoolsForScope.map((s: any) => s.schoolCode).filter(Boolean);
+  const schoolCodes = schoolsForScope.map((s) => s.schoolCode).filter(Boolean);
   const matchedSchoolIds = [...schoolIds, ...schoolCodes];
-
   const schoolConfigs = await SchoolExamConfig.find({ examId, schoolId: { $in: matchedSchoolIds } }).lean();
-  const configMap = new Map();
-  schoolConfigs.forEach(c => {
+  const configMap = /* @__PURE__ */ new Map();
+  schoolConfigs.forEach((c) => {
     configMap.set(c.schoolId, c);
-    const matchedSchool = schoolsForScope.find((s: any) => s.schoolCode === c.schoolId || s._id.toString() === c.schoolId);
+    const matchedSchool = schoolsForScope.find((s) => s.schoolCode === c.schoolId || s._id.toString() === c.schoolId);
     if (matchedSchool) {
-      configMap.set((matchedSchool as any)._id.toString(), c);
-      if ((matchedSchool as any).schoolCode) configMap.set((matchedSchool as any).schoolCode, c);
+      configMap.set(matchedSchool._id.toString(), c);
+      if (matchedSchool.schoolCode) configMap.set(matchedSchool.schoolCode, c);
     }
   });
   const { idToCode } = await getSubjectMapping();
-
   let passCount = 0;
   let fullAPlusCount = 0;
   let absentCount = 0;
-  let notEnteredCount = 0;
+  let notEnteredCount2 = 0;
   let profoundCount = 0;
   let averageCount = 0;
   let basicCount = 0;
   let failCount = 0;
-
-  const isAbsentGrade = (g: any) => typeof g === 'string' && ['AB', 'ABSENT', 'ABS', 'AA'].includes(g.trim().toUpperCase());
-
-  const gradeDistribution: Record<string, number> = {
-    "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "Ab": 0
+  const isAbsentGrade = (g) => typeof g === "string" && ["AB", "ABSENT", "ABS", "AA"].includes(g.trim().toUpperCase());
+  const gradeDistribution = {
+    "A+": 0,
+    "A": 0,
+    "B+": 0,
+    "B": 0,
+    "C+": 0,
+    "C": 0,
+    "D+": 0,
+    "D": 0,
+    "E": 0,
+    "Ab": 0
   };
-
-  const aPlusBreakdown: Record<number, number> = {
-    9: 0, 8: 0, 7: 0, 6: 0, 5: 0, 4: 0, 3: 0, 2: 0, 1: 0, 0: 0
+  const aPlusBreakdown = {
+    9: 0,
+    8: 0,
+    7: 0,
+    6: 0,
+    5: 0,
+    4: 0,
+    3: 0,
+    2: 0,
+    1: 0,
+    0: 0
   };
-
-  const defaultCoreSubjects = ['P03', 'P04', 'P05', 'P06', 'P07', 'P08', 'P09'];
-
-  marksList.forEach(m => {
-    const student = students.find(s => s.id === m.studentId || (s._id && s._id.toString() === m.studentId));
-    const config = student ? (configMap.get(student.schoolId?.toString()) || configMap.get(student.schoolCode)) : null;
+  const defaultCoreSubjects = ["P03", "P04", "P05", "P06", "P07", "P08", "P09"];
+  marksList.forEach((m) => {
+    const student = students.find((s) => s.id === m.studentId || s._id && s._id.toString() === m.studentId);
+    const config = student ? configMap.get(student.schoolId?.toString()) || configMap.get(student.schoolCode) : null;
     let allowedSubjectCodes = [...defaultCoreSubjects];
-
     if (config && config.subjects && config.subjects.length > 0) {
-      const configuredCodes = config.subjects.map((subj: any) => idToCode[subj.subjectId?.toString()] || subj.subjectId?.toString());
-      allowedSubjectCodes = Array.from(new Set([...configuredCodes, ...defaultCoreSubjects]));
+      const configuredCodes = config.subjects.map((subj) => idToCode[subj.subjectId?.toString()] || subj.subjectId?.toString());
+      allowedSubjectCodes = Array.from(/* @__PURE__ */ new Set([...configuredCodes, ...defaultCoreSubjects]));
     }
-
     const grades = m.grades ? Object.fromEntries(m.grades) : {};
     const marksObj = m.marks ? Object.fromEntries(m.marks) : {};
     const rawMaxesObj = m.rawMaxes ? Object.fromEntries(m.rawMaxes) : {};
-
-    // Filter out unselected subjects and calculate dynamic grades
-    const filteredGrades: string[] = [];
+    const filteredGrades = [];
     for (const code of allowedSubjectCodes) {
       const mark = marksObj[code];
       const grade = grades[code];
-      const subjectIdStr = Object.keys(idToCode).find(k => idToCode[k] === code) || code;
-      const maxMark = getResolvedMaxMark(exam, subjectIdStr, code, 50); // Strictly use Exam max mark
-
-      let valToUse = mark !== undefined && mark !== null && mark !== '' ? mark : grade;
+      const subjectIdStr = Object.keys(idToCode).find((k) => idToCode[k] === code) || code;
+      const maxMark = getResolvedMaxMark(exam, subjectIdStr, code, 50);
+      let valToUse = mark !== void 0 && mark !== null && mark !== "" ? mark : grade;
       let numericMark = Number(valToUse);
-
-      if (!isNaN(numericMark) && String(valToUse).trim() !== '') {
-        const pct = Math.round((numericMark * 100) / maxMark);
-        if (pct >= 90) filteredGrades.push('A+');
-        else if (pct >= 80) filteredGrades.push('A');
-        else if (pct >= 70) filteredGrades.push('B+');
-        else if (pct >= 60) filteredGrades.push('B');
-        else if (pct >= 50) filteredGrades.push('C+');
-        else if (pct >= 40) filteredGrades.push('C');
-        else if (pct >= 30) filteredGrades.push('D+');
-        else if (pct >= 20) filteredGrades.push('D');
-        else filteredGrades.push('E');
+      if (!isNaN(numericMark) && String(valToUse).trim() !== "") {
+        const pct = Math.round(numericMark * 100 / maxMark);
+        if (pct >= 90) filteredGrades.push("A+");
+        else if (pct >= 80) filteredGrades.push("A");
+        else if (pct >= 70) filteredGrades.push("B+");
+        else if (pct >= 60) filteredGrades.push("B");
+        else if (pct >= 50) filteredGrades.push("C+");
+        else if (pct >= 40) filteredGrades.push("C");
+        else if (pct >= 30) filteredGrades.push("D+");
+        else if (pct >= 20) filteredGrades.push("D");
+        else filteredGrades.push("E");
       } else {
-        filteredGrades.push(grade ? String(grade) : '');
+        filteredGrades.push(grade ? String(grade) : "");
       }
     }
-
-    const hasAnyGrade = filteredGrades.some(g => g !== '');
-    const allAbsent = filteredGrades.length > 0 && filteredGrades.every(g => g === '' || isAbsentGrade(g));
-    const nonEmptyNonAbsent = filteredGrades.filter(g => g !== '' && !isAbsentGrade(g));
-
-    let status: string;
-    if (!hasAnyGrade) status = 'INCOMPLETE';
-    else if (allAbsent) status = 'ABSENT';
+    const hasAnyGrade = filteredGrades.some((g) => g !== "");
+    const allAbsent = filteredGrades.length > 0 && filteredGrades.every((g) => g === "" || isAbsentGrade(g));
+    const nonEmptyNonAbsent = filteredGrades.filter((g) => g !== "" && !isAbsentGrade(g));
+    let status;
+    if (!hasAnyGrade) status = "INCOMPLETE";
+    else if (allAbsent) status = "ABSENT";
     else status = getStudentResult(nonEmptyNonAbsent);
-
-    if (status === 'INCOMPLETE') return;
-
-    if (status === 'ABSENT') {
+    if (status === "INCOMPLETE") return;
+    if (status === "ABSENT") {
       absentCount++;
-    } else if (status === 'PASS') {
+    } else if (status === "PASS") {
       passCount++;
-      const countAPlus = nonEmptyNonAbsent.filter(g => g.trim().toUpperCase() === 'A+').length;
+      const countAPlus = nonEmptyNonAbsent.filter((g) => g.trim().toUpperCase() === "A+").length;
       if (countAPlus === nonEmptyNonAbsent.length) {
         fullAPlusCount++;
         profoundCount++;
-      } else if (!nonEmptyNonAbsent.some(g => ['C+', 'C', 'D+', 'D', 'E'].includes(g.trim().toUpperCase()))) {
+      } else if (!nonEmptyNonAbsent.some((g) => ["C+", "C", "D+", "D", "E"].includes(g.trim().toUpperCase()))) {
         averageCount++;
       } else {
         basicCount++;
       }
-    } else if (status === 'FAIL') {
+    } else if (status === "FAIL") {
       failCount++;
     }
-
-    if (status !== 'ABSENT') {
-      const countAPlus = nonEmptyNonAbsent.filter(g => g.trim().toUpperCase() === 'A+').length;
+    if (status !== "ABSENT") {
+      const countAPlus = nonEmptyNonAbsent.filter((g) => g.trim().toUpperCase() === "A+").length;
       const clampedAPlus = Math.min(countAPlus, 9);
       aPlusBreakdown[clampedAPlus] = (aPlusBreakdown[clampedAPlus] || 0) + 1;
     }
-
-    nonEmptyNonAbsent.forEach((g: string) => {
+    nonEmptyNonAbsent.forEach((g) => {
       const cleanedG = g.trim().toUpperCase();
-      const mappedG = isAbsentGrade(cleanedG) ? 'Ab' : cleanedG;
-      if (gradeDistribution[mappedG] !== undefined) {
+      const mappedG = isAbsentGrade(cleanedG) ? "Ab" : cleanedG;
+      if (gradeDistribution[mappedG] !== void 0) {
         gradeDistribution[mappedG]++;
       }
     });
   });
-
-  // A student "appeared" if they have at least 1 non-absent, non-empty mark across all subjects.
-  // marksList is already grouped by student (one entry per student).
-  const appearedStudentIds = new Set<string>();
-  marksList.forEach(m => {
+  const appearedStudentIds = /* @__PURE__ */ new Set();
+  marksList.forEach((m) => {
     const marksObj = m.marks ? Object.fromEntries(m.marks) : {};
     const grades = m.grades ? Object.fromEntries(m.grades) : {};
     for (const val of [...Object.values(marksObj), ...Object.values(grades)]) {
-      if (val !== undefined && val !== null && String(val).trim() !== '' && !isAbsentGrade(String(val))) {
+      if (val !== void 0 && val !== null && String(val).trim() !== "" && !isAbsentGrade(String(val))) {
         appearedStudentIds.add(m.studentId);
         break;
       }
     }
   });
   const appearedCount = appearedStudentIds.size;
-
-  // notEntered = students with no marks at all + students in marksList with all-empty marks
   const studentsWithNoMarks = Math.max(0, students.length - marksList.length);
-  const totalNotEntered = studentsWithNoMarks + notEnteredCount;
-
-  // absent = only students with AB/Absent marks (not students with no marks)
+  const totalNotEntered = studentsWithNoMarks + notEnteredCount2;
   const finalAbsent = absentCount;
   const finalFail = Math.max(0, appearedCount - passCount);
-
   return {
     totalStudents: students.length,
     appeared: appearedCount,
@@ -697,48 +617,36 @@ export async function calculateStatsForScope(examId: string, scopeFilter: any) {
     profoundLevel: profoundCount,
     gradeDistribution,
     aPlusBreakdown,
-    victoryPercentage: appearedCount > 0
-      ? (passCount / appearedCount) * 100
-      : (students.length > 0 ? (passCount / students.length) * 100 : 0)
+    victoryPercentage: appearedCount > 0 ? passCount / appearedCount * 100 : students.length > 0 ? passCount / students.length * 100 : 0
   };
 }
-// ─── LRU Cache & Background Analytics Workers ─────────────────────────────────
-
 class SimpleLRUCache {
-  private cache = new Map<string, { value: any, expiry: number }>();
-  private readonly maxSize: number;
-
-  constructor(maxSize: number = 500) {
+  constructor(maxSize = 500) {
+    this.cache = /* @__PURE__ */ new Map();
     this.maxSize = maxSize;
   }
-
-  get(key: string) {
+  get(key) {
     const item = this.cache.get(key);
     if (!item) return null;
     if (Date.now() > item.expiry) {
       this.cache.delete(key);
       return null;
     }
-    // Refresh LRU position
     this.cache.delete(key);
     this.cache.set(key, item);
     return item.value;
   }
-
-  set(key: string, value: any, ttlSeconds: number = 300) {
+  set(key, value, ttlSeconds = 300) {
     if (this.cache.size >= this.maxSize) {
-      // Remove oldest (first item in Map)
       const firstKey = this.cache.keys().next().value;
       if (firstKey) this.cache.delete(firstKey);
     }
-    this.cache.set(key, { value, expiry: Date.now() + ttlSeconds * 1000 });
+    this.cache.set(key, { value, expiry: Date.now() + ttlSeconds * 1e3 });
   }
-
-  delete(key: string) {
+  delete(key) {
     this.cache.delete(key);
   }
-
-  clearPattern(regex: RegExp) {
+  clearPattern(regex) {
     for (const key of this.cache.keys()) {
       if (regex.test(key)) {
         this.cache.delete(key);
@@ -746,128 +654,107 @@ class SimpleLRUCache {
     }
   }
 }
-
 export const analyticsCache = new SimpleLRUCache();
-
-export async function rebuildDashboardSummary(examId: string, className: string = '10') {
+export async function rebuildDashboardSummary(examId, className = "10") {
   console.log(`Rebuilding DashboardSummary for Exam: ${examId}, Class: ${className}`);
   try {
-    // 1. Rebuild Educational Districts
     const edus = await EducationalDistrict.find();
     for (const edu of edus) {
-      const schoolsInEdu = await School.find({ subDistrictId: edu.id, role: 'SCHOOL' });
-      const schoolIds = schoolsInEdu.map(s => s._id.toString());
-
+      const schoolsInEdu = await School.find({ subDistrictId: edu.id, role: "SCHOOL" });
+      const schoolIds = schoolsInEdu.map((s) => s._id.toString());
       const summaries = await SchoolSummary.find({ examId, className, schoolId: { $in: schoolIds } }).lean();
-
-      let totalStudents = 0, appeared = 0, pass = 0, fullAPlus = 0;
-      let absent = 0, fail = 0, notEntered = 0;
-      let maleCount = 0, femaleCount = 0, scribeCount = 0;
-      let basicLevel = 0, averageLevel = 0, profoundLevel = 0;
-      let gradeDistribution: Record<string, number> = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "Ab": 0 };
-      let aPlusBreakdown: Record<string, number> = { "9": 0, "8": 0, "7": 0, "6": 0, "5": 0, "4": 0, "3": 0, "2": 0, "1": 0, "0": 0 };
-
-      summaries.forEach((s: any) => {
+      let totalStudents2 = 0, appeared2 = 0, pass2 = 0, fullAPlus2 = 0;
+      let absent2 = 0, fail2 = 0, notEntered2 = 0;
+      let maleCount2 = 0, femaleCount2 = 0, scribeCount2 = 0;
+      let basicLevel2 = 0, averageLevel2 = 0, profoundLevel2 = 0;
+      let gradeDistribution2 = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "Ab": 0 };
+      let aPlusBreakdown2 = { "9": 0, "8": 0, "7": 0, "6": 0, "5": 0, "4": 0, "3": 0, "2": 0, "1": 0, "0": 0 };
+      summaries.forEach((s) => {
         const stats = s.stats || {};
-        totalStudents += stats.totalStudents || 0;
-        appeared += stats.appeared || 0;
-        pass += stats.pass || 0;
-        fullAPlus += stats.fullAPlus || 0;
-        absent += stats.absent || 0;
-        fail += stats.fail || 0;
-        notEntered += stats.notEntered || 0;
-        maleCount += stats.maleCount || 0;
-        femaleCount += stats.femaleCount || 0;
-        scribeCount += stats.scribeCount || 0;
-        basicLevel += stats.basicLevel || 0;
-        averageLevel += stats.averageLevel || 0;
-        profoundLevel += stats.profoundLevel || 0;
-
+        totalStudents2 += stats.totalStudents || 0;
+        appeared2 += stats.appeared || 0;
+        pass2 += stats.pass || 0;
+        fullAPlus2 += stats.fullAPlus || 0;
+        absent2 += stats.absent || 0;
+        fail2 += stats.fail || 0;
+        notEntered2 += stats.notEntered || 0;
+        maleCount2 += stats.maleCount || 0;
+        femaleCount2 += stats.femaleCount || 0;
+        scribeCount2 += stats.scribeCount || 0;
+        basicLevel2 += stats.basicLevel || 0;
+        averageLevel2 += stats.averageLevel || 0;
+        profoundLevel2 += stats.profoundLevel || 0;
         if (stats.gradeDistribution) {
-          for (const g in gradeDistribution) {
-            gradeDistribution[g] += (stats.gradeDistribution[g] || 0);
+          for (const g in gradeDistribution2) {
+            gradeDistribution2[g] += stats.gradeDistribution[g] || 0;
           }
         }
         if (stats.aPlusBreakdown) {
-          for (const k in aPlusBreakdown) {
-            aPlusBreakdown[k] = (aPlusBreakdown[k] || 0) + (stats.aPlusBreakdown[k] || 0);
+          for (const k in aPlusBreakdown2) {
+            aPlusBreakdown2[k] = (aPlusBreakdown2[k] || 0) + (stats.aPlusBreakdown[k] || 0);
           }
         }
       });
-
-      const victoryPercentage = appeared > 0 ? (pass / appeared) * 100 : 0;
-      const combinedStats = { totalStudents, appeared, pass, fullAPlus, absent, fail, notEntered, maleCount, femaleCount, scribeCount, basicLevel, averageLevel, profoundLevel, gradeDistribution, aPlusBreakdown, victoryPercentage };
-
+      const victoryPercentage2 = appeared2 > 0 ? pass2 / appeared2 * 100 : 0;
+      const combinedStats2 = { totalStudents: totalStudents2, appeared: appeared2, pass: pass2, fullAPlus: fullAPlus2, absent: absent2, fail: fail2, notEntered: notEntered2, maleCount: maleCount2, femaleCount: femaleCount2, scribeCount: scribeCount2, basicLevel: basicLevel2, averageLevel: averageLevel2, profoundLevel: profoundLevel2, gradeDistribution: gradeDistribution2, aPlusBreakdown: aPlusBreakdown2, victoryPercentage: victoryPercentage2 };
       await DashboardSummary.findOneAndUpdate(
-        { id: `edu_${edu.id}_exam_${examId}`, level: 'EDU_DISTRICT', refId: edu.id, examId, className },
-        { stats: combinedStats, lastUpdated: new Date() },
+        { id: `edu_${edu.id}_exam_${examId}`, level: "EDU_DISTRICT", refId: edu.id, examId, className },
+        { stats: combinedStats2, lastUpdated: /* @__PURE__ */ new Date() },
         { upsert: true }
       );
     }
-
-    // 2. Rebuild Revenue Districts
     const districts = await District.find();
     for (const dist of districts) {
-      const edusInDist = edus.filter(e => e.districtId === dist.id).map(e => e.id);
-
-      const summaries = await DashboardSummary.find({ examId, className, level: 'EDU_DISTRICT', refId: { $in: edusInDist } }).lean();
-
-      let totalStudents = 0, appeared = 0, pass = 0, fullAPlus = 0;
-      let absent = 0, fail = 0, notEntered = 0;
-      let maleCount = 0, femaleCount = 0, scribeCount = 0;
-      let basicLevel = 0, averageLevel = 0, profoundLevel = 0;
-      let gradeDistribution: Record<string, number> = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "Ab": 0 };
-      let aPlusBreakdown: Record<string, number> = { "9": 0, "8": 0, "7": 0, "6": 0, "5": 0, "4": 0, "3": 0, "2": 0, "1": 0, "0": 0 };
-
-      summaries.forEach((s: any) => {
+      const edusInDist = edus.filter((e) => e.districtId === dist.id).map((e) => e.id);
+      const summaries = await DashboardSummary.find({ examId, className, level: "EDU_DISTRICT", refId: { $in: edusInDist } }).lean();
+      let totalStudents2 = 0, appeared2 = 0, pass2 = 0, fullAPlus2 = 0;
+      let absent2 = 0, fail2 = 0, notEntered2 = 0;
+      let maleCount2 = 0, femaleCount2 = 0, scribeCount2 = 0;
+      let basicLevel2 = 0, averageLevel2 = 0, profoundLevel2 = 0;
+      let gradeDistribution2 = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "Ab": 0 };
+      let aPlusBreakdown2 = { "9": 0, "8": 0, "7": 0, "6": 0, "5": 0, "4": 0, "3": 0, "2": 0, "1": 0, "0": 0 };
+      summaries.forEach((s) => {
         const stats = s.stats || {};
-        totalStudents += stats.totalStudents || 0;
-        appeared += stats.appeared || 0;
-        pass += stats.pass || 0;
-        fullAPlus += stats.fullAPlus || 0;
-        absent += stats.absent || 0;
-        fail += stats.fail || 0;
-        notEntered += stats.notEntered || 0;
-        maleCount += stats.maleCount || 0;
-        femaleCount += stats.femaleCount || 0;
-        scribeCount += stats.scribeCount || 0;
-        basicLevel += stats.basicLevel || 0;
-        averageLevel += stats.averageLevel || 0;
-        profoundLevel += stats.profoundLevel || 0;
-
+        totalStudents2 += stats.totalStudents || 0;
+        appeared2 += stats.appeared || 0;
+        pass2 += stats.pass || 0;
+        fullAPlus2 += stats.fullAPlus || 0;
+        absent2 += stats.absent || 0;
+        fail2 += stats.fail || 0;
+        notEntered2 += stats.notEntered || 0;
+        maleCount2 += stats.maleCount || 0;
+        femaleCount2 += stats.femaleCount || 0;
+        scribeCount2 += stats.scribeCount || 0;
+        basicLevel2 += stats.basicLevel || 0;
+        averageLevel2 += stats.averageLevel || 0;
+        profoundLevel2 += stats.profoundLevel || 0;
         if (stats.gradeDistribution) {
-          for (const g in gradeDistribution) {
-            gradeDistribution[g] += (stats.gradeDistribution[g] || 0);
+          for (const g in gradeDistribution2) {
+            gradeDistribution2[g] += stats.gradeDistribution[g] || 0;
           }
         }
         if (stats.aPlusBreakdown) {
-          for (const k in aPlusBreakdown) {
-            aPlusBreakdown[k] = (aPlusBreakdown[k] || 0) + (stats.aPlusBreakdown[k] || 0);
+          for (const k in aPlusBreakdown2) {
+            aPlusBreakdown2[k] = (aPlusBreakdown2[k] || 0) + (stats.aPlusBreakdown[k] || 0);
           }
         }
       });
-
-      const victoryPercentage = appeared > 0 ? (pass / appeared) * 100 : 0;
-      const combinedStats = { totalStudents, appeared, pass, fullAPlus, absent, fail, notEntered, maleCount, femaleCount, scribeCount, basicLevel, averageLevel, profoundLevel, gradeDistribution, aPlusBreakdown, victoryPercentage };
-
+      const victoryPercentage2 = appeared2 > 0 ? pass2 / appeared2 * 100 : 0;
+      const combinedStats2 = { totalStudents: totalStudents2, appeared: appeared2, pass: pass2, fullAPlus: fullAPlus2, absent: absent2, fail: fail2, notEntered: notEntered2, maleCount: maleCount2, femaleCount: femaleCount2, scribeCount: scribeCount2, basicLevel: basicLevel2, averageLevel: averageLevel2, profoundLevel: profoundLevel2, gradeDistribution: gradeDistribution2, aPlusBreakdown: aPlusBreakdown2, victoryPercentage: victoryPercentage2 };
       await DashboardSummary.findOneAndUpdate(
-        { id: `dist_${dist.id}_exam_${examId}`, level: 'DISTRICT', refId: dist.id, examId, className },
-        { stats: combinedStats, lastUpdated: new Date() },
+        { id: `dist_${dist.id}_exam_${examId}`, level: "DISTRICT", refId: dist.id, examId, className },
+        { stats: combinedStats2, lastUpdated: /* @__PURE__ */ new Date() },
         { upsert: true }
       );
     }
-
-    // 3. Rebuild State
-    const stateSummaries = await DashboardSummary.find({ examId, className, level: 'DISTRICT' }).lean();
-
+    const stateSummaries = await DashboardSummary.find({ examId, className, level: "DISTRICT" }).lean();
     let totalStudents = 0, appeared = 0, pass = 0, fullAPlus = 0;
     let absent = 0, fail = 0, notEntered = 0;
     let maleCount = 0, femaleCount = 0, scribeCount = 0;
     let basicLevel = 0, averageLevel = 0, profoundLevel = 0;
-    let gradeDistribution: Record<string, number> = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "Ab": 0 };
-    let aPlusBreakdown: Record<string, number> = { "9": 0, "8": 0, "7": 0, "6": 0, "5": 0, "4": 0, "3": 0, "2": 0, "1": 0, "0": 0 };
-
-    stateSummaries.forEach((s: any) => {
+    let gradeDistribution = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "Ab": 0 };
+    let aPlusBreakdown = { "9": 0, "8": 0, "7": 0, "6": 0, "5": 0, "4": 0, "3": 0, "2": 0, "1": 0, "0": 0 };
+    stateSummaries.forEach((s) => {
       const stats = s.stats || {};
       totalStudents += stats.totalStudents || 0;
       appeared += stats.appeared || 0;
@@ -882,10 +769,9 @@ export async function rebuildDashboardSummary(examId: string, className: string 
       basicLevel += stats.basicLevel || 0;
       averageLevel += stats.averageLevel || 0;
       profoundLevel += stats.profoundLevel || 0;
-
       if (stats.gradeDistribution) {
         for (const g in gradeDistribution) {
-          gradeDistribution[g] += (stats.gradeDistribution[g] || 0);
+          gradeDistribution[g] += stats.gradeDistribution[g] || 0;
         }
       }
       if (stats.aPlusBreakdown) {
@@ -894,55 +780,40 @@ export async function rebuildDashboardSummary(examId: string, className: string 
         }
       }
     });
-
-    const victoryPercentage = appeared > 0 ? (pass / appeared) * 100 : 0;
+    const victoryPercentage = appeared > 0 ? pass / appeared * 100 : 0;
     const combinedStats = { totalStudents, appeared, pass, fullAPlus, absent, fail, notEntered, maleCount, femaleCount, scribeCount, basicLevel, averageLevel, profoundLevel, gradeDistribution, aPlusBreakdown, victoryPercentage };
-
     await DashboardSummary.findOneAndUpdate(
-      { id: `state_ALL_exam_${examId}`, level: 'STATE', refId: 'ALL', examId, className },
-      { stats: combinedStats, lastUpdated: new Date() },
+      { id: `state_ALL_exam_${examId}`, level: "STATE", refId: "ALL", examId, className },
+      { stats: combinedStats, lastUpdated: /* @__PURE__ */ new Date() },
       { upsert: true }
     );
-
-    // Clear API caches
     analyticsCache.clearPattern(/dashboard/);
     analyticsCache.clearPattern(/region-analytics/);
     console.log(`Rebuild DashboardSummary complete.`);
-
-    // Rebuild region analytics in background
-    rebuildRegionAnalytics(examId, className).catch(() => {});
+    rebuildRegionAnalytics(examId, className).catch(() => {
+    });
   } catch (error) {
     console.error("Error rebuilding DashboardSummary:", error);
   }
 }
-
-// Fire & forget worker
-export async function enqueueSchoolSummaryRebuild(schoolId: string, examId: string, className: string = '10') {
-  // Use setTimeout to run this in the background event loop, not blocking the current request
+export async function enqueueSchoolSummaryRebuild(schoolId, examId, className = "10") {
   setTimeout(async () => {
     try {
       console.log(`Background worker: Rebuilding SchoolSummary for school ${schoolId}`);
       const results = await calculateStatsForScope(examId, { schoolId, className });
-
       await SchoolSummary.findOneAndUpdate(
         { schoolId, examId, className },
-        { stats: results, lastUpdated: new Date() },
+        { stats: results, lastUpdated: /* @__PURE__ */ new Date() },
         { upsert: true }
       );
-
-      // Invalidate school-specific caches
       analyticsCache.clearPattern(new RegExp(schoolId));
-
-      // Cascade rebuild the dashboard summarizations
       await rebuildDashboardSummary(examId, className);
-
     } catch (err) {
       console.error(`Error in background worker for school ${schoolId}:`, err);
     }
   }, 100);
 }
-
-export async function invalidateSchoolAnalytics(schoolId?: string) {
+export async function invalidateSchoolAnalytics(schoolId) {
   try {
     analyticsCache.clearPattern(/school-analysis/);
     analyticsCache.clearPattern(/lang-validation/);
@@ -957,15 +828,12 @@ export async function invalidateSchoolAnalytics(schoolId?: string) {
       await SchoolSummary.deleteMany({});
     }
     await DashboardSummary.deleteMany({});
-    console.log(`[LiveSync] Analytics caches and summaries invalidated for school: ${schoolId || 'ALL'}`);
+    console.log(`[LiveSync] Analytics caches and summaries invalidated for school: ${schoolId || "ALL"}`);
   } catch (err) {
     console.error("Error invalidating school analytics:", err);
   }
 }
-// ──────────────────────────────────────────────────────────────────────────────
-
-// Helpers for JWT
-function generateAccessToken(user: any) {
+function generateAccessToken(user) {
   return jwt.sign(
     {
       id: user._id ? user._id.toString() : user.id,
@@ -985,26 +853,21 @@ function generateAccessToken(user: any) {
     { expiresIn: "15m" }
   );
 }
-
-function generateRefreshToken(user: any) {
+function generateRefreshToken(user) {
   return jwt.sign(
     { id: user.id },
     REFRESH_TOKEN_SECRET,
     { expiresIn: "7d" }
   );
 }
-
-// Middleware to authenticate token
-const authenticateToken = (req: any, res: any, next: any) => {
+const authenticateToken = (req, res, next) => {
   try {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
-
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
     if (!token) return res.status(401).json({ message: "No token provided" });
-
-    jwt.verify(token, ACCESS_TOKEN_SECRET, (err: any, user: any) => {
+    jwt.verify(token, ACCESS_TOKEN_SECRET, (err, user) => {
       if (err) {
-        if (err.name === 'TokenExpiredError') {
+        if (err.name === "TokenExpiredError") {
           return res.status(401).json({ message: "Token expired" });
         }
         return res.status(401).json({ message: "Invalid or unauthorized token" });
@@ -1012,117 +875,98 @@ const authenticateToken = (req: any, res: any, next: any) => {
       req.user = user;
       next();
     });
-  } catch (err: any) {
+  } catch (err) {
     return res.status(401).json({ message: "Authentication failed" });
   }
 };
-
-// Middleware to strictly isolate school user scope
-const enforceSchoolScope = (req: any, res: any, next: any) => {
-  if (req.user && req.user.role === 'SCHOOL') {
+const enforceSchoolScope = (req, res, next) => {
+  if (req.user && req.user.role === "SCHOOL") {
     const forcedSchoolId = req.user.schoolId || req.user.id;
     if (forcedSchoolId) {
       req.query.schoolId = forcedSchoolId;
-      // Remove broader scope parameters
       delete req.query.districtId;
       delete req.query.eduId;
     }
   }
   next();
 };
-
-const requireRole = (...roles: string[]) => (req: any, res: any, next: any) => {
+const requireRole = (...roles) => (req, res, next) => {
   if (!req.user) return res.sendStatus(401);
   if (!roles.includes(req.user.role)) {
     return res.status(403).json({ message: "Forbidden" });
   }
   next();
 };
-
-// Rate limiting for auth routes
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per window
+  windowMs: 15 * 60 * 1e3,
+  // 15 minutes
+  max: 100,
+  // Limit each IP to 100 requests per window
   message: { message: "Too many login attempts from this IP, please try again after 15 minutes" }
 });
 const reportLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 30, // Limit each IP to 30 requests per window
+  windowMs: 1 * 60 * 1e3,
+  // 1 minute
+  max: 30,
+  // Limit each IP to 30 requests per window
   message: { message: "Too many requests to analytical endpoints, please try again after a minute" }
 });
-
 app.use("/api/results", reportLimiter);
 app.use("/api/reports", reportLimiter);
 app.use("/api/pdf", reportLimiter);
-
 app.post("/api/auth/login", authLimiter, async (req, res) => {
   try {
     const { username, password } = req.body || {};
     if (!username || !password) {
       return res.status(400).json({ message: "Username and password are required" });
     }
-
     const user = await User.findOne({ username });
-
-    const passwordMatches = async (candidate: string, stored: string | undefined | null) => {
-      if (!stored || typeof stored !== 'string') return false;
-      if (stored.startsWith('$2a$') || stored.startsWith('$2b$') || stored.startsWith('$2y$')) {
+    const passwordMatches = async (candidate, stored) => {
+      if (!stored || typeof stored !== "string") return false;
+      if (stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$")) {
         return bcrypt.compare(candidate, stored);
       }
-      // Plaintext passwords are no longer accepted — reject them
       console.warn(`User "${username}" has a non-hashed password stored. Password change required.`);
       return false;
     };
-
     let authenticatedUser = null;
-
     if (user) {
-      if (user.lockedUntil && user.lockedUntil > new Date()) {
+      if (user.lockedUntil && user.lockedUntil > /* @__PURE__ */ new Date()) {
         console.log(`Account locked for ${username}`);
         return res.status(403).json({ message: `Account locked until ${user.lockedUntil.toLocaleTimeString()}` });
       }
-
       const matches = await passwordMatches(password, user.password);
       if (matches) {
         authenticatedUser = user;
       } else {
-        // Increment attempts and lock if >= 5
         user.loginAttempts = (user.loginAttempts || 0) + 1;
         if (user.loginAttempts >= 5) {
-          user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000); // lock for 15 mins
+          user.lockedUntil = new Date(Date.now() + 15 * 60 * 1e3);
         }
         await user.save();
       }
     } else {
-      // No user found
     }
-
     if (authenticatedUser) {
       const accessToken = generateAccessToken(authenticatedUser);
       const refreshToken = generateRefreshToken(authenticatedUser);
-
-      // Reset login attempts on success
       authenticatedUser.loginAttempts = 0;
       authenticatedUser.lockedUntil = null;
-      authenticatedUser.lastLogin = new Date();
-
-      // Save refresh token to DB
+      authenticatedUser.lastLogin = /* @__PURE__ */ new Date();
       authenticatedUser.refreshToken = refreshToken;
       await authenticatedUser.save();
-
-      // Set refresh token in httpOnly cookie
-      res.cookie('refreshToken', refreshToken, {
+      res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        secure: false,
+        sameSite: false ? "strict" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1e3
+        // 7 days
       });
-
-      const { password: _password, refreshToken: _rt, ...userObj } = authenticatedUser.toObject() as any;
-      if (userObj.role === 'SCHOOL' && !userObj.schoolId) {
+      const { password: _password, refreshToken: _rt, ...userObj } = authenticatedUser.toObject();
+      if (userObj.role === "SCHOOL" && !userObj.schoolId) {
         userObj.schoolId = userObj.id;
       }
-      if (userObj.role === 'TEACHER' && userObj.schoolId) {
+      if (userObj.role === "TEACHER" && userObj.schoolId) {
         const school = await User.findById(userObj.schoolId).lean();
         if (school) {
           userObj.subDistrictId = school.subDistrictId || school.eduId;
@@ -1132,69 +976,56 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
       }
       return res.json({ token: accessToken, user: userObj });
     }
-
     res.status(401).json({ message: "Invalid credentials" });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Login Error:", err);
     res.status(500).json({ message: "Internal server error during login" });
   }
 });
-
 app.post("/api/auth/refresh", authLimiter, async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
   if (!refreshToken) return res.status(401).json({ message: "No refresh token provided" });
-
   try {
     const user = await User.findOne({ refreshToken });
     if (!user) {
       return res.status(401).json({ message: "Invalid refresh token" });
     }
-
     try {
-      const decoded: any = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
+      const decoded = jwt.verify(refreshToken, REFRESH_TOKEN_SECRET);
       if (!decoded || user.id !== decoded.id) {
         return res.status(401).json({ message: "Token expired or invalid" });
       }
-
-      // Rotate refresh token (invalidate old one)
       const newRefreshToken = generateRefreshToken(user);
       const newAccessToken = generateAccessToken(user);
-
       user.refreshToken = newRefreshToken;
       await user.save();
-
-      res.cookie('refreshToken', newRefreshToken, {
+      res.cookie("refreshToken", newRefreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000
+        secure: false,
+        sameSite: false ? "strict" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1e3
       });
-
       res.json({ token: newAccessToken });
-    } catch (err: any) {
-      if (err.name === 'TokenExpiredError') {
+    } catch (err) {
+      if (err.name === "TokenExpiredError") {
         return res.status(401).json({ message: "Refresh token expired" });
       }
       return res.status(401).json({ message: "Token expired or invalid" });
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error("Refresh route error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-// ─── MESSAGE ALERTS ────────────────────────────────────────────────────────────
-
-app.get("/api/alerts", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req, res) => {
+app.get("/api/alerts", authenticateToken, requireRole("WEBMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const alerts = await MessageAlert.find().sort({ createdAt: -1 }).lean();
     res.json(alerts);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/alerts", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req, res) => {
+app.post("/api/alerts", authenticateToken, requireRole("WEBMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const { title, content, target, targetSchools, createdBy } = req.body;
     if (!title || !content) {
@@ -1204,128 +1035,109 @@ app.post("/api/alerts", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET
       id: `alert-${Date.now()}`,
       title,
       content,
-      target: target || 'ALL',
+      target: target || "ALL",
       targetSchools: targetSchools || [],
       active: { $ne: false },
       createdBy
     });
     await alert.save();
     res.json(alert);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.patch("/api/alerts/:id", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req, res) => {
+app.patch("/api/alerts/:id", authenticateToken, requireRole("WEBMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const { id } = req.params;
     const { active, isDelete } = req.body;
-
     if (isDelete) {
       await MessageAlert.deleteOne({ id });
       return res.json({ message: "Deleted" });
     }
-
-    const alert = await MessageAlert.findOneAndUpdate({ id }, { active }, { returnDocument: 'after' });
+    const alert = await MessageAlert.findOneAndUpdate({ id }, { active }, { returnDocument: "after" });
     if (!alert) return res.status(404).json({ message: "Alert not found" });
     res.json(alert);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.put("/api/alerts/:id", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req, res) => {
+app.put("/api/alerts/:id", authenticateToken, requireRole("WEBMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const { id } = req.params;
     const { title, content, target, targetSchools } = req.body;
-
     const alert = await MessageAlert.findOneAndUpdate(
       { id },
       { $set: { title, content, target, targetSchools } },
-      { returnDocument: 'after' }
+      { returnDocument: "after" }
     );
     if (!alert) return res.status(404).json({ message: "Alert not found" });
     res.json(alert);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/alerts/active", authenticateToken, async (req, res) => {
   try {
     const { schoolId } = req.query;
     const activeAlerts = await MessageAlert.find({ active: { $ne: false } }).sort({ createdAt: -1 });
-
     if (!schoolId) {
       return res.json(activeAlerts);
     }
-
-    // Filter UNCONFIRMED targets if a schoolId is provided
     const filteredAlerts = [];
-
-    // Find all active exams instead of relying on status: 'active'
     const activeExams = await Exam.find({ active: { $ne: false } }).lean();
-
     for (const alert of activeAlerts) {
-      if (alert.target === 'ALL') {
+      if (alert.target === "ALL") {
         filteredAlerts.push(alert);
-      } else if (alert.target === 'UNCONFIRMED') {
-        // Check if school is unconfirmed in any active exam
-        const isUnconfirmed = activeExams.some(exam => !(exam.confirmedSchools || []).includes(schoolId as string));
+      } else if (alert.target === "UNCONFIRMED") {
+        const isUnconfirmed = activeExams.some((exam) => !(exam.confirmedSchools || []).includes(schoolId));
         if (isUnconfirmed) {
           filteredAlerts.push(alert);
         }
-      } else if (alert.target === 'SPECIFIC') {
-        if ((alert.targetSchools || []).includes(schoolId as string)) {
+      } else if (alert.target === "SPECIFIC") {
+        if ((alert.targetSchools || []).includes(schoolId)) {
           filteredAlerts.push(alert);
         }
       }
     }
-
     res.json(filteredAlerts);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.post("/api/auth/logout", async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken;
     if (refreshToken) {
       await User.findOneAndUpdate({ refreshToken }, { refreshToken: null });
     }
-    res.clearCookie('refreshToken', {
+    res.clearCookie("refreshToken", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
+      secure: false,
+      sameSite: false ? "strict" : "lax"
     });
     res.sendStatus(204);
-  } catch (err: any) {
+  } catch (err) {
     console.error("Logout error:", err);
-    res.sendStatus(204); // Always succeed on logout
+    res.sendStatus(204);
   }
 });
-
 app.post("/api/auth/forgot-password", authLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.json({ error: "Email is required" });
-
     const user = await User.findOne({
       $or: [
-        { email: email },
+        { email },
         { schoolEmail: email },
         { hmEmail: email },
         { coordinatorEmail: email }
       ]
     });
     if (!user) return res.json({ error: "User not found with this email" });
-
     const resetToken = crypto.randomBytes(32).toString("hex");
     user.resetPasswordToken = resetToken;
-    user.resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour expiry
+    user.resetPasswordExpires = new Date(Date.now() + 36e5);
     await user.save();
-
     const protocol = req.secure ? "https" : "http";
     const host = req.get("host");
     const origin = req.get("origin") || `${protocol}://${host}`;
@@ -1334,7 +1146,6 @@ app.post("/api/auth/forgot-password", authLimiter, async (req, res) => {
       frontendOrigin = "http://localhost:5173";
     }
     const resetUrl = `${frontendOrigin}/reset-password/${resetToken}`;
-
     const mailOptions = {
       from: `"Vijayasree Palakkad" <${process.env.SENDER_EMAIL || process.env.EMAIL_USER}>`,
       to: email,
@@ -1350,35 +1161,29 @@ app.post("/api/auth/forgot-password", authLimiter, async (req, res) => {
         </div>
       `
     };
-
-    const isPlaceholderUser = !process.env.EMAIL_USER || process.env.EMAIL_USER === 'your_email@example.com';
-    const isPlaceholderPass = !process.env.EMAIL_PASS || process.env.EMAIL_PASS === 'your_email_password';
-
+    const isPlaceholderUser = !process.env.EMAIL_USER || process.env.EMAIL_USER === "your_email@example.com";
+    const isPlaceholderPass = !process.env.EMAIL_PASS || process.env.EMAIL_PASS === "your_email_password";
     if (isPlaceholderUser || isPlaceholderPass) {
       console.log("\n==================================================");
       console.log("DEVELOPMENT/TEST MODE: SMTP credentials are placeholders.");
       console.log(`Password reset link: ${resetUrl}`);
       console.log("==================================================\n");
-      // NEVER return resetUrl in production response
       return res.json({
         message: "SMTP email credentials are not configured. Check server logs for reset link (Development Mode)."
       });
     }
-
     try {
       await transporter.sendMail(mailOptions);
       res.json({ message: "Password reset link sent to email" });
-    } catch (mailError: any) {
+    } catch (mailError) {
       console.error("Nodemailer failed to send email:", mailError);
-
-      // Provide detailed error info for debugging on Vercel
       return res.status(500).json({
         error: "Failed to send reset email. Please try again later.",
         details: mailError.message,
-        devInfo: process.env.NODE_ENV !== "production" ? {
+        devInfo: true ? {
           message: "Email sending failed. Password reset link generated on screen (Development Mode).",
-          resetUrl: resetUrl
-        } : undefined
+          resetUrl
+        } : void 0
       });
     }
   } catch (error) {
@@ -1386,83 +1191,68 @@ app.post("/api/auth/forgot-password", authLimiter, async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-
 app.post("/api/auth/reset-password/:token", async (req, res) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
-
     if (!password) return res.status(400).json({ error: "Password is required" });
-
     const user = await User.findOne({
       resetPasswordToken: token,
-      resetPasswordExpires: { $gt: new Date() }
+      resetPasswordExpires: { $gt: /* @__PURE__ */ new Date() }
     });
-
     if (!user) {
       return res.status(400).json({ error: "Invalid or expired reset token" });
     }
-
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(password, salt);
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
     user.lockedUntil = null;
     user.loginAttempts = 0;
-    user.passwordChanged = true; // Enable fresh login directly
+    user.passwordChanged = true;
     await user.save();
-
     res.json({ message: "Password has been reset successfully. Account is unlocked for a fresh login." });
   } catch (error) {
     console.error("Reset password error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
-
 app.get("/api/preferences", async (req, res) => {
   try {
-    let pref = await Preference.findOne({ key: 'global' }).lean();
+    let pref = await Preference.findOne({ key: "global" }).lean();
     if (!pref) {
-      pref = await Preference.findOne({ id: 'global' }).lean();
+      pref = await Preference.findOne({ id: "global" }).lean();
     }
     res.json(pref?.data || {});
-  } catch (err: any) {
+  } catch (err) {
     res.json({});
   }
 });
-
-// Protect all following routes
 app.get("/api/results/state", async (req, res) => {
   try {
-    const examId = req.query.examId as string | undefined;
-    const schoolType = req.query.schoolType as string | undefined;
-
-    const cacheKey = `state-${examId || 'all'}-${schoolType || 'all'}`;
+    const examId = req.query.examId;
+    const schoolType = req.query.schoolType;
+    const cacheKey = `state-${examId || "all"}-${schoolType || "all"}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
-
     const exams = await Exam.find();
     const activeExamId = examId || exams[0]?.id || "exam-1";
-    const selectedExam = exams.find(e => e.id === activeExamId);
-    const examClass = selectedExam?.standard || '10';
-
+    const selectedExam = exams.find((e) => e.id === activeExamId);
+    const examClass = selectedExam?.standard || "10";
     const districtsList = await District.find();
-    const distPromises = districtsList.map(async (d: any, index: number) => {
+    const distPromises = districtsList.map(async (d, index) => {
       const edus = await EducationalDistrict.find({ districtId: d.id });
-      const eduIds = edus.map(e => e.id);
-
-      const filter: any = { subDistrictId: { $in: eduIds }, role: 'SCHOOL' };
-      if (schoolType && schoolType !== 'ALL') {
+      const eduIds = edus.map((e) => e.id);
+      const filter = { subDistrictId: { $in: eduIds }, role: "SCHOOL" };
+      if (schoolType && schoolType !== "ALL") {
         filter.schoolType = schoolType;
       }
       const schools = await School.find(filter);
-      const schoolIds = schools.map(s => s._id.toString());
-
+      const schoolIds = schools.map((s) => s._id.toString());
       const dResults = await calculateStatsForScope(activeExamId, {
         schoolId: { $in: schoolIds },
         className: examClass
       });
-
       return {
         slNo: index + 1,
         id: d.id,
@@ -1473,160 +1263,139 @@ app.get("/api/results/state", async (req, res) => {
         fullAPlus: dResults.fullAPlus,
         absent: dResults.absent,
         victoryPercentage: dResults.victoryPercentage,
-        aPlus: dResults.gradeDistribution?.['A+'] || 0,
-        a: dResults.gradeDistribution?.['A'] || 0,
-        bPlus: dResults.gradeDistribution?.['B+'] || 0,
-        b: dResults.gradeDistribution?.['B'] || 0,
-        cPlus: dResults.gradeDistribution?.['C+'] || 0,
-        c: dResults.gradeDistribution?.['C'] || 0,
-        dPlus: dResults.gradeDistribution?.['D+'] || 0,
-        d: dResults.gradeDistribution?.['D'] || 0,
-        e: dResults.gradeDistribution?.['E'] || 0,
+        aPlus: dResults.gradeDistribution?.["A+"] || 0,
+        a: dResults.gradeDistribution?.["A"] || 0,
+        bPlus: dResults.gradeDistribution?.["B+"] || 0,
+        b: dResults.gradeDistribution?.["B"] || 0,
+        cPlus: dResults.gradeDistribution?.["C+"] || 0,
+        c: dResults.gradeDistribution?.["C"] || 0,
+        dPlus: dResults.gradeDistribution?.["D+"] || 0,
+        d: dResults.gradeDistribution?.["D"] || 0,
+        e: dResults.gradeDistribution?.["E"] || 0
       };
     });
-
     const districts = await Promise.all(distPromises);
-    districts.sort((a: any, b: any) => b.victoryPercentage - a.victoryPercentage);
-    districts.forEach((d: any, i: number) => d.slNo = i + 1);
+    districts.sort((a, b) => b.victoryPercentage - a.victoryPercentage);
+    districts.forEach((d, i) => d.slNo = i + 1);
     analyticsCache.set(cacheKey, districts, 300);
     res.json(districts);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.post("/api/admin/seed-edu-divisions", async (req, res) => {
   res.status(410).json({ message: "This endpoint is disabled. Please use the Management pages to add/remove districts, revenue districts, and sub-districts." });
 });
-
 app.get("/api/results/district/:districtId", async (req, res) => {
   try {
     const districtId = req.params.districtId;
-    const examId = req.query.examId as string | undefined;
-    const schoolType = req.query.schoolType as string | undefined;
-
-    const cacheKey = `district-${districtId}-${examId || 'all'}-${schoolType || 'all'}`;
+    const examId = req.query.examId;
+    const schoolType = req.query.schoolType;
+    const cacheKey = `district-${districtId}-${examId || "all"}-${schoolType || "all"}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
-
     const exams = await Exam.find();
     const activeExamId = examId || exams[0]?.id || "exam-1";
-    const selectedExam = exams.find(e => e.id === activeExamId);
-    const examClass = selectedExam?.standard || '10';
-
-    const rawEduDistrictsList = (districtId && districtId !== 'ALL')
-      ? await EducationalDistrict.find({ districtId, active: true })
-      : await EducationalDistrict.find({ active: true });
-
-    const seenEduIds = new Set<string>();
-    const eduDistrictsList = rawEduDistrictsList.filter((e: any) => {
-      const name = (e.name || '').trim();
+    const selectedExam = exams.find((e) => e.id === activeExamId);
+    const examClass = selectedExam?.standard || "10";
+    const rawEduDistrictsList = districtId && districtId !== "ALL" ? await EducationalDistrict.find({ districtId, active: true }) : await EducationalDistrict.find({ active: true });
+    const seenEduIds = /* @__PURE__ */ new Set();
+    const eduDistrictsList = rawEduDistrictsList.filter((e) => {
+      const name = (e.name || "").trim();
       if (!name) return false;
-      const eid = (e.id || '').trim();
+      const eid = (e.id || "").trim();
       if (eid && seenEduIds.has(eid)) return false;
       if (eid) seenEduIds.add(eid);
       return true;
     });
-
-    const revDivIds = [...new Set(eduDistrictsList.map((e: any) => e.revenueDivisionId).filter(Boolean))];
+    const revDivIds = [...new Set(eduDistrictsList.map((e) => e.revenueDivisionId).filter(Boolean))];
     const revDivs = revDivIds.length > 0 ? await RevenueDivision.find({ id: { $in: revDivIds } }).lean() : [];
-    const revDivMap = new Map<string, string>();
-    revDivs.forEach((rd: any) => revDivMap.set(rd.id, rd.name));
-
-    const distIds = [...new Set(eduDistrictsList.map((e: any) => e.districtId).filter(Boolean))];
+    const revDivMap = /* @__PURE__ */ new Map();
+    revDivs.forEach((rd) => revDivMap.set(rd.id, rd.name));
+    const distIds = [...new Set(eduDistrictsList.map((e) => e.districtId).filter(Boolean))];
     const distDocs = distIds.length > 0 ? await District.find({ id: { $in: distIds } }).lean() : [];
-    const distNameMap = new Map<string, string>();
-    distDocs.forEach((d: any) => distNameMap.set(d.id, d.name));
-
-    const eduPromises = eduDistrictsList.map(async (e: any, index: number) => {
-      const filter: any = { subDistrictId: e.id, role: 'SCHOOL' };
-      if (schoolType && schoolType !== 'ALL') {
+    const distNameMap = /* @__PURE__ */ new Map();
+    distDocs.forEach((d) => distNameMap.set(d.id, d.name));
+    const eduPromises = eduDistrictsList.map(async (e, index) => {
+      const filter = { subDistrictId: e.id, role: "SCHOOL" };
+      if (schoolType && schoolType !== "ALL") {
         filter.schoolType = schoolType;
       }
       const schools = await School.find(filter);
-      const schoolIds = schools.map(s => s._id.toString());
-
+      const schoolIds = schools.map((s) => s._id.toString());
       const eResults = await calculateStatsForScope(activeExamId, {
         schoolId: { $in: schoolIds },
         className: examClass
       });
-
       return {
         slNo: index + 1,
         id: e.id,
         name: e.name,
-        districtId: e.districtId || '',
-        districtName: distNameMap.get(e.districtId) || '',
-        revenueDivisionId: e.revenueDivisionId || '',
-        revenueDivisionName: revDivMap.get(e.revenueDivisionId) || '',
+        districtId: e.districtId || "",
+        districtName: distNameMap.get(e.districtId) || "",
+        revenueDivisionId: e.revenueDivisionId || "",
+        revenueDivisionName: revDivMap.get(e.revenueDivisionId) || "",
         studentsAppeared: eResults.appeared,
         totalStudents: eResults.totalStudents,
         pass: eResults.pass,
         fullAPlus: eResults.fullAPlus,
         absent: eResults.absent,
         victoryPercentage: eResults.victoryPercentage,
-        aPlus: eResults.gradeDistribution?.['A+'] || 0,
-        a: eResults.gradeDistribution?.['A'] || 0,
-        bPlus: eResults.gradeDistribution?.['B+'] || 0,
-        b: eResults.gradeDistribution?.['B'] || 0,
-        cPlus: eResults.gradeDistribution?.['C+'] || 0,
-        c: eResults.gradeDistribution?.['C'] || 0,
-        dPlus: eResults.gradeDistribution?.['D+'] || 0,
-        d: eResults.gradeDistribution?.['D'] || 0,
-        e: eResults.gradeDistribution?.['E'] || 0,
+        aPlus: eResults.gradeDistribution?.["A+"] || 0,
+        a: eResults.gradeDistribution?.["A"] || 0,
+        bPlus: eResults.gradeDistribution?.["B+"] || 0,
+        b: eResults.gradeDistribution?.["B"] || 0,
+        cPlus: eResults.gradeDistribution?.["C+"] || 0,
+        c: eResults.gradeDistribution?.["C"] || 0,
+        dPlus: eResults.gradeDistribution?.["D+"] || 0,
+        d: eResults.gradeDistribution?.["D"] || 0,
+        e: eResults.gradeDistribution?.["E"] || 0
       };
     });
-
     const eduDistricts = await Promise.all(eduPromises);
-    eduDistricts.sort((a: any, b: any) => {
-      const rdCmp = (a.districtName || '').localeCompare(b.districtName || '');
+    eduDistricts.sort((a, b) => {
+      const rdCmp = (a.districtName || "").localeCompare(b.districtName || "");
       if (rdCmp !== 0) return rdCmp;
-      return (a.name || '').localeCompare(b.name || '');
+      return (a.name || "").localeCompare(b.name || "");
     });
-    eduDistricts.forEach((d: any, i: number) => d.slNo = i + 1);
+    eduDistricts.forEach((d, i) => d.slNo = i + 1);
     analyticsCache.set(cacheKey, eduDistricts, 300);
     res.json(eduDistricts);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/results/educational", async (req, res) => {
   try {
     const firstEdu = await EducationalDistrict.findOne();
-    const eduId = firstEdu ? firstEdu.id : 'edu-alat';
-    res.redirect(`/api/results/educational/${eduId}?${new URLSearchParams(req.query as any).toString()}`);
-  } catch (err: any) {
+    const eduId = firstEdu ? firstEdu.id : "edu-alat";
+    res.redirect(`/api/results/educational/${eduId}?${new URLSearchParams(req.query).toString()}`);
+  } catch (err) {
     res.json([]);
   }
 });
-
 app.get("/api/results/educational/:eduId", async (req, res) => {
   try {
     const eduId = req.params.eduId;
-    const examId = req.query.examId as string | undefined;
-    const schoolType = req.query.schoolType as string | undefined;
-
-    const cacheKey = `educational-${eduId}-${examId || 'all'}-${schoolType || 'all'}`;
+    const examId = req.query.examId;
+    const schoolType = req.query.schoolType;
+    const cacheKey = `educational-${eduId}-${examId || "all"}-${schoolType || "all"}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
-
     const exams = await Exam.find();
     const activeExamId = examId || exams[0]?.id || "exam-1";
-    const selectedExam = exams.find(e => e.id === activeExamId);
-    const examClass = selectedExam?.standard || '10';
-
-    const filter: any = { subDistrictId: eduId, role: 'SCHOOL' };
-    if (schoolType && schoolType !== 'ALL') {
+    const selectedExam = exams.find((e) => e.id === activeExamId);
+    const examClass = selectedExam?.standard || "10";
+    const filter = { subDistrictId: eduId, role: "SCHOOL" };
+    if (schoolType && schoolType !== "ALL") {
       filter.schoolType = schoolType;
     }
     const schoolsList = await School.find(filter);
-    const schoolPromises = schoolsList.map(async (s: any, index: number) => {
+    const schoolPromises = schoolsList.map(async (s, index) => {
       const sResults = await calculateStatsForScope(activeExamId, {
         schoolId: s._id.toString(),
         className: examClass
       });
-
       return {
         slNo: index + 1,
         id: s.id,
@@ -1634,7 +1403,7 @@ app.get("/api/results/educational/:eduId", async (req, res) => {
         name: s.name,
         type: s.type,
         totalStudents: sResults.totalStudents || sResults.appeared || 0,
-        subDistrictId: s.subDistrictId || s.eduId || '',
+        subDistrictId: s.subDistrictId || s.eduId || "",
         studentsAppeared: sResults.appeared,
         pass: sResults.pass,
         fullAPlus: sResults.fullAPlus,
@@ -1644,46 +1413,42 @@ app.get("/api/results/educational/:eduId", async (req, res) => {
         averageLevel: sResults.averageLevel || 0,
         profoundLevel: sResults.profoundLevel || 0,
         victoryPercentage: sResults.victoryPercentage,
-        basicLevelPct: sResults.appeared > 0 ? ((sResults.basicLevel || 0) / sResults.appeared) * 100 : 0,
-        averageLevelPct: sResults.appeared > 0 ? ((sResults.averageLevel || 0) / sResults.appeared) * 100 : 0,
-        profoundLevelPct: sResults.appeared > 0 ? ((sResults.profoundLevel || 0) / sResults.appeared) * 100 : 0
+        basicLevelPct: sResults.appeared > 0 ? (sResults.basicLevel || 0) / sResults.appeared * 100 : 0,
+        averageLevelPct: sResults.appeared > 0 ? (sResults.averageLevel || 0) / sResults.appeared * 100 : 0,
+        profoundLevelPct: sResults.appeared > 0 ? (sResults.profoundLevel || 0) / sResults.appeared * 100 : 0
       };
     });
-
     const schools = await Promise.all(schoolPromises);
-    schools.sort((a: any, b: any) => b.victoryPercentage - a.victoryPercentage);
-    schools.forEach((d: any, i: number) => d.slNo = i + 1);
+    schools.sort((a, b) => b.victoryPercentage - a.victoryPercentage);
+    schools.forEach((d, i) => d.slNo = i + 1);
     analyticsCache.set(cacheKey, schools, 300);
     res.json(schools);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/results/district-schools/:districtId", enforceSchoolScope, async (req, res) => {
   try {
     const districtId = req.params.districtId;
-    const examId = req.query.examId as string | undefined;
-    const schoolType = req.query.schoolType as string | undefined;
+    const examId = req.query.examId;
+    const schoolType = req.query.schoolType;
     const exams = await Exam.find();
     const activeExamId = examId || exams[0]?.id || "exam-1";
-    const selectedExam = exams.find(e => e.id === activeExamId);
-    const examClass = selectedExam?.standard || '10';
-
-    const filter: any = { role: 'SCHOOL' };
-    if (districtId && districtId !== 'ALL') {
+    const selectedExam = exams.find((e) => e.id === activeExamId);
+    const examClass = selectedExam?.standard || "10";
+    const filter = { role: "SCHOOL" };
+    if (districtId && districtId !== "ALL") {
       filter.districtId = districtId;
     }
-    if (schoolType && schoolType !== 'ALL') {
+    if (schoolType && schoolType !== "ALL") {
       filter.schoolType = schoolType;
     }
     const schoolsList = await School.find(filter);
-    const schoolPromises = schoolsList.map(async (s: any, index: number) => {
+    const schoolPromises = schoolsList.map(async (s, index) => {
       const sResults = await calculateStatsForScope(activeExamId, {
         schoolId: s._id.toString(),
         className: examClass
       });
-
       return {
         slNo: index + 1,
         id: s.id,
@@ -1691,7 +1456,7 @@ app.get("/api/results/district-schools/:districtId", enforceSchoolScope, async (
         name: s.name,
         type: s.type,
         totalStudents: sResults.totalStudents || 0,
-        subDistrictId: s.subDistrictId || s.eduId || '',
+        subDistrictId: s.subDistrictId || s.eduId || "",
         studentsAppeared: sResults.appeared,
         pass: sResults.pass,
         fullAPlus: sResults.fullAPlus,
@@ -1701,36 +1466,33 @@ app.get("/api/results/district-schools/:districtId", enforceSchoolScope, async (
         averageLevel: sResults.averageLevel || 0,
         profoundLevel: sResults.profoundLevel || 0,
         victoryPercentage: sResults.victoryPercentage,
-        basicLevelPct: sResults.appeared > 0 ? ((sResults.basicLevel || 0) / sResults.appeared) * 100 : 0,
-        averageLevelPct: sResults.appeared > 0 ? ((sResults.averageLevel || 0) / sResults.appeared) * 100 : 0,
-        profoundLevelPct: sResults.appeared > 0 ? ((sResults.profoundLevel || 0) / sResults.appeared) * 100 : 0
+        basicLevelPct: sResults.appeared > 0 ? (sResults.basicLevel || 0) / sResults.appeared * 100 : 0,
+        averageLevelPct: sResults.appeared > 0 ? (sResults.averageLevel || 0) / sResults.appeared * 100 : 0,
+        profoundLevelPct: sResults.appeared > 0 ? (sResults.profoundLevel || 0) / sResults.appeared * 100 : 0
       };
     });
-
     const schools = await Promise.all(schoolPromises);
-    schools.sort((a: any, b: any) => b.victoryPercentage - a.victoryPercentage);
-    schools.forEach((d: any, i: number) => d.slNo = i + 1);
+    schools.sort((a, b) => b.victoryPercentage - a.victoryPercentage);
+    schools.forEach((d, i) => d.slNo = i + 1);
     res.json(schools);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/management/exams", async (req, res) => {
   try {
     const exams = await Exam.find().lean();
-    // Deduplicate exams by name (keep first occurrence)
-    const seen = new Set();
-    const uniqueExams = exams.filter(e => {
-      const name = e.name ? e.name.replace(/\s*\(\d{4}-\d{4}\)/g, '').trim() : e.name;
+    const seen = /* @__PURE__ */ new Set();
+    const uniqueExams = exams.filter((e) => {
+      const name = e.name ? e.name.replace(/\s*\(\d{4}-\d{4}\)/g, "").trim() : e.name;
       if (seen.has(name)) return false;
       seen.add(name);
       return true;
     });
-    const formattedExams = uniqueExams.map(e => ({
+    const formattedExams = uniqueExams.map((e) => ({
       ...e,
       allow_csv_upload: e.allow_csv_upload !== false,
-      name: e.name ? e.name.replace(/\s*\(\d{4}-\d{4}\)/g, '') : e.name
+      name: e.name ? e.name.replace(/\s*\(\d{4}-\d{4}\)/g, "") : e.name
     }));
     formattedExams.sort((a, b) => {
       if (a.isDefault && !b.isDefault) return -1;
@@ -1738,28 +1500,25 @@ app.get("/api/management/exams", async (req, res) => {
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
     res.json(formattedExams);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Exams Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-// Alias GET /api/exams
 app.get("/api/exams", async (req, res) => {
   try {
     const exams = await Exam.find().lean();
-    // Deduplicate exams by name (keep first occurrence)
-    const seen = new Set();
-    const uniqueExams = exams.filter(e => {
-      const name = e.name ? e.name.replace(/\s*\(\d{4}-\d{4}\)/g, '').trim() : e.name;
+    const seen = /* @__PURE__ */ new Set();
+    const uniqueExams = exams.filter((e) => {
+      const name = e.name ? e.name.replace(/\s*\(\d{4}-\d{4}\)/g, "").trim() : e.name;
       if (seen.has(name)) return false;
       seen.add(name);
       return true;
     });
-    const formattedExams = uniqueExams.map(e => ({
+    const formattedExams = uniqueExams.map((e) => ({
       ...e,
       allow_csv_upload: e.allow_csv_upload !== false,
-      name: e.name ? e.name.replace(/\s*\(\d{4}-\d{4}\)/g, '') : e.name
+      name: e.name ? e.name.replace(/\s*\(\d{4}-\d{4}\)/g, "") : e.name
     }));
     formattedExams.sort((a, b) => {
       if (a.isDefault && !b.isDefault) return -1;
@@ -1767,13 +1526,11 @@ app.get("/api/exams", async (req, res) => {
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
     res.json(formattedExams);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Exams Alias Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-// GET /api/management/exams/:id
 app.get("/api/management/exams/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -1784,16 +1541,14 @@ app.get("/api/management/exams/:id", async (req, res) => {
     const formattedExam = {
       ...exam,
       allow_csv_upload: exam.allow_csv_upload !== false,
-      name: exam.name ? exam.name.replace(/\s*\(\d{4}-\d{4}\)/g, '') : exam.name
+      name: exam.name ? exam.name.replace(/\s*\(\d{4}-\d{4}\)/g, "") : exam.name
     };
     res.json(formattedExam);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Exam Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-// Alias GET /api/exams/:id
 app.get("/api/exams/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -1804,20 +1559,19 @@ app.get("/api/exams/:id", async (req, res) => {
     const formattedExam = {
       ...exam,
       allow_csv_upload: exam.allow_csv_upload !== false,
-      name: exam.name ? exam.name.replace(/\s*\(\d{4}-\d{4}\)/g, '') : exam.name
+      name: exam.name ? exam.name.replace(/\s*\(\d{4}-\d{4}\)/g, "") : exam.name
     };
     res.json(formattedExam);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Exam Alias Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-const optionalAuth = (req: any, res: any, next: any) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+const optionalAuth = (req, res, next) => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
   if (token) {
-    jwt.verify(token, ACCESS_TOKEN_SECRET, (err: any, user: any) => {
+    jwt.verify(token, ACCESS_TOKEN_SECRET, (err, user) => {
       if (!err) req.user = user;
       next();
     });
@@ -1825,29 +1579,27 @@ const optionalAuth = (req: any, res: any, next: any) => {
     next();
   }
 };
-
 app.get("/api/management/districts", async (req, res) => {
   try {
     const districts = await District.find().lean();
-    const uniqueMap = new Map();
+    const uniqueMap = /* @__PURE__ */ new Map();
     for (const d of districts) {
-      const cleanName = d.name ? d.name.trim() : '';
+      const cleanName = d.name ? d.name.trim() : "";
       const key = d.id || cleanName.toLowerCase();
       if (!uniqueMap.has(key)) {
         uniqueMap.set(key, { ...d, name: cleanName });
       }
     }
-    res.json(Array.from(uniqueMap.values()).sort((a: any, b: any) => a.name.localeCompare(b.name)));
-  } catch (err: any) {
+    res.json(Array.from(uniqueMap.values()).sort((a, b) => a.name.localeCompare(b.name)));
+  } catch (err) {
     console.error("GET Districts Error:", err);
     res.json([]);
   }
 });
-
 app.get("/api/management/districts/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    let dist: any = null;
+    let dist = null;
     if (mongoose.Types.ObjectId.isValid(id)) {
       dist = await District.findById(id).lean();
     }
@@ -1855,68 +1607,57 @@ app.get("/api/management/districts/:id", async (req, res) => {
       dist = await District.findOne({ id }).lean();
     }
     if (!dist) {
-      dist = await District.findOne({ name: new RegExp(`^${escapeRegex(id)}$`, 'i') }).lean();
+      dist = await District.findOne({ name: new RegExp(`^${escapeRegex(id)}$`, "i") }).lean();
     }
     if (!dist) return res.status(404).json({ message: "District not found" });
     res.json(dist);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/management/educational-districts", async (req, res) => {
   try {
-    const id = req.query.id as string | undefined;
-    const districtId = req.query.districtId as string | undefined;
-    const filter: any = {};
+    const id = req.query.id;
+    const districtId = req.query.districtId;
+    const filter = {};
     if (id) filter.id = id;
     if (districtId) filter.districtId = districtId;
-
     const eduDistricts = await EducationalDistrict.find(filter).lean();
-    const districtIds = [...new Set(eduDistricts.map((edu: any) => edu.districtId).filter(Boolean))];
+    const districtIds = [...new Set(eduDistricts.map((edu) => edu.districtId).filter(Boolean))];
     const districts = await District.find({ id: { $in: districtIds } }).lean();
-    const districtNameById = new Map(districts.map((district: any) => [district.id, district.name]));
-
-    const rawList = eduDistricts.map((edu: any) => ({
+    const districtNameById = new Map(districts.map((district) => [district.id, district.name]));
+    const rawList = eduDistricts.map((edu) => ({
       ...edu,
-      name: edu?.name ? String(edu.name).trim() : '',
-      districtName: districtNameById.get(edu?.districtId) || ''
+      name: edu?.name ? String(edu.name).trim() : "",
+      districtName: districtNameById.get(edu?.districtId) || ""
     }));
-
-    const seenIds = new Set<string>();
-    const uniqueList = rawList.filter((item: any) => {
+    const seenIds = /* @__PURE__ */ new Set();
+    const uniqueList = rawList.filter((item) => {
       if (!item.name) return false;
-      const eid = (item.id || '').trim();
+      const eid = (item.id || "").trim();
       if (eid && seenIds.has(eid)) return false;
       if (eid) seenIds.add(eid);
       return true;
     });
-
     res.json(uniqueList);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Edu Districts Error:", err);
     res.json([]);
   }
 });
-
-app.get("/api/management/schools", optionalAuth, async (req: any, res: any) => {
+app.get("/api/management/schools", optionalAuth, async (req, res) => {
   try {
-    let districtId = req.query.districtId as string | undefined;
-    let eduId = req.query.eduId as string | undefined;
-    let schoolId = req.query.schoolId as string | undefined;
-
+    let districtId = req.query.districtId;
+    let eduId = req.query.eduId;
+    let schoolId = req.query.schoolId;
     if (req.user) {
-      if (req.user.role === 'DEO') {
-        // District Education Officer should NOT be locked to a single eduId/subDistrictId.
-        // We only enforce their districtId so they only see schools within their Revenue District.
-        districtId = req.user.districtId || 'dist-9';
-      } else if (req.user.role === 'SCHOOL') {
+      if (req.user.role === "DEO") {
+        districtId = req.user.districtId || "dist-9";
+      } else if (req.user.role === "SCHOOL") {
         schoolId = req.user.schoolId || req.user.id;
       }
     }
-
-    let filter: any = { role: "SCHOOL" };
-
+    let filter = { role: "SCHOOL" };
     if (schoolId) {
       if (mongoose.Types.ObjectId.isValid(schoolId)) {
         filter._id = schoolId;
@@ -1924,57 +1665,63 @@ app.get("/api/management/schools", optionalAuth, async (req: any, res: any) => {
         filter.$or = [{ schoolCode: schoolId }, { id: schoolId }, { username: schoolId }];
       }
     }
-
-    if (eduId && eduId !== 'ALL') {
-      filter.$or = [{ subDistrictId: eduId }, { eduId: eduId }];
-    } else if (districtId && districtId !== 'ALL') {
+    if (eduId && eduId !== "ALL") {
+      filter.$or = [{ subDistrictId: eduId }, { eduId }];
+    } else if (districtId && districtId !== "ALL") {
       const edus = await EducationalDistrict.find({
-        $or: [{ districtId: districtId }, { id: districtId }, { name: districtId }]
+        $or: [{ districtId }, { id: districtId }, { name: districtId }]
       });
-      const eduIds = edus.map(e => e.id);
+      const eduIds = edus.map((e) => e.id);
       filter.$or = [
-        { districtId: districtId },
+        { districtId },
         { subDistrictId: { $in: eduIds } },
         { eduId: { $in: eduIds } }
       ];
     }
-
     const schools = await School.find(filter).lean();
-    const mappedSchools = schools.map((s: any) => ({
+    const mappedSchools = schools.map((s) => ({
       ...s,
       id: s._id ? s._id.toString() : s.id,
-      code: s.schoolCode || s.username || s.code || '',
-      type: s.schoolType || s.type || 'Government',
-      eduId: s.subDistrictId || s.eduId || '',
-      phone: s.schoolTelephone || s.phone || '',
-      email: s.schoolEmail || s.email || '',
-      place: s.address || s.place || ''
+      code: s.schoolCode || s.username || s.code || "",
+      type: s.schoolType || s.type || "Government",
+      eduId: s.subDistrictId || s.eduId || "",
+      phone: s.schoolTelephone || s.phone || "",
+      email: s.schoolEmail || s.email || "",
+      place: s.address || s.place || ""
     }));
     res.json(mappedSchools);
-  } catch (err: any) {
+  } catch (err) {
     res.json([]);
   }
 });
-
-app.put("/api/auth/profile", authenticateToken, async (req: any, res: any) => {
+app.put("/api/auth/profile", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.id;
     const {
-      hmName, hmMobile, udiseCode,
-      coordinatorName, coordinatorMobile, coordinatorEmail,
-      schoolEmail, schoolTelephone, mediums,
-      name, phone, email, qualification, designation,
-      teacherAssignments, teachingSubjects, assignedSubjects
+      hmName,
+      hmMobile,
+      udiseCode,
+      coordinatorName,
+      coordinatorMobile,
+      coordinatorEmail,
+      schoolEmail,
+      schoolTelephone,
+      mediums,
+      name,
+      phone,
+      email,
+      qualification,
+      designation,
+      teacherAssignments,
+      teachingSubjects,
+      assignedSubjects
     } = req.body;
-
     let user = null;
     if (mongoose.Types.ObjectId.isValid(userId)) {
       user = await User.findById(userId);
     }
     if (!user) user = await User.findOne({ id: userId });
-
     if (!user) return res.status(404).json({ message: "User not found" });
-
     user.hmName = hmName || user.hmName;
     user.hmMobile = hmMobile || user.hmMobile;
     user.udiseCode = udiseCode || user.udiseCode;
@@ -1983,68 +1730,55 @@ app.put("/api/auth/profile", authenticateToken, async (req: any, res: any) => {
     user.coordinatorEmail = coordinatorEmail || user.coordinatorEmail;
     user.schoolEmail = schoolEmail || user.schoolEmail;
     user.schoolTelephone = schoolTelephone || user.schoolTelephone;
-
-    if (name !== undefined) user.name = name;
-    if (phone !== undefined) user.phone = phone;
-    if (email !== undefined) user.email = email;
-    if (qualification !== undefined) user.qualification = qualification;
-    if (user.role === 'TEACHER') {
-      if (designation !== undefined) user.designation = designation;
+    if (name !== void 0) user.name = name;
+    if (phone !== void 0) user.phone = phone;
+    if (email !== void 0) user.email = email;
+    if (qualification !== void 0) user.qualification = qualification;
+    if (user.role === "TEACHER") {
+      if (designation !== void 0) user.designation = designation;
       if (Array.isArray(teacherAssignments)) {
         user.teacherAssignments = teacherAssignments;
-        user.teachingSubjects = Array.isArray(teachingSubjects) ? teachingSubjects : Array.from(new Set(teacherAssignments.map((a: any) => a.subject).filter(Boolean)));
-        user.assignedSubjects = Array.isArray(assignedSubjects) ? assignedSubjects : Array.from(new Set(teacherAssignments.map((a: any) => a.className).filter(Boolean)));
+        user.teachingSubjects = Array.isArray(teachingSubjects) ? teachingSubjects : Array.from(new Set(teacherAssignments.map((a) => a.subject).filter(Boolean)));
+        user.assignedSubjects = Array.isArray(assignedSubjects) ? assignedSubjects : Array.from(new Set(teacherAssignments.map((a) => a.className).filter(Boolean)));
         if (!mediums && teacherAssignments.length > 0) {
-          user.mediums = Array.from(new Set(teacherAssignments.map((a: any) => a.medium).filter(Boolean)));
+          user.mediums = Array.from(new Set(teacherAssignments.map((a) => a.medium).filter(Boolean)));
         }
       } else if (Array.isArray(teachingSubjects)) {
         user.teachingSubjects = teachingSubjects;
       }
     }
-
     if (Array.isArray(mediums)) {
-      // Normalize: resolve slug/id/code → canonical shortName
       const allMediumDocs = await Medium.find({ active: { $ne: false } }).lean();
-      const resolvedMediums = mediums.map((m: string) => {
-        const val = (m || '').trim();
+      const resolvedMediums = mediums.map((m) => {
+        const val = (m || "").trim();
         if (!val) return null;
-        // 1. Match by id (slug) e.g. "medium-tamil" → "Tamil"
-        const byId = allMediumDocs.find((doc: any) => doc.id === val || doc.id === val.toLowerCase());
-        if (byId) return (byId as any).shortName;
-        // 2. Match by code e.g. "TM" → "Tamil"
-        const byCode = allMediumDocs.find((doc: any) => doc.code && doc.code.toUpperCase() === val.toUpperCase());
-        if (byCode) return (byCode as any).shortName;
-        // 3. Match by shortName (already correct) e.g. "Tamil"
-        const byShort = allMediumDocs.find((doc: any) => doc.shortName && doc.shortName.toLowerCase() === val.toLowerCase());
-        if (byShort) return (byShort as any).shortName;
-        // 4. Match by full name e.g. "Tamil Medium"
-        const byName = allMediumDocs.find((doc: any) => doc.name && doc.name.toLowerCase() === val.toLowerCase());
-        if (byName) return (byName as any).shortName;
-        // Fallback: return as-is
+        const byId = allMediumDocs.find((doc) => doc.id === val || doc.id === val.toLowerCase());
+        if (byId) return byId.shortName;
+        const byCode = allMediumDocs.find((doc) => doc.code && doc.code.toUpperCase() === val.toUpperCase());
+        if (byCode) return byCode.shortName;
+        const byShort = allMediumDocs.find((doc) => doc.shortName && doc.shortName.toLowerCase() === val.toLowerCase());
+        if (byShort) return byShort.shortName;
+        const byName = allMediumDocs.find((doc) => doc.name && doc.name.toLowerCase() === val.toLowerCase());
+        if (byName) return byName.shortName;
         return val;
-      }).filter(Boolean) as string[];
-      user.mediums = [...new Set(resolvedMediums)]; // deduplicate
+      }).filter(Boolean);
+      user.mediums = [...new Set(resolvedMediums)];
     }
     user.profileCompleted = true;
-
     await user.save();
-
-    const { password, refreshToken, ...userObj } = user.toObject() as any;
+    const { password, refreshToken, ...userObj } = user.toObject();
     res.json({ message: "Profile updated successfully", user: userObj });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Profile update error:", err);
     res.status(500).json({ message: "Failed to update profile" });
   }
 });
-
 app.use(authenticateToken);
-
-app.get("/api/auth/me", async (req: any, res) => {
+app.get("/api/auth/me", async (req, res) => {
   try {
     if (!req.user || !req.user.id) {
       return res.status(401).json({ message: "Invalid token payload" });
     }
-
     let user = null;
     if (mongoose.Types.ObjectId.isValid(req.user.id)) {
       user = await User.findById(req.user.id);
@@ -2055,13 +1789,12 @@ app.get("/api/auth/me", async (req: any, res) => {
     if (!user && req.user.username) {
       user = await User.findOne({ username: req.user.username });
     }
-
     if (user) {
-      const { password, refreshToken, ...userObj } = user.toObject() as any;
-      if (userObj.role === 'SCHOOL' && !userObj.schoolId) {
+      const { password, refreshToken, ...userObj } = user.toObject();
+      if (userObj.role === "SCHOOL" && !userObj.schoolId) {
         userObj.schoolId = userObj.id;
       }
-      if (userObj.role === 'TEACHER' && userObj.schoolId) {
+      if (userObj.role === "TEACHER" && userObj.schoolId) {
         const school = await User.findById(userObj.schoolId).lean();
         if (school) {
           userObj.subDistrictId = school.subDistrictId || school.eduId;
@@ -2069,50 +1802,43 @@ app.get("/api/auth/me", async (req: any, res) => {
           userObj.mainDistrictId = school.mainDistrictId;
         }
       }
-      // Auto-heal: normalize mediums slugs/codes → shortNames
-      if (userObj.role === 'SCHOOL' && Array.isArray(userObj.mediums) && userObj.mediums.length > 0) {
+      if (userObj.role === "SCHOOL" && Array.isArray(userObj.mediums) && userObj.mediums.length > 0) {
         const allMediumDocs = await Medium.find({ active: { $ne: false } }).lean();
-        userObj.mediums = [...new Set(userObj.mediums.map((m: string) => {
-          const v = (m || '').trim();
+        userObj.mediums = [...new Set(userObj.mediums.map((m) => {
+          const v = (m || "").trim();
           if (!v) return null;
-          const byShort = allMediumDocs.find((d: any) => d.shortName && d.shortName.toLowerCase() === v.toLowerCase());
-          if (byShort) return (byShort as any).shortName;
-          const byId = allMediumDocs.find((d: any) => d.id && d.id.toLowerCase() === v.toLowerCase());
-          if (byId) return (byId as any).shortName;
-          const byCode = allMediumDocs.find((d: any) => d.code && d.code.toUpperCase() === v.toUpperCase());
-          if (byCode) return (byCode as any).shortName;
-          const byName = allMediumDocs.find((d: any) => d.name && d.name.toLowerCase() === v.toLowerCase());
-          if (byName) return (byName as any).shortName;
+          const byShort = allMediumDocs.find((d) => d.shortName && d.shortName.toLowerCase() === v.toLowerCase());
+          if (byShort) return byShort.shortName;
+          const byId = allMediumDocs.find((d) => d.id && d.id.toLowerCase() === v.toLowerCase());
+          if (byId) return byId.shortName;
+          const byCode = allMediumDocs.find((d) => d.code && d.code.toUpperCase() === v.toUpperCase());
+          if (byCode) return byCode.shortName;
+          const byName = allMediumDocs.find((d) => d.name && d.name.toLowerCase() === v.toLowerCase());
+          if (byName) return byName.shortName;
           return v;
         }).filter(Boolean))];
       }
       return res.json(userObj);
     }
     res.status(401).json({ message: "User not found" });
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET /api/auth/me Error:", err);
     res.status(401).json({ message: "Unauthorized token state" });
   }
 });
-
-app.get("/api/management/grades", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET', 'SCHOOL', 'TEACHER'), async (req, res) => {
+app.get("/api/management/grades", authenticateToken, requireRole("WEBMASTER", "DEO", "DIET", "SCHOOL", "TEACHER"), async (req, res) => {
   try {
-    const gradeDoc = await Grade.findOne({ key: 'global' }).lean();
+    const gradeDoc = await Grade.findOne({ key: "global" }).lean();
     if (!gradeDoc) return res.json({});
-
-    // Migration helper for old format
-    const transform = (rows: any[], columns: string[]) => {
+    const transform = (rows, columns) => {
       if (!Array.isArray(rows)) return [];
-      return rows.map(row => {
+      return rows.map((row) => {
         if (row.scores) return row;
-        // Convert old 'min' format to default 'scores'
-        const scores: Record<string, string> = {};
-        columns.forEach(col => {
-          // If total marks is 100 (percentage), use min. 
-          // For other columns, scale it.
+        const scores = {};
+        columns.forEach((col) => {
           const total = parseInt(col);
           const minPercent = row.min || 0;
-          scores[col] = Math.round((minPercent * total) / 100).toString();
+          scores[col] = Math.round(minPercent * total / 100).toString();
         });
         return {
           grade: row.grade,
@@ -2121,83 +1847,73 @@ app.get("/api/management/grades", authenticateToken, requireRole('WEBMASTER', 'D
         };
       });
     };
-
     const data = {
-      std9_10: transform(gradeDoc.std9_10, ['20', '25', '30', '35', '40', '80']),
-      std8: transform(gradeDoc.std8, ['20', '40', '50', '60', '80'])
+      std9_10: transform(gradeDoc.std9_10, ["20", "25", "30", "35", "40", "80"]),
+      std8: transform(gradeDoc.std8, ["20", "40", "50", "60", "80"])
     };
-
     res.json(data);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Grades Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/debug-db", authenticateToken, requireRole('WEBMASTER'), async (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
+app.get("/api/debug-db", authenticateToken, requireRole("WEBMASTER"), async (req, res) => {
+  if (false) {
     return res.status(404).json({ message: "Not found" });
   }
   try {
     const results = [];
     const models = [
-      { name: 'User', model: User },
-      { name: 'District', model: District },
-      { name: 'EducationalDistrict', model: EducationalDistrict },
-      { name: 'School', model: School },
-      { name: 'Exam', model: Exam },
-      { name: 'Student', model: Student },
-      { name: 'Mark', model: Mark },
-      { name: 'Preference', model: Preference },
-      { name: 'Grade', model: Grade }
+      { name: "User", model: User },
+      { name: "District", model: District },
+      { name: "EducationalDistrict", model: EducationalDistrict },
+      { name: "School", model: School },
+      { name: "Exam", model: Exam },
+      { name: "Student", model: Student },
+      { name: "Mark", model: Mark },
+      { name: "Preference", model: Preference },
+      { name: "Grade", model: Grade }
     ];
-
     for (const m of models) {
-      const count = await (m.model as any).countDocuments();
-      const sample = count > 0 ? await (m.model as any).findOne().lean() : null;
+      const count = await m.model.countDocuments();
+      const sample = count > 0 ? await m.model.findOne().lean() : null;
       results.push({ name: m.name, count, sample });
     }
-
     const subjects = await Subject.find().lean();
-    const users = await User.find().select('-password').lean();
-
+    const users = await User.find().select("-password").lean();
     res.json({
       databaseName: mongoose.connection.db?.databaseName,
       collections: results,
       subjects,
       users
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Debug DB Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/management/grades", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req, res) => {
+app.post("/api/management/grades", authenticateToken, requireRole("WEBMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     await Grade.findOneAndUpdate(
-      { key: 'global' },
+      { key: "global" },
       { std9_10: req.body.std9_10, std8: req.body.std8 },
       { upsert: true }
     );
     res.json({ message: "Grades updated" });
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST Grades Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/management/recalculate-grades", requireRole('WEBMASTER'), async (req, res) => {
+app.post("/api/management/recalculate-grades", requireRole("WEBMASTER"), async (req, res) => {
   try {
     await recalculateAllGrades();
-
-    // Trigger background summary rebuild
     setTimeout(async () => {
       try {
         console.log("Starting background recalculation and summary rebuild...");
         const exams = await Exam.find().lean();
-        const schools = await School.find({ role: 'SCHOOL', active: { $ne: false } }).lean();
-        const classes = ['10', '9', '8'];
+        const schools = await School.find({ role: "SCHOOL", active: { $ne: false } }).lean();
+        const classes = ["10", "9", "8"];
         for (const exam of exams) {
           for (const className of classes) {
             for (const school of schools) {
@@ -2205,7 +1921,7 @@ app.post("/api/management/recalculate-grades", requireRole('WEBMASTER'), async (
               const stats = await calculateStatsForScope(exam.id, { schoolId, className });
               await SchoolSummary.findOneAndUpdate(
                 { schoolId, examId: exam.id, className },
-                { stats, lastUpdated: new Date() },
+                { stats, lastUpdated: /* @__PURE__ */ new Date() },
                 { upsert: true }
               );
             }
@@ -2217,23 +1933,20 @@ app.post("/api/management/recalculate-grades", requireRole('WEBMASTER'), async (
         console.error("Error in background summary rebuild:", err);
       }
     }, 100);
-
     res.json({ message: "Grades recalculated successfully. Summary rebuild started in the background." });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Recalculate Grades Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/management/backup/export", requireRole('WEBMASTER'), async (req, res) => {
+app.get("/api/management/backup/export", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { collection } = req.query;
-    const backupData: any = {
-      exportedAt: new Date().toISOString(),
+    const backupData = {
+      exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
       version: "1.0",
       data: {}
     };
-
     const modelsToBackup = [
       { name: "User", model: User },
       { name: "MainDistrict", model: MainDistrict },
@@ -2259,47 +1972,40 @@ app.get("/api/management/backup/export", requireRole('WEBMASTER'), async (req, r
       { name: "QuestionPaperBlueprint", model: QuestionPaperBlueprint },
       { name: "AuditLog", model: AuditLog }
     ];
-
     if (collection) {
-      const target = modelsToBackup.find(m => m.name === collection);
+      const target = modelsToBackup.find((m) => m.name === collection);
       if (!target) {
         return res.status(400).json({ message: `Collection ${collection} not found.` });
       }
       let query = target.model.find();
-      // Exclude sensitive fields from User/School collection
-      if (target.name === 'User') {
-        query = query.select('-password -refreshToken -resetPasswordToken -resetPasswordExpires');
+      if (target.name === "User") {
+        query = query.select("-password -refreshToken -resetPasswordToken -resetPasswordExpires");
       }
       const documents = await query.lean();
       backupData.data[target.name] = documents;
     } else {
       for (const item of modelsToBackup) {
         let query = item.model.find();
-        // Exclude sensitive fields from User/School collection
-        if (item.name === 'User') {
-          query = query.select('-password -refreshToken -resetPasswordToken -resetPasswordExpires');
+        if (item.name === "User") {
+          query = query.select("-password -refreshToken -resetPasswordToken -resetPasswordExpires");
         }
         const documents = await query.lean();
         backupData.data[item.name] = documents;
       }
     }
-
     res.json(backupData);
-  } catch (err: any) {
+  } catch (err) {
     console.error("Backup Export Error:", err);
     res.status(500).json({ message: "Failed to export backup" });
   }
 });
-
-app.post("/api/management/backup/import", requireRole('WEBMASTER'), async (req, res) => {
+app.post("/api/management/backup/import", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { backupData, selectedCollections } = req.body;
-
     if (!backupData || !backupData.data) {
       return res.status(400).json({ message: "Invalid backup data format." });
     }
-
-    const modelsMap: { [key: string]: any } = {
+    const modelsMap = {
       "User": User,
       "MainDistrict": MainDistrict,
       "District": District,
@@ -2324,14 +2030,11 @@ app.post("/api/management/backup/import", requireRole('WEBMASTER'), async (req, 
       "QuestionPaperBlueprint": QuestionPaperBlueprint,
       "AuditLog": AuditLog
     };
-
     const collectionsToRestore = selectedCollections || Object.keys(backupData.data);
-    const results: any = {};
-
+    const results = {};
     for (const name of collectionsToRestore) {
       const model = modelsMap[name];
       const documents = backupData.data[name];
-
       if (model && Array.isArray(documents)) {
         await model.deleteMany({});
         if (documents.length > 0) {
@@ -2340,78 +2043,61 @@ app.post("/api/management/backup/import", requireRole('WEBMASTER'), async (req, 
         results[name] = documents.length;
       }
     }
-
     res.json({
       message: "Data import completed successfully.",
       restoredCollections: results
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Backup Import Error:", err);
     res.status(500).json({ message: "Failed to import backup data" });
   }
 });
-
-app.post("/api/auth/change-password", authenticateToken, async (req: any, res) => {
+app.post("/api/auth/change-password", authenticateToken, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-
-    // Validate new password strength
     if (!newPassword || newPassword.length < 2) {
       return res.status(400).json({ message: "Password must be at least 2 characters long" });
     }
     if (newPassword.length > 128) {
       return res.status(400).json({ message: "Password must be less than 128 characters" });
     }
-
     const userId = req.user.id;
     const user = await User.findById(userId);
-
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-
-    // Only accept bcrypt-hashed passwords — reject plaintext
     const stored = user.password;
-    if (!stored || (!stored.startsWith('$2a$') && !stored.startsWith('$2b$') && !stored.startsWith('$2y$'))) {
+    if (!stored || !stored.startsWith("$2a$") && !stored.startsWith("$2b$") && !stored.startsWith("$2y$")) {
       return res.status(400).json({ message: "Account requires password reset. Contact administrator." });
     }
-
     const passwordValid = await bcrypt.compare(currentPassword, stored);
     if (!passwordValid) {
       return res.status(400).json({ message: "Incorrect current password" });
     }
-
     user.password = await bcrypt.hash(newPassword, 12);
     user.passwordChanged = true;
-
-    // Invalidate all refresh tokens on password change
-    user.refreshToken = undefined as any;
+    user.refreshToken = void 0;
     await user.save();
-
-    // Clear refresh token cookie
-    res.clearCookie('refreshToken', {
+    res.clearCookie("refreshToken", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax'
+      secure: false,
+      sameSite: false ? "strict" : "lax"
     });
-
-    const { password: _, refreshToken, ...userObj } = user.toObject() as any;
+    const { password: _, refreshToken, ...userObj } = user.toObject();
     res.json({ message: "Password updated successfully. Please log in again.", user: userObj });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
 app.get("/api/management/main-districts", async (req, res) => {
   try {
     const list = await MainDistrict.find().lean();
     res.json(list);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/management/main-districts", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/main-districts", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const body = req.body;
     if (!body || !body.name) {
@@ -2419,7 +2105,7 @@ app.post("/api/management/main-districts", requireRole('WEBMASTER'), async (req:
     }
     if (body.id) {
       const { _id, ...updateData } = body;
-      const updated = await MainDistrict.findOneAndUpdate({ id: body.id }, updateData, { returnDocument: 'after' });
+      const updated = await MainDistrict.findOneAndUpdate({ id: body.id }, updateData, { returnDocument: "after" });
       analyticsCache.clearPattern(/district/);
       res.json(updated);
     } else {
@@ -2429,25 +2115,21 @@ app.post("/api/management/main-districts", requireRole('WEBMASTER'), async (req:
       analyticsCache.clearPattern(/district/);
       res.json(created);
     }
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.delete("/api/management/main-districts/:id", requireRole('WEBMASTER'), async (req: any, res) => {
+app.delete("/api/management/main-districts/:id", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { id } = req.params;
     await MainDistrict.deleteOne({ id });
     analyticsCache.clearPattern(/district/);
     res.json({ message: "Main District deleted" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-
-
-app.post("/api/management/districts", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/districts", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const district = req.body;
     if (!district || !district.name) {
@@ -2455,7 +2137,7 @@ app.post("/api/management/districts", requireRole('WEBMASTER'), async (req: any,
     }
     if (district.id) {
       const { _id, ...updateData } = district;
-      const updated = await District.findOneAndUpdate({ id: district.id }, updateData, { returnDocument: 'after' });
+      const updated = await District.findOneAndUpdate({ id: district.id }, updateData, { returnDocument: "after" });
       if (!updated) return res.status(404).json({ message: "District not found" });
       analyticsCache.clearPattern(/district/);
       res.json(updated);
@@ -2466,13 +2148,12 @@ app.post("/api/management/districts", requireRole('WEBMASTER'), async (req: any,
       analyticsCache.clearPattern(/district/);
       res.json(newDist);
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST District Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.post("/api/management/educational-districts", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/educational-districts", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const eduDistrict = req.body;
     if (!eduDistrict || !eduDistrict.name) {
@@ -2480,7 +2161,7 @@ app.post("/api/management/educational-districts", requireRole('WEBMASTER'), asyn
     }
     if (eduDistrict.id) {
       const { _id, ...updateData } = eduDistrict;
-      const updated = await EducationalDistrict.findOneAndUpdate({ id: eduDistrict.id }, updateData, { returnDocument: 'after' });
+      const updated = await EducationalDistrict.findOneAndUpdate({ id: eduDistrict.id }, updateData, { returnDocument: "after" });
       if (!updated) return res.status(404).json({ message: "Educational District not found" });
       analyticsCache.clearPattern(/district/);
       res.json(updated);
@@ -2491,110 +2172,84 @@ app.post("/api/management/educational-districts", requireRole('WEBMASTER'), asyn
       analyticsCache.clearPattern(/district/);
       res.json(newEdu);
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST Edu District Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.delete("/api/management/districts/:id", requireRole('WEBMASTER'), async (req: any, res) => {
+app.delete("/api/management/districts/:id", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { id } = req.params;
-
-    // Find and cascade cleanup for educational districts and schools
     const edus = await EducationalDistrict.find({ districtId: id });
-    const eduIds = edus.map(e => e.id);
-
-    // Clean up schools under those educational districts
+    const eduIds = edus.map((e) => e.id);
     await School.updateMany({ subDistrictId: { $in: eduIds } }, { $set: { subDistrictId: null } });
     await User.updateMany({ subDistrictId: { $in: eduIds } }, { $set: { subDistrictId: null } });
-
-    // Delete educational districts under this revenue district
     await EducationalDistrict.deleteMany({ districtId: id });
-
-    // Delete district
     await District.findOneAndDelete({ id });
-
     analyticsCache.clearPattern(/district/);
     res.json({ message: "District and dependent records deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.delete("/api/management/educational-districts/:id", requireRole('WEBMASTER'), async (req: any, res) => {
+app.delete("/api/management/educational-districts/:id", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { id } = req.params;
-
-    // Clean up dependent schools and users so deletion is allowed smoothly
     await School.updateMany({ subDistrictId: id }, { $set: { subDistrictId: null } });
     await User.updateMany({ subDistrictId: id }, { $set: { subDistrictId: null } });
-
     await EducationalDistrict.findOneAndDelete({ id });
-
     analyticsCache.clearPattern(/district/);
     res.json({ message: "Educational District deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-// ─── Institution CRUD ────────────────────────────────────────────────────────
-
 app.get("/api/management/institutions", async (req, res) => {
   try {
     const { districtId, revenueDistrictId, eduDistrictId } = req.query;
-    const filter: any = {};
+    const filter = {};
     if (districtId) filter.districtId = districtId;
     if (revenueDistrictId) filter.revenueDistrictId = revenueDistrictId;
     if (eduDistrictId) filter.eduDistrictId = eduDistrictId;
-
     const institutions = await Institution.find(filter).lean();
-
-    const districtIds = [...new Set(institutions.map((i: any) => i.districtId).filter(Boolean))];
-    const revenueDistrictIds = [...new Set(institutions.map((i: any) => i.revenueDistrictId).filter(Boolean))];
-    const eduDistrictIds = [...new Set(institutions.map((i: any) => i.eduDistrictId).filter(Boolean))];
-
+    const districtIds = [...new Set(institutions.map((i) => i.districtId).filter(Boolean))];
+    const revenueDistrictIds = [...new Set(institutions.map((i) => i.revenueDistrictId).filter(Boolean))];
+    const eduDistrictIds = [...new Set(institutions.map((i) => i.eduDistrictId).filter(Boolean))];
     const [districtDocs, revenueDocs, eduDocs] = await Promise.all([
       districtIds.length ? District.find({ id: { $in: districtIds } }).lean() : [],
       revenueDistrictIds.length ? District.find({ id: { $in: revenueDistrictIds } }).lean() : [],
-      eduDistrictIds.length ? EducationalDistrict.find({ id: { $in: eduDistrictIds } }).lean() : [],
+      eduDistrictIds.length ? EducationalDistrict.find({ id: { $in: eduDistrictIds } }).lean() : []
     ]);
-
-    const districtNameMap = new Map(districtDocs.map((d: any) => [d.id, d.name]));
-    const revenueNameMap = new Map(revenueDocs.map((d: any) => [d.id, d.name]));
-    const eduNameMap = new Map(eduDocs.map((e: any) => [e.id, e.name]));
-
-    const enriched = institutions.map((inst: any) => ({
+    const districtNameMap = new Map(districtDocs.map((d) => [d.id, d.name]));
+    const revenueNameMap = new Map(revenueDocs.map((d) => [d.id, d.name]));
+    const eduNameMap = new Map(eduDocs.map((e) => [e.id, e.name]));
+    const enriched = institutions.map((inst) => ({
       ...inst,
-      districtName: districtNameMap.get(inst.districtId) || '',
-      revenueDistrictName: revenueNameMap.get(inst.revenueDistrictId) || '',
-      eduDistrictName: eduNameMap.get(inst.eduDistrictId) || '',
+      districtName: districtNameMap.get(inst.districtId) || "",
+      revenueDistrictName: revenueNameMap.get(inst.revenueDistrictId) || "",
+      eduDistrictName: eduNameMap.get(inst.eduDistrictId) || ""
     }));
-
     res.json(enriched);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Institutions Error:", err);
     res.json([]);
   }
 });
-
 app.get("/api/management/institutions/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    let inst: any = null;
+    let inst = null;
     if (mongoose.Types.ObjectId.isValid(id)) {
       inst = await Institution.findById(id).lean();
     }
     if (!inst) inst = await Institution.findOne({ id }).lean();
     if (!inst) return res.status(404).json({ message: "Institution not found" });
     res.json(inst);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/management/institutions", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/institutions", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const institution = req.body;
     if (!institution || !institution.name) {
@@ -2602,7 +2257,7 @@ app.post("/api/management/institutions", requireRole('WEBMASTER'), async (req: a
     }
     if (institution.id) {
       const { _id, ...updateData } = institution;
-      const updated = await Institution.findOneAndUpdate({ id: institution.id }, updateData, { returnDocument: 'after' });
+      const updated = await Institution.findOneAndUpdate({ id: institution.id }, updateData, { returnDocument: "after" });
       if (!updated) return res.status(404).json({ message: "Institution not found" });
       res.json(updated);
     } else {
@@ -2611,55 +2266,48 @@ app.post("/api/management/institutions", requireRole('WEBMASTER'), async (req: a
       await newInst.save();
       res.json(newInst);
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST Institution Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.delete("/api/management/institutions/:id", requireRole('WEBMASTER'), async (req: any, res) => {
+app.delete("/api/management/institutions/:id", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { id } = req.params;
     await Institution.findOneAndDelete({ id });
     res.json({ message: "Institution deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.get("/api/management/users", requireRole('WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
+app.get("/api/management/users", requireRole("WEBMASTER", "DEO", "DIET"), async (req, res) => {
   try {
-    let districtId = req.query.districtId as string | undefined;
-    let eduId = req.query.eduId as string | undefined;
-    let schoolId = req.query.schoolId as string | undefined;
-
+    let districtId = req.query.districtId;
+    let eduId = req.query.eduId;
+    let schoolId = req.query.schoolId;
     if (req.user) {
-      if (req.user.role === 'DEO') {
-        districtId = req.user.districtId || 'dist-9';
-      } else if (req.user.role === 'SCHOOL') {
+      if (req.user.role === "DEO") {
+        districtId = req.user.districtId || "dist-9";
+      } else if (req.user.role === "SCHOOL") {
         schoolId = req.user.schoolId || req.user.id;
       }
     }
-
-    let filter: any = {};
-
-    let allowedSchoolIds: string[] | null = null;
-    let allowedEduIds: string[] | null = null;
-
+    let filter = {};
+    let allowedSchoolIds = null;
+    let allowedEduIds = null;
     if (eduId) {
       const schools = await School.find({ subDistrictId: eduId });
-      allowedSchoolIds = schools.map(s => s._id.toString());
+      allowedSchoolIds = schools.map((s) => s._id.toString());
       allowedEduIds = [eduId];
     } else if (districtId) {
       const edus = await EducationalDistrict.find({ districtId });
-      allowedEduIds = edus.map(e => e.id);
+      allowedEduIds = edus.map((e) => e.id);
       const schools = await School.find({ subDistrictId: { $in: allowedEduIds } });
-      allowedSchoolIds = schools.map(s => s._id.toString());
+      allowedSchoolIds = schools.map((s) => s._id.toString());
     }
-
     if (schoolId) {
       if (allowedSchoolIds && !allowedSchoolIds.includes(schoolId)) {
-        filter = { _id: null }; // Block access
+        filter = { _id: null };
       } else {
         filter = { schoolId };
       }
@@ -2679,171 +2327,130 @@ app.get("/api/management/users", requireRole('WEBMASTER', 'DEO', 'DIET'), async 
         ]
       };
     }
-
-    const users = await User.find(filter).select('-password -refreshToken -resetPasswordToken -resetPasswordExpires').lean();
-    const mappedUsers = users.map((u: any) => ({
+    const users = await User.find(filter).select("-password -refreshToken -resetPasswordToken -resetPasswordExpires").lean();
+    const mappedUsers = users.map((u) => ({
       ...u,
       id: u._id ? u._id.toString() : u.id
     }));
     res.json(mappedUsers);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Users Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.post("/api/management/users", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/users", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const userPayload = req.body;
-
-    // Explicitly map frontend virtual fields to schema fields
-    if (userPayload.eduId !== undefined) userPayload.subDistrictId = userPayload.eduId;
-    if (userPayload.displayName !== undefined) userPayload.name = userPayload.displayName;
-
-    // Remove virtual fields to prevent potential conflicts during Object.assign or new User()
+    if (userPayload.eduId !== void 0) userPayload.subDistrictId = userPayload.eduId;
+    if (userPayload.displayName !== void 0) userPayload.name = userPayload.displayName;
     const { eduId, displayName, code, type, principalName, ...cleanPayload } = userPayload;
-
     if (!cleanPayload.username || !cleanPayload.role) {
       return res.status(400).json({ message: "Username and role are required" });
     }
-
     if (cleanPayload.id) {
       const { id, _id, password, createdAt, updatedAt, __v, refreshToken, loginAttempts, lockedUntil, lastLogin, passwordChanged, ...updateData } = cleanPayload;
-
       const user = await User.findById(id);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-
-      // Handle password update separately if provided
       if (password && password.trim() !== "") {
         user.password = await bcrypt.hash(password, 10);
       }
-
-      // Assign update data to user instance
       Object.assign(user, updateData);
-
-      // Keep schoolCode synchronized with username if the user is a school
-      if (user.role === 'SCHOOL' && updateData.username) {
+      if (user.role === "SCHOOL" && updateData.username) {
         user.schoolCode = updateData.username;
       }
-
       const updated = await user.save();
       res.json(updated);
     } else {
-      // Creation logic
       if (cleanPayload.password) {
         cleanPayload.password = await bcrypt.hash(cleanPayload.password, 12);
       } else {
-        // Generate a random temporary password — user must change on first login
-        const tempPassword = crypto.randomBytes(8).toString('hex');
+        const tempPassword = crypto.randomBytes(8).toString("hex");
         cleanPayload.password = await bcrypt.hash(tempPassword, 12);
-        cleanPayload.passwordChanged = false; // Force password change on first login
+        cleanPayload.passwordChanged = false;
       }
-
-      // Sync schoolCode for new users
-      if (cleanPayload.role === 'SCHOOL' && cleanPayload.username) {
+      if (cleanPayload.role === "SCHOOL" && cleanPayload.username) {
         cleanPayload.schoolCode = cleanPayload.username;
       }
-
       const newUser = new User(cleanPayload);
       await newUser.save();
-      const { password: _, refreshToken: _rt, resetPasswordToken: _rpt, resetPasswordExpires: _rpe, ...userObj } = newUser.toObject() as any;
+      const { password: _, refreshToken: _rt, resetPasswordToken: _rpt, resetPasswordExpires: _rpe, ...userObj } = newUser.toObject();
       res.json(userObj);
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST User Error:", err);
-    if (err.code === 11000 || (err.name === 'MongoServerError' && err.message.includes('E11000'))) {
+    if (err.code === 11e3 || err.name === "MongoServerError" && err.message.includes("E11000")) {
       return res.status(400).json({ message: "Username already exists" });
     }
-    if (err.name === 'ValidationError') {
+    if (err.name === "ValidationError") {
       return res.status(400).json({ message: "Validation error" });
     }
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.delete("/api/management/users/:id", requireRole('WEBMASTER'), async (req: any, res) => {
+app.delete("/api/management/users/:id", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { id } = req.params;
     await User.findByIdAndDelete(id);
     res.json({ message: "User deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     console.error("DELETE User Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.post("/api/management/users/:id/reset-password", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/users/:id/reset-password", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { id } = req.params;
     const { newPassword } = req.body;
-
     if (!newPassword || newPassword.trim() === "") {
       return res.status(400).json({ message: "Password is required" });
     }
-
     if (newPassword.length < 2 || newPassword.length > 8) {
       return res.status(400).json({ message: "Password must be between 2 and 8 characters long" });
     }
-
     const user = await User.findById(id);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-
     user.password = await bcrypt.hash(newPassword, 10);
-    user.passwordChanged = false; // Force change on next login
-    user.lockedUntil = null; // Clear lock
-    user.loginAttempts = 0; // Clear login attempts
-
+    user.passwordChanged = false;
+    user.lockedUntil = null;
+    user.loginAttempts = 0;
     await user.save();
     res.json({ message: "Password reset successfully. The account is unlocked and the user must change password on their next login." });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Reset Password Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-
-
-app.post("/api/management/schools", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/schools", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const school = req.body;
     const schoolCode = school.code || school.schoolCode;
-    const schoolPayload: any = {
+    const schoolPayload = {
       ...school,
-      schoolCode: schoolCode,
+      schoolCode,
       username: schoolCode,
-      subDistrictId: school.eduId !== undefined ? school.eduId : school.subDistrictId,
-      schoolType: school.type !== undefined ? school.type : school.schoolType,
+      subDistrictId: school.eduId !== void 0 ? school.eduId : school.subDistrictId,
+      schoolType: school.type !== void 0 ? school.type : school.schoolType,
       role: "SCHOOL"
     };
-
-    // Remove virtual / conflicting fields to ensure setters and explicit assignments work
     const { code, eduId, type, displayName, principalName, ...cleanPayload } = schoolPayload;
-
     let savedSchool;
     if (cleanPayload.id) {
       const { id, _id, password, createdAt, updatedAt, __v, refreshToken, loginAttempts, lockedUntil, lastLogin, passwordChanged, ...updateData } = cleanPayload;
-
       const doc = await School.findById(id);
       if (!doc) {
         return res.status(404).json({ message: "School not found" });
       }
-
-      // Handle password updates if any
       if (password && password.trim() !== "") {
         doc.password = await bcrypt.hash(password, 10);
         doc.passwordChanged = true;
       }
-
-      // Object.assign triggers virtual setters for 'type', 'displayName', etc.
       Object.assign(doc, updateData);
       savedSchool = await doc.save();
     } else {
-      // Creation logic
-      // For new schools, set a default password if not provided
       if (!cleanPayload.password || cleanPayload.password.trim() === "") {
         cleanPayload.password = await bcrypt.hash(schoolCode, 10);
         cleanPayload.passwordChanged = false;
@@ -2854,13 +2461,9 @@ app.post("/api/management/schools", requireRole('WEBMASTER'), async (req: any, r
       const newSchool = new School(cleanPayload);
       savedSchool = await newSchool.save();
     }
-
     if (savedSchool) {
-      // Ensure schoolId is pointing to itself
       savedSchool.schoolId = savedSchool._id.toString();
       await savedSchool.save();
-
-      // Look for any existing separate user document representing this school
       const existingUser = await User.findOne({
         _id: { $ne: savedSchool._id },
         $or: [
@@ -2868,9 +2471,7 @@ app.post("/api/management/schools", requireRole('WEBMASTER'), async (req: any, r
           { schoolId: savedSchool._id.toString() }
         ]
       });
-
       if (existingUser) {
-        // Copy user-specific fields to the school document
         savedSchool.username = existingUser.username || savedSchool.schoolCode;
         savedSchool.password = existingUser.password;
         savedSchool.passwordChanged = existingUser.passwordChanged;
@@ -2879,72 +2480,62 @@ app.post("/api/management/schools", requireRole('WEBMASTER'), async (req: any, r
         savedSchool.lockedUntil = existingUser.lockedUntil;
         savedSchool.refreshToken = existingUser.refreshToken;
         await savedSchool.save();
-
-        // Delete the duplicate separate user document
         await User.deleteOne({ _id: existingUser._id });
       }
-
-      const { password: _, refreshToken: _rt, resetPasswordToken: _rpt, resetPasswordExpires: _rpe, ...schoolObj } = savedSchool.toObject() as any;
+      const { password: _, refreshToken: _rt, resetPasswordToken: _rpt, resetPasswordExpires: _rpe, ...schoolObj } = savedSchool.toObject();
       res.status(201).json(schoolObj);
     } else {
       res.status(400).json({ message: "Failed to save school" });
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST School Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-
-app.get("/api/dashboard/migrate", async (req: any, res) => {
+app.get("/api/dashboard/migrate", async (req, res) => {
   try {
     const exams = await Exam.find().lean();
-    if (exams.length === 0) return res.json({ message: 'No exams found.' });
-
+    if (exams.length === 0) return res.json({ message: "No exams found." });
     res.json({ message: `Migration started for ${exams.length} exam(s). It will take a few minutes.` });
-
     setTimeout(async () => {
       try {
-        const schools = await School.find({ role: 'SCHOOL' });
+        const schools = await School.find({ role: "SCHOOL" });
         console.log(`Processing ${schools.length} schools across ${exams.length} exams...`);
-
         for (const exam of exams) {
           const examId = exam.id;
-          console.log(`\n=== Processing exam: ${exam.name} (${examId}) ===`);
+          console.log(`
+=== Processing exam: ${exam.name} (${examId}) ===`);
           for (let i = 0; i < schools.length; i++) {
             const s = schools[i];
             if (i % 20 === 0) console.log(`  School ${i + 1}/${schools.length} - ${s.name}`);
-            const results = await calculateStatsForScope(examId, { schoolId: s.id, className: '10' });
+            const results = await calculateStatsForScope(examId, { schoolId: s.id, className: "10" });
             await SchoolSummary.findOneAndUpdate(
-              { schoolId: s.id, examId, className: '10' },
-              { stats: results, lastUpdated: new Date() },
+              { schoolId: s.id, examId, className: "10" },
+              { stats: results, lastUpdated: /* @__PURE__ */ new Date() },
               { upsert: true }
             );
           }
           console.log(`Rebuilding dashboard summary for ${exam.name}...`);
-          await rebuildDashboardSummary(examId, '10');
+          await rebuildDashboardSummary(examId, "10");
         }
         analyticsCache.clearPattern(/dashboard_/);
-        console.log('Migration Complete. Cache cleared.');
+        console.log("Migration Complete. Cache cleared.");
       } catch (err) {
-        console.error('Migration background task failed:', err);
+        console.error("Migration background task failed:", err);
       }
     }, 100);
-
-  } catch (err: any) {
+  } catch (err) {
     if (!res.headersSent) res.status(500).json({ message: err.message });
   }
 });
-
-function aggregateSchoolStats(schoolSummaries: any[]) {
+function aggregateSchoolStats(schoolSummaries) {
   let totalStudents = 0, appeared = 0, pass = 0, fullAPlus = 0;
   let absent = 0, fail = 0, notEntered = 0;
   let maleCount = 0, femaleCount = 0, scribeCount = 0;
   let basicLevel = 0, averageLevel = 0, profoundLevel = 0;
-  const gradeDistribution: Record<string, number> = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "Ab": 0 };
-  const aPlusBreakdown: Record<string, number> = { "9": 0, "8": 0, "7": 0, "6": 0, "5": 0, "4": 0, "3": 0, "2": 0, "1": 0, "0": 0 };
-
-  schoolSummaries.forEach((s: any) => {
+  const gradeDistribution = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "Ab": 0 };
+  const aPlusBreakdown = { "9": 0, "8": 0, "7": 0, "6": 0, "5": 0, "4": 0, "3": 0, "2": 0, "1": 0, "0": 0 };
+  schoolSummaries.forEach((s) => {
     const stats = s.stats || {};
     totalStudents += stats.totalStudents || 0;
     appeared += stats.appeared || 0;
@@ -2959,10 +2550,9 @@ function aggregateSchoolStats(schoolSummaries: any[]) {
     basicLevel += stats.basicLevel || 0;
     averageLevel += stats.averageLevel || 0;
     profoundLevel += stats.profoundLevel || 0;
-
     if (stats.gradeDistribution) {
       for (const g in gradeDistribution) {
-        gradeDistribution[g] += (stats.gradeDistribution[g] || 0);
+        gradeDistribution[g] += stats.gradeDistribution[g] || 0;
       }
     }
     if (stats.aPlusBreakdown) {
@@ -2971,403 +2561,355 @@ function aggregateSchoolStats(schoolSummaries: any[]) {
       }
     }
   });
-
-  const victoryPercentage = appeared > 0 ? (pass / appeared) * 100 : 0;
+  const victoryPercentage = appeared > 0 ? pass / appeared * 100 : 0;
   return { totalStudents, appeared, pass, fullAPlus, absent, fail, notEntered, maleCount, femaleCount, scribeCount, basicLevel, averageLevel, profoundLevel, gradeDistribution, aPlusBreakdown, victoryPercentage };
 }
-
-// ─── Region Analytics Computation ────────────────────────────────────────────
-
-async function computeRegionAnalytics(examId: string, className: string = '10') {
+async function computeRegionAnalytics(examId, className = "10") {
   const districts = await District.find().lean();
   const allEdus = await EducationalDistrict.find().lean();
   const exam = await Exam.findOne({ id: examId }).lean();
-  const schools = await School.find({ role: 'SCHOOL' }).lean();
+  const schools = await School.find({ role: "SCHOOL" }).lean();
   const { idToCode } = await getSubjectMapping();
-
-  const isAbsentGrade = (g: any) => typeof g === 'string' && ['AB', 'ABSENT', 'ABS', 'AA'].includes(g.trim().toUpperCase());
-  const isPassGrade = (g: string) => { const u = g.trim().toUpperCase(); return ['A+','A','B+','B','C+','C','D+'].includes(u); };
-  const defaultCoreSubjects = ['P03','P04','P05','P06','P07','P08','P09'];
-
+  const isAbsentGrade = (g) => typeof g === "string" && ["AB", "ABSENT", "ABS", "AA"].includes(g.trim().toUpperCase());
+  const isPassGrade = (g) => {
+    const u = g.trim().toUpperCase();
+    return ["A+", "A", "B+", "B", "C+", "C", "D+"].includes(u);
+  };
+  const defaultCoreSubjects = ["P03", "P04", "P05", "P06", "P07", "P08", "P09"];
   const allStudents = await Student.find({ className }).lean();
-  const studentsBySchool = new Map<string, any[]>();
-  allStudents.forEach(s => {
+  const studentsBySchool = /* @__PURE__ */ new Map();
+  allStudents.forEach((s) => {
     const sid = s.schoolId;
     if (!studentsBySchool.has(sid)) studentsBySchool.set(sid, []);
-    studentsBySchool.get(sid)!.push(s);
+    studentsBySchool.get(sid).push(s);
   });
-
   const allMarks = await Mark.find({ examId }).lean();
-  const marksByStudent = new Map<string, any[]>();
-  allMarks.forEach(m => {
+  const marksByStudent = /* @__PURE__ */ new Map();
+  allMarks.forEach((m) => {
     if (!marksByStudent.has(m.studentId)) marksByStudent.set(m.studentId, []);
-    marksByStudent.get(m.studentId)!.push(m);
+    marksByStudent.get(m.studentId).push(m);
   });
-
   const schoolConfigs = await SchoolExamConfig.find({ examId }).lean();
-  const configBySchool = new Map<string, any>();
-  schoolConfigs.forEach(c => configBySchool.set(c.schoolId, c));
-
-  // Build school → district mapping
-  const schoolToDistrict = new Map<string, string>();
-  const eduMap = new Map<string, any>();
-  allEdus.forEach(e => eduMap.set(e.id, e));
-  schools.forEach((s: any) => {
+  const configBySchool = /* @__PURE__ */ new Map();
+  schoolConfigs.forEach((c) => configBySchool.set(c.schoolId, c));
+  const schoolToDistrict = /* @__PURE__ */ new Map();
+  const eduMap = /* @__PURE__ */ new Map();
+  allEdus.forEach((e) => eduMap.set(e.id, e));
+  schools.forEach((s) => {
     const schoolIdStr = s._id.toString();
     const edu = eduMap.get(s.subDistrictId);
-    schoolToDistrict.set(schoolIdStr, edu?.districtId || 'unknown');
+    schoolToDistrict.set(schoolIdStr, edu?.districtId || "unknown");
   });
-
-  // Per-student result computation (replicates calculateStatsForScope logic)
-  const studentResults = new Map<string, any>();
-
+  const studentResults = /* @__PURE__ */ new Map();
   for (const [studentId, studentMarks] of marksByStudent) {
-    const student = allStudents.find(s => s.id === studentId || s._id.toString() === studentId);
+    const student = allStudents.find((s) => s.id === studentId || s._id.toString() === studentId);
     if (!student) continue;
-
     const config = configBySchool.get(student.schoolId?.toString());
     let allowedSubjectCodes = [...defaultCoreSubjects];
     if (config?.subjects?.length > 0) {
-      const configuredCodes = config.subjects.map((subj: any) => idToCode[subj.subjectId?.toString()] || subj.subjectId?.toString());
-      allowedSubjectCodes = Array.from(new Set([...configuredCodes, ...defaultCoreSubjects]));
+      const configuredCodes = config.subjects.map((subj) => idToCode[subj.subjectId?.toString()] || subj.subjectId?.toString());
+      allowedSubjectCodes = Array.from(/* @__PURE__ */ new Set([...configuredCodes, ...defaultCoreSubjects]));
     }
-
-    // Build per-subject marks lookup
-    const gradeMap = new Map<string, string>();
-    const markMap = new Map<string, any>();
-    const rawMaxMap = new Map<string, any>();
-    studentMarks.forEach((entry: any) => {
+    const gradeMap = /* @__PURE__ */ new Map();
+    const markMap = /* @__PURE__ */ new Map();
+    const rawMaxMap = /* @__PURE__ */ new Map();
+    studentMarks.forEach((entry) => {
       const code = idToCode[entry.subjectId?.toString()] || entry.subjectId?.toString();
-      gradeMap.set(code, entry.grade || '');
-      markMap.set(code, entry.mark !== undefined ? entry.mark : (entry.grade ? '' : ''));
+      gradeMap.set(code, entry.grade || "");
+      markMap.set(code, entry.mark !== void 0 ? entry.mark : entry.grade ? "" : "");
       rawMaxMap.set(code, entry.rawMaximum);
     });
-
-    // Filter and classify grades
-    const filteredGrades: string[] = [];
+    const filteredGrades = [];
     for (const code of allowedSubjectCodes) {
       const mark = markMap.get(code);
       const grade = gradeMap.get(code);
-      const subjectIdStr = Object.keys(idToCode).find(k => idToCode[k] === code) || code;
+      const subjectIdStr = Object.keys(idToCode).find((k) => idToCode[k] === code) || code;
       const maxMark = getResolvedMaxMark(exam, subjectIdStr, code, 50);
-
-      let valToUse = mark !== undefined && mark !== null && mark !== '' ? mark : grade;
+      let valToUse = mark !== void 0 && mark !== null && mark !== "" ? mark : grade;
       let numericMark = Number(valToUse);
-
-      if (!isNaN(numericMark) && String(valToUse).trim() !== '') {
-        const pct = Math.round((numericMark * 100) / maxMark);
-        if (pct >= 90) filteredGrades.push('A+');
-        else if (pct >= 80) filteredGrades.push('A');
-        else if (pct >= 70) filteredGrades.push('B+');
-        else if (pct >= 60) filteredGrades.push('B');
-        else if (pct >= 50) filteredGrades.push('C+');
-        else if (pct >= 40) filteredGrades.push('C');
-        else if (pct >= 30) filteredGrades.push('D+');
-        else if (pct >= 20) filteredGrades.push('D');
-        else filteredGrades.push('E');
+      if (!isNaN(numericMark) && String(valToUse).trim() !== "") {
+        const pct = Math.round(numericMark * 100 / maxMark);
+        if (pct >= 90) filteredGrades.push("A+");
+        else if (pct >= 80) filteredGrades.push("A");
+        else if (pct >= 70) filteredGrades.push("B+");
+        else if (pct >= 60) filteredGrades.push("B");
+        else if (pct >= 50) filteredGrades.push("C+");
+        else if (pct >= 40) filteredGrades.push("C");
+        else if (pct >= 30) filteredGrades.push("D+");
+        else if (pct >= 20) filteredGrades.push("D");
+        else filteredGrades.push("E");
       } else {
-        filteredGrades.push(grade ? String(grade) : '');
+        filteredGrades.push(grade ? String(grade) : "");
       }
     }
-
-    const hasAnyGrade = filteredGrades.some(g => g !== '');
-    const allAbsent = filteredGrades.length > 0 && filteredGrades.every(g => g === '' || isAbsentGrade(g));
-    const nonEmptyNonAbsent = filteredGrades.filter(g => g !== '' && !isAbsentGrade(g));
-
-    let status: string;
-    if (!hasAnyGrade) status = 'INCOMPLETE';
-    else if (allAbsent) status = 'ABSENT';
+    const hasAnyGrade = filteredGrades.some((g) => g !== "");
+    const allAbsent = filteredGrades.length > 0 && filteredGrades.every((g) => g === "" || isAbsentGrade(g));
+    const nonEmptyNonAbsent = filteredGrades.filter((g) => g !== "" && !isAbsentGrade(g));
+    let status;
+    if (!hasAnyGrade) status = "INCOMPLETE";
+    else if (allAbsent) status = "ABSENT";
     else {
-      const allPass = nonEmptyNonAbsent.every(g => isPassGrade(g));
-      status = allPass ? 'PASS' : 'FAIL';
+      const allPass = nonEmptyNonAbsent.every((g) => isPassGrade(g));
+      status = allPass ? "PASS" : "FAIL";
     }
-
-    // Determine appeared
     let appeared = false;
     for (const entry of studentMarks) {
       const val = entry.mark ?? entry.grade;
-      if (val !== undefined && val !== null && String(val).trim() !== '' && !isAbsentGrade(String(val))) {
+      if (val !== void 0 && val !== null && String(val).trim() !== "" && !isAbsentGrade(String(val))) {
         appeared = true;
         break;
       }
     }
-
-    const districtId = schoolToDistrict.get(student.schoolId?.toString()) || 'unknown';
-    const gradeDist: Record<string, number> = {};
-    nonEmptyNonAbsent.forEach(g => {
+    const districtId = schoolToDistrict.get(student.schoolId?.toString()) || "unknown";
+    const gradeDist = {};
+    nonEmptyNonAbsent.forEach((g) => {
       const cg = g.trim().toUpperCase();
       gradeDist[cg] = (gradeDist[cg] || 0) + 1;
     });
-
     studentResults.set(studentId, {
-      gender: student.gender || 'Unknown',
+      gender: student.gender || "Unknown",
       districtId,
-      status: appeared ? status : 'NOT_ENTERED',
+      status: appeared ? status : "NOT_ENTERED",
       appeared,
       gradeDistribution: gradeDist,
-      aPlusCount: nonEmptyNonAbsent.filter(g => g.trim().toUpperCase() === 'A+').length,
+      aPlusCount: nonEmptyNonAbsent.filter((g) => g.trim().toUpperCase() === "A+").length,
       totalSubjects: nonEmptyNonAbsent.length,
       totalMarks: nonEmptyNonAbsent.reduce((sum, g) => {
-        // We don't have raw marks here easily, use grade-based estimation
         return sum;
-      }, 0),
+      }, 0)
     });
   }
-
-  // Now aggregate per district
   const allDistrictPassPct = (() => {
-    const allAppeared = Array.from(studentResults.values()).filter(r => r.appeared).length;
-    const allPassed = Array.from(studentResults.values()).filter(r => r.status === 'PASS').length;
-    return allAppeared > 0 ? Math.round((allPassed / allAppeared) * 100 * 100) / 100 : 0;
+    const allAppeared = Array.from(studentResults.values()).filter((r) => r.appeared).length;
+    const allPassed = Array.from(studentResults.values()).filter((r) => r.status === "PASS").length;
+    return allAppeared > 0 ? Math.round(allPassed / allAppeared * 100 * 100) / 100 : 0;
   })();
-
-  // Compute per-school stats for quality/risk indicators
-  const schoolStatsMap = new Map<string, any>();
+  const schoolStatsMap = /* @__PURE__ */ new Map();
   for (const school of schools) {
     const schoolIdStr = school._id.toString();
     const schoolStudents = studentsBySchool.get(schoolIdStr) || [];
     let appeared = 0, passed = 0, failed = 0, absent = 0, notEntered = 0, totalMarks = 0, markCount = 0;
-    const schoolStudentIds = schoolStudents.map(s => s.id || s._id.toString());
-
-    schoolStudentIds.forEach(sid => {
+    const schoolStudentIds = schoolStudents.map((s) => s.id || s._id.toString());
+    schoolStudentIds.forEach((sid) => {
       const r = studentResults.get(sid);
-      if (!r) { notEntered++; return; }
-      if (r.status === 'NOT_ENTERED') { notEntered++; return; }
-      if (r.status === 'ABSENT') { absent++; return; }
+      if (!r) {
+        notEntered++;
+        return;
+      }
+      if (r.status === "NOT_ENTERED") {
+        notEntered++;
+        return;
+      }
+      if (r.status === "ABSENT") {
+        absent++;
+        return;
+      }
       if (r.appeared) {
         appeared++;
-        if (r.status === 'PASS') passed++;
+        if (r.status === "PASS") passed++;
         else failed++;
       }
     });
-
-    const schoolMarks = allMarks.filter(m => schoolStudentIds.includes(m.studentId));
-    schoolMarks.forEach(m => {
-      if (m.mark !== undefined && m.mark !== null && m.mark !== '') {
+    const schoolMarks = allMarks.filter((m) => schoolStudentIds.includes(m.studentId));
+    schoolMarks.forEach((m) => {
+      if (m.mark !== void 0 && m.mark !== null && m.mark !== "") {
         totalMarks += Number(m.mark) || 0;
         markCount++;
       }
     });
-
-    const avgPct = appeared > 0 ? Math.round((passed / appeared) * 100 * 100) / 100 : 0;
-    const avgMarks = markCount > 0 ? Math.round((totalMarks / markCount) * 100) / 100 : 0;
-
+    const avgPct = appeared > 0 ? Math.round(passed / appeared * 100 * 100) / 100 : 0;
+    const avgMarks = markCount > 0 ? Math.round(totalMarks / markCount * 100) / 100 : 0;
     schoolStatsMap.set(schoolIdStr, {
       name: school.name || school.username,
       districtId: schoolToDistrict.get(schoolIdStr),
       totalStudents: schoolStudents.length,
-      appeared, passed, failed, absent, notEntered,
+      appeared,
+      passed,
+      failed,
+      absent,
+      notEntered,
       passPct: avgPct,
       avgMarks,
-      markCount,
+      markCount
     });
   }
-
-  // Get previous exam for trend data
-  let previousExam: any = null;
+  let previousExam = null;
   try {
     const allExams = await Exam.find({ active: true }).sort({ createdAt: -1 }).lean();
-    const currentIdx = allExams.findIndex(e => e.id === examId);
+    const currentIdx = allExams.findIndex((e) => e.id === examId);
     if (currentIdx >= 0 && allExams.length > currentIdx + 1) {
       previousExam = allExams[currentIdx + 1];
     }
-  } catch (_) {}
-
-  // Compute previous exam pass rates per district (if available)
-  const prevDistrictPassRates = new Map<string, number>();
+  } catch (_) {
+  }
+  const prevDistrictPassRates = /* @__PURE__ */ new Map();
   if (previousExam) {
     const prevMarks = await Mark.find({ examId: previousExam.id }).lean();
-    const prevMarksByStudent = new Map<string, any[]>();
-    prevMarks.forEach(m => {
+    const prevMarksByStudent = /* @__PURE__ */ new Map();
+    prevMarks.forEach((m) => {
       if (!prevMarksByStudent.has(m.studentId)) prevMarksByStudent.set(m.studentId, []);
-      prevMarksByStudent.get(m.studentId)!.push(m);
+      prevMarksByStudent.get(m.studentId).push(m);
     });
-
-    const prevResults = new Map<string, { appeared: number; passed: number }>();
+    const prevResults = /* @__PURE__ */ new Map();
     for (const [sid, pm] of prevMarksByStudent) {
-      const student = allStudents.find(s => s.id === sid || s._id.toString() === sid);
+      const student = allStudents.find((s) => s.id === sid || s._id.toString() === sid);
       if (!student) continue;
       const districtId = schoolToDistrict.get(student.schoolId?.toString());
       if (!districtId) continue;
-
       let appeared = false;
       for (const entry of pm) {
         const val = entry.mark ?? entry.grade;
-        if (val !== undefined && val !== null && String(val).trim() !== '' && !isAbsentGrade(String(val))) {
+        if (val !== void 0 && val !== null && String(val).trim() !== "" && !isAbsentGrade(String(val))) {
           appeared = true;
           break;
         }
       }
       if (!appeared) continue;
-
       const config = configBySchool.get(student.schoolId?.toString());
       let allowedSubjectCodes = [...defaultCoreSubjects];
       if (config?.subjects?.length > 0) {
-        const configuredCodes = config.subjects.map((subj: any) => idToCode[subj.subjectId?.toString()] || subj.subjectId?.toString());
-        allowedSubjectCodes = Array.from(new Set([...configuredCodes, ...defaultCoreSubjects]));
+        const configuredCodes = config.subjects.map((subj) => idToCode[subj.subjectId?.toString()] || subj.subjectId?.toString());
+        allowedSubjectCodes = Array.from(/* @__PURE__ */ new Set([...configuredCodes, ...defaultCoreSubjects]));
       }
-
-      const gradeMap2 = new Map<string, string>();
-      const markMap2 = new Map<string, any>();
-      pm.forEach((entry: any) => {
+      const gradeMap2 = /* @__PURE__ */ new Map();
+      const markMap2 = /* @__PURE__ */ new Map();
+      pm.forEach((entry) => {
         const code = idToCode[entry.subjectId?.toString()] || entry.subjectId?.toString();
-        gradeMap2.set(code, entry.grade || '');
-        markMap2.set(code, entry.mark !== undefined ? entry.mark : (entry.grade ? '' : ''));
+        gradeMap2.set(code, entry.grade || "");
+        markMap2.set(code, entry.mark !== void 0 ? entry.mark : entry.grade ? "" : "");
       });
-
-      const filteredGrades2: string[] = [];
+      const filteredGrades2 = [];
       for (const code of allowedSubjectCodes) {
         const mark = markMap2.get(code);
         const grade = gradeMap2.get(code);
-        const subjectIdStr = Object.keys(idToCode).find(k => idToCode[k] === code) || code;
+        const subjectIdStr = Object.keys(idToCode).find((k) => idToCode[k] === code) || code;
         const maxMark = getResolvedMaxMark(exam, subjectIdStr, code, 50);
-        let valToUse = mark !== undefined && mark !== null && mark !== '' ? mark : grade;
+        let valToUse = mark !== void 0 && mark !== null && mark !== "" ? mark : grade;
         let numericMark = Number(valToUse);
-        if (!isNaN(numericMark) && String(valToUse).trim() !== '') {
-          const pct = Math.round((numericMark * 100) / maxMark);
-          if (pct >= 90) filteredGrades2.push('A+');
-          else if (pct >= 80) filteredGrades2.push('A');
-          else if (pct >= 70) filteredGrades2.push('B+');
-          else if (pct >= 60) filteredGrades2.push('B');
-          else if (pct >= 50) filteredGrades2.push('C+');
-          else if (pct >= 40) filteredGrades2.push('C');
-          else if (pct >= 30) filteredGrades2.push('D+');
-          else if (pct >= 20) filteredGrades2.push('D');
-          else filteredGrades2.push('E');
+        if (!isNaN(numericMark) && String(valToUse).trim() !== "") {
+          const pct = Math.round(numericMark * 100 / maxMark);
+          if (pct >= 90) filteredGrades2.push("A+");
+          else if (pct >= 80) filteredGrades2.push("A");
+          else if (pct >= 70) filteredGrades2.push("B+");
+          else if (pct >= 60) filteredGrades2.push("B");
+          else if (pct >= 50) filteredGrades2.push("C+");
+          else if (pct >= 40) filteredGrades2.push("C");
+          else if (pct >= 30) filteredGrades2.push("D+");
+          else if (pct >= 20) filteredGrades2.push("D");
+          else filteredGrades2.push("E");
         } else {
-          filteredGrades2.push(grade ? String(grade) : '');
+          filteredGrades2.push(grade ? String(grade) : "");
         }
       }
-
-      const nonEmptyNonAbsent2 = filteredGrades2.filter(g => g !== '' && !isAbsentGrade(g));
-      const allPass2 = nonEmptyNonAbsent2.length > 0 && nonEmptyNonAbsent2.every(g => isPassGrade(g));
-      const prevStatus = allPass2 ? 'PASS' : 'FAIL';
-
+      const nonEmptyNonAbsent2 = filteredGrades2.filter((g) => g !== "" && !isAbsentGrade(g));
+      const allPass2 = nonEmptyNonAbsent2.length > 0 && nonEmptyNonAbsent2.every((g) => isPassGrade(g));
+      const prevStatus = allPass2 ? "PASS" : "FAIL";
       if (!prevResults.has(districtId)) prevResults.set(districtId, { appeared: 0, passed: 0 });
-      const dr = prevResults.get(districtId)!;
+      const dr = prevResults.get(districtId);
       dr.appeared++;
-      if (prevStatus === 'PASS') dr.passed++;
+      if (prevStatus === "PASS") dr.passed++;
     }
-
     prevResults.forEach((val, key) => {
-      prevDistrictPassRates.set(key, val.appeared > 0 ? Math.round((val.passed / val.appeared) * 100 * 100) / 100 : 0);
+      prevDistrictPassRates.set(key, val.appeared > 0 ? Math.round(val.passed / val.appeared * 100 * 100) / 100 : 0);
     });
   }
-
-  // Compute overall state pass rate for comparative analytics
   const allDistrictsPassPct = (() => {
-    const allAppeared = Array.from(studentResults.values()).filter(r => r.appeared).length;
-    const allPassed = Array.from(studentResults.values()).filter(r => r.status === 'PASS').length;
-    return allAppeared > 0 ? Math.round((allPassed / allAppeared) * 100 * 100) / 100 : 0;
+    const allAppeared = Array.from(studentResults.values()).filter((r) => r.appeared).length;
+    const allPassed = Array.from(studentResults.values()).filter((r) => r.status === "PASS").length;
+    return allAppeared > 0 ? Math.round(allPassed / allAppeared * 100 * 100) / 100 : 0;
   })();
-
-  // Build region results
-  const regionResults = districts.map(d => {
-    const dEdus = allEdus.filter(e => e.districtId === d.id).map(e => e.id);
-    const dSchools = schools.filter(s => dEdus.includes(s.subDistrictId));
-    const dSchoolIds = new Set(dSchools.map(s => s._id.toString()));
-    const dStudents = allStudents.filter(s => dSchoolIds.has(s.schoolId));
-
-    // Student strength (gender)
+  const regionResults = districts.map((d) => {
+    const dEdus = allEdus.filter((e) => e.districtId === d.id).map((e) => e.id);
+    const dSchools = schools.filter((s) => dEdus.includes(s.subDistrictId));
+    const dSchoolIds = new Set(dSchools.map((s) => s._id.toString()));
+    const dStudents = allStudents.filter((s) => dSchoolIds.has(s.schoolId));
     const totalStudents = dStudents.length;
-    const boys = dStudents.filter(s => s.gender === 'Male' || s.gender === 'Boy').length;
-    const girls = dStudents.filter(s => s.gender === 'Female' || s.gender === 'Girl').length;
-    const genderRatio = girls > 0 ? `${(boys / girls).toFixed(2)}:1` : 'N/A';
-    const boysPct = totalStudents > 0 ? Math.round((boys / totalStudents) * 100) : 0;
-    const girlsPct = totalStudents > 0 ? Math.round((girls / totalStudents) * 100) : 0;
-
-    // Results by gender
-    const dStudentIds = dStudents.map(s => s.id || s._id.toString());
+    const boys = dStudents.filter((s) => s.gender === "Male" || s.gender === "Boy").length;
+    const girls = dStudents.filter((s) => s.gender === "Female" || s.gender === "Girl").length;
+    const genderRatio = girls > 0 ? `${(boys / girls).toFixed(2)}:1` : "N/A";
+    const boysPct = totalStudents > 0 ? Math.round(boys / totalStudents * 100) : 0;
+    const girlsPct = totalStudents > 0 ? Math.round(girls / totalStudents * 100) : 0;
+    const dStudentIds = dStudents.map((s) => s.id || s._id.toString());
     let appearedBoys = 0, appearedGirls = 0, totalAppeared = 0;
     let absentBoys = 0, absentGirls = 0, totalAbsent = 0;
     let passedBoys = 0, passedGirls = 0, totalPassed = 0;
     let failedBoys = 0, failedGirls = 0, totalFailed = 0;
     let marksEntered = 0, marksPending = 0;
-    const gradeDistAgg: Record<string, number> = { 'A+':0,'A':0,'B+':0,'B':0,'C+':0,'C':0,'D+':0,'D':0,'E':0 };
-
-    dStudentIds.forEach(sid => {
+    const gradeDistAgg = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0 };
+    dStudentIds.forEach((sid) => {
       const r = studentResults.get(sid);
-      const student = dStudents.find(s => (s.id || s._id.toString()) === sid);
-      const isBoy = student && (student.gender === 'Male' || student.gender === 'Boy');
-
-      if (!r || r.status === 'NOT_ENTERED') {
+      const student = dStudents.find((s) => (s.id || s._id.toString()) === sid);
+      const isBoy = student && (student.gender === "Male" || student.gender === "Boy");
+      if (!r || r.status === "NOT_ENTERED") {
         marksPending++;
         return;
       }
       marksEntered++;
-
-      if (r.status === 'ABSENT') {
+      if (r.status === "ABSENT") {
         totalAbsent++;
-        if (isBoy) absentBoys++; else absentGirls++;
+        if (isBoy) absentBoys++;
+        else absentGirls++;
         return;
       }
       if (r.appeared) {
         totalAppeared++;
-        if (isBoy) appearedBoys++; else appearedGirls++;
+        if (isBoy) appearedBoys++;
+        else appearedGirls++;
       }
-      if (r.status === 'PASS') {
+      if (r.status === "PASS") {
         totalPassed++;
-        if (isBoy) passedBoys++; else passedGirls++;
-      } else if (r.status === 'FAIL') {
+        if (isBoy) passedBoys++;
+        else passedGirls++;
+      } else if (r.status === "FAIL") {
         totalFailed++;
-        if (isBoy) failedBoys++; else failedGirls++;
+        if (isBoy) failedBoys++;
+        else failedGirls++;
       }
       Object.entries(r.gradeDistribution).forEach(([g, cnt]) => {
-        if (gradeDistAgg[g] !== undefined) gradeDistAgg[g] += cnt;
+        if (gradeDistAgg[g] !== void 0) gradeDistAgg[g] += cnt;
       });
     });
-
-    const overallPassPct = totalAppeared > 0 ? Math.round((totalPassed / totalAppeared) * 100 * 100) / 100 : 0;
-    const boyPassPct = appearedBoys > 0 ? Math.round((passedBoys / appearedBoys) * 100 * 100) / 100 : 0;
-    const girlPassPct = appearedGirls > 0 ? Math.round((passedGirls / appearedGirls) * 100 * 100) / 100 : 0;
-    const participationRate = totalStudents > 0 ? Math.round((totalAppeared / totalStudents) * 100) : 0;
-    const entryPct = totalStudents > 0 ? Math.round((marksEntered / totalStudents) * 100) : 0;
-
-    // Confirmation
-    const confirmedCount = exam ? (exam.confirmedSchools || []).filter((sid: string) => dSchoolIds.has(sid)).length : 0;
+    const overallPassPct = totalAppeared > 0 ? Math.round(totalPassed / totalAppeared * 100 * 100) / 100 : 0;
+    const boyPassPct = appearedBoys > 0 ? Math.round(passedBoys / appearedBoys * 100 * 100) / 100 : 0;
+    const girlPassPct = appearedGirls > 0 ? Math.round(passedGirls / appearedGirls * 100 * 100) / 100 : 0;
+    const participationRate = totalStudents > 0 ? Math.round(totalAppeared / totalStudents * 100) : 0;
+    const entryPct = totalStudents > 0 ? Math.round(marksEntered / totalStudents * 100) : 0;
+    const confirmedCount = exam ? (exam.confirmedSchools || []).filter((sid) => dSchoolIds.has(sid)).length : 0;
     const pendingConfirmation = dSchools.length - confirmedCount;
-    const confirmationPct = dSchools.length > 0 ? Math.round((confirmedCount / dSchools.length) * 100) : 0;
-
-    // Grade analysis
+    const confirmationPct = dSchools.length > 0 ? Math.round(confirmedCount / dSchools.length * 100) : 0;
     const totalGradeCount = Object.values(gradeDistAgg).reduce((s, n) => s + n, 0);
     const gradeDistributionBar = Object.entries(gradeDistAgg).map(([grade, count]) => ({
       grade,
       count,
-      pct: totalGradeCount > 0 ? Math.round((count / totalGradeCount) * 100) : 0,
+      pct: totalGradeCount > 0 ? Math.round(count / totalGradeCount * 100) : 0
     }));
-    const highestGradeEntry = gradeDistributionBar.reduce((max, g) => g.count > max.count ? g : max, { grade: 'N/A', count: 0, pct: 0 });
-    const lowestGradeEntry = gradeDistributionBar.filter(g => g.count > 0).reduce((min, g) => g.count < min.count ? g : min, { grade: 'N/A', count: Infinity, pct: 0 });
-
-    // Average grade letter
+    const highestGradeEntry = gradeDistributionBar.reduce((max, g) => g.count > max.count ? g : max, { grade: "N/A", count: 0, pct: 0 });
+    const lowestGradeEntry = gradeDistributionBar.filter((g) => g.count > 0).reduce((min, g) => g.count < min.count ? g : min, { grade: "N/A", count: Infinity, pct: 0 });
     const avgGradeLetter = (() => {
-      if (totalGradeCount === 0) return 'N/A';
-      const weighted = gradeDistAgg['A+']*9 + gradeDistAgg['A']*8 + gradeDistAgg['B+']*7 + gradeDistAgg['B']*6 + gradeDistAgg['C+']*5 + gradeDistAgg['C']*4 + gradeDistAgg['D+']*3 + gradeDistAgg['D']*2 + gradeDistAgg['E']*1;
+      if (totalGradeCount === 0) return "N/A";
+      const weighted = gradeDistAgg["A+"] * 9 + gradeDistAgg["A"] * 8 + gradeDistAgg["B+"] * 7 + gradeDistAgg["B"] * 6 + gradeDistAgg["C+"] * 5 + gradeDistAgg["C"] * 4 + gradeDistAgg["D+"] * 3 + gradeDistAgg["D"] * 2 + gradeDistAgg["E"] * 1;
       const avg = weighted / totalGradeCount;
-      if (avg >= 8.5) return 'A+';
-      if (avg >= 7.5) return 'A';
-      if (avg >= 6.5) return 'B+';
-      if (avg >= 5.5) return 'B';
-      if (avg >= 4.5) return 'C+';
-      if (avg >= 3.5) return 'C';
-      if (avg >= 2.5) return 'D+';
-      if (avg >= 1.5) return 'D';
-      return 'E';
+      if (avg >= 8.5) return "A+";
+      if (avg >= 7.5) return "A";
+      if (avg >= 6.5) return "B+";
+      if (avg >= 5.5) return "B";
+      if (avg >= 4.5) return "C+";
+      if (avg >= 3.5) return "C";
+      if (avg >= 2.5) return "D+";
+      if (avg >= 1.5) return "D";
+      return "E";
     })();
-
-    // Performance classification
     const performanceClassification = (() => {
-      if (overallPassPct >= 98) return { level: 'Excellent', color: 'emerald' };
-      if (overallPassPct >= 95) return { level: 'Very Good', color: 'blue' };
-      if (overallPassPct >= 90) return { level: 'Good', color: 'violet' };
-      if (overallPassPct >= 80) return { level: 'Average', color: 'amber' };
-      return { level: 'Needs Improvement', color: 'red' };
+      if (overallPassPct >= 98) return { level: "Excellent", color: "emerald" };
+      if (overallPassPct >= 95) return { level: "Very Good", color: "blue" };
+      if (overallPassPct >= 90) return { level: "Good", color: "violet" };
+      if (overallPassPct >= 80) return { level: "Average", color: "amber" };
+      return { level: "Needs Improvement", color: "red" };
     })();
-
-    // Quality indicators
-    const dSchoolStats = Array.from(schoolStatsMap.values()).filter(s => s.districtId === d.id && s.totalStudents > 0);
+    const dSchoolStats = Array.from(schoolStatsMap.values()).filter((s) => s.districtId === d.id && s.totalStudents > 0);
     const qualityIndicators = (() => {
-      const withAvgMarks = dSchoolStats.filter(s => s.markCount > 0);
-      const withPass = dSchoolStats.filter(s => s.appeared > 0);
+      const withAvgMarks = dSchoolStats.filter((s) => s.markCount > 0);
+      const withPass = dSchoolStats.filter((s) => s.appeared > 0);
       const avgMarksAll = withAvgMarks.length > 0 ? Math.round(withAvgMarks.reduce((s, sc) => s + sc.avgMarks, 0) / withAvgMarks.length * 100) / 100 : 0;
       const highestAvgSchool = withAvgMarks.length > 0 ? withAvgMarks.reduce((max, s) => s.avgMarks > max.avgMarks ? s : max) : null;
       const lowestAvgSchool = withAvgMarks.length > 0 ? withAvgMarks.reduce((min, s) => s.avgMarks < min.avgMarks ? s : min) : null;
@@ -3382,73 +2924,64 @@ async function computeRegionAnalytics(examId: string, className: string = '10') 
         lowestPassSchool: lowestPassSchool ? { name: lowestPassSchool.name, passPct: lowestPassSchool.passPct } : null,
         bestPerformingSchool: highestPassSchool ? { name: highestPassSchool.name, passPct: highestPassSchool.passPct } : null,
         mostImprovedSchool: null,
-        mostAbsentSchool: mostAbsentSchool ? { name: mostAbsentSchool.name, absent: mostAbsentSchool.absent } : null,
+        mostAbsentSchool: mostAbsentSchool ? { name: mostAbsentSchool.name, absent: mostAbsentSchool.absent } : null
       };
     })();
-
-    // Risk indicators
     const riskIndicators = (() => {
-      const highFailureSchools = dSchoolStats.filter(s => s.appeared > 0 && (s.failed / s.appeared) > 0.2).length;
-      const schoolsBelow80Pct = dSchoolStats.filter(s => s.appeared > 0 && s.passPct < 80).length;
-      const highAbsenteeSchools = dSchoolStats.filter(s => s.totalStudents > 0 && (s.absent / s.totalStudents) > 0.1).length;
-      const pendingMarksSchools = dSchoolStats.filter(s => s.notEntered > 0).length;
+      const highFailureSchools = dSchoolStats.filter((s) => s.appeared > 0 && s.failed / s.appeared > 0.2).length;
+      const schoolsBelow80Pct = dSchoolStats.filter((s) => s.appeared > 0 && s.passPct < 80).length;
+      const highAbsenteeSchools = dSchoolStats.filter((s) => s.totalStudents > 0 && s.absent / s.totalStudents > 0.1).length;
+      const pendingMarksSchools = dSchoolStats.filter((s) => s.notEntered > 0).length;
       return {
         highFailureSchools,
         schoolsBelow80Pct,
         highAbsenteeSchools,
         pendingMarksSchools,
-        notConfirmedSchools: pendingConfirmation,
+        notConfirmedSchools: pendingConfirmation
       };
     })();
-
-    // Comparative analytics
     const comparativeAnalytics = (() => {
       const diff = Math.round((overallPassPct - allDistrictsPassPct) * 100) / 100;
       return {
         regionPassPct: overallPassPct,
         overallPassPct: allDistrictsPassPct,
         difference: diff,
-        trendDirection: diff > 0 ? 'above' : diff < 0 ? 'below' : 'at-par',
+        trendDirection: diff > 0 ? "above" : diff < 0 ? "below" : "at-par"
       };
     })();
-
-    // Trend indicators
     const trendIndicators = (() => {
       const prevPassRate = prevDistrictPassRates.get(d.id);
-      if (prevPassRate === undefined) {
-        return { hasPreviousExam: false, passPctChange: 0, appearedChange: 0, avgMarksChange: 0, passPctDirection: 'flat' };
+      if (prevPassRate === void 0) {
+        return { hasPreviousExam: false, passPctChange: 0, appearedChange: 0, avgMarksChange: 0, passPctDirection: "flat" };
       }
       const passChange = Math.round((overallPassPct - prevPassRate) * 100) / 100;
       return {
         hasPreviousExam: true,
-        previousExamName: previousExam?.name || '',
+        previousExamName: previousExam?.name || "",
         passPctChange: passChange,
         appearedChange: 0,
         avgMarksChange: 0,
-        passPctDirection: passChange > 0 ? 'up' : passChange < 0 ? 'down' : 'flat',
+        passPctDirection: passChange > 0 ? "up" : passChange < 0 ? "down" : "flat"
       };
     })();
-
-    // Validation rules
     const validationRules = (() => {
-      const warnings: string[] = [];
+      const warnings = [];
       const bpgEq = boys + girls === totalStudents;
       const aaeEq = totalAppeared + totalAbsent + marksPending === totalStudents;
       const pfeEq = totalPassed + totalFailed === totalAppeared;
       const cpeEq = confirmedCount + pendingConfirmation === dSchools.length;
-      if (!bpgEq) warnings.push('Boys + Girls ≠ Total Students');
-      if (!aaeEq) warnings.push('Appeared + Absent + Pending ≠ Total Students');
-      if (!pfeEq) warnings.push('Passed + Failed ≠ Appeared');
-      if (!cpeEq) warnings.push('Confirmed + Pending ≠ Total Schools');
+      if (!bpgEq) warnings.push("Boys + Girls \u2260 Total Students");
+      if (!aaeEq) warnings.push("Appeared + Absent + Pending \u2260 Total Students");
+      if (!pfeEq) warnings.push("Passed + Failed \u2260 Appeared");
+      if (!cpeEq) warnings.push("Confirmed + Pending \u2260 Total Schools");
       return {
         boysPlusGirlsEqualsTotal: bpgEq,
         appearedPlusAbsentEqualsTotal: aaeEq,
         passedPlusFailedEqualsAppeared: pfeEq,
         confirmationPlusPendingEqualsTotal: cpeEq,
-        warnings,
+        warnings
       };
     })();
-
     return {
       header: {
         name: d.name,
@@ -3456,7 +2989,7 @@ async function computeRegionAnalytics(examId: string, className: string = '10') 
         confirmedSchools: confirmedCount,
         pendingSchools: pendingConfirmation,
         confirmationPct,
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
       },
       studentStrength: { totalStudents, boys, girls, genderRatio, boysPct, girlsPct },
       examParticipation: { appearedBoys, appearedGirls, totalAppeared, absentBoys, absentGirls, totalAbsent, participationRate },
@@ -3469,88 +3002,74 @@ async function computeRegionAnalytics(examId: string, className: string = '10') 
       riskIndicators,
       comparativeAnalytics,
       trendIndicators,
-      validationRules,
+      validationRules
     };
   });
-
   return {
     examId,
     className,
     allDistrictsPassPct,
     regions: regionResults,
-    lastUpdated: new Date().toISOString(),
+    lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
   };
 }
-
-async function rebuildRegionAnalytics(examId: string, className: string = '10') {
+async function rebuildRegionAnalytics(examId, className = "10") {
   try {
     const result = await computeRegionAnalytics(examId, className);
     await RegionAnalyticsSummary.findOneAndUpdate(
       { examId, className },
-      { ...result, lastUpdated: new Date() },
+      { ...result, lastUpdated: /* @__PURE__ */ new Date() },
       { upsert: true }
     );
     analyticsCache.clearPattern(/region-analytics/);
-    console.log('RegionAnalytics rebuilt.');
+    console.log("RegionAnalytics rebuilt.");
   } catch (err) {
-    console.error('Error rebuilding RegionAnalytics:', err);
+    console.error("Error rebuilding RegionAnalytics:", err);
   }
 }
-
-app.get("/api/dashboard/stats", async (req: any, res) => {
+app.get("/api/dashboard/stats", async (req, res) => {
   try {
-    const districtId = req.query.districtId as string | undefined;
-    const eduId = req.query.eduId as string | undefined;
-    const schoolId = req.query.schoolId as string | undefined;
-    const examId = req.query.examId as string | undefined;
-
+    const districtId = req.query.districtId;
+    const eduId = req.query.eduId;
+    const schoolId = req.query.schoolId;
+    const examId = req.query.examId;
     const exams = await Exam.find();
     const activeExamId = examId || exams[0]?.id || "exam-1";
-    const selectedExam = exams.find((e: any) => e.id === activeExamId);
-    const examClass = selectedExam?.standard || '10';
-
+    const selectedExam = exams.find((e) => e.id === activeExamId);
+    const examClass = selectedExam?.standard || "10";
     let effectiveSchoolId = schoolId;
     let effectiveEduId = eduId;
     let effectiveDistrictId = districtId;
-
     if (req.user) {
-      if (req.user.role === 'DEO' || req.user.role === 'DIET') {
+      if (req.user.role === "DEO" || req.user.role === "DIET") {
         const deoEdu = req.user.subDistrictId || req.user.eduDistrictId || req.user.eduId;
         if (deoEdu) {
           effectiveEduId = deoEdu;
-        } else if (eduId && eduId !== 'ALL') {
+        } else if (eduId && eduId !== "ALL") {
           effectiveEduId = eduId;
         } else {
-          effectiveDistrictId = req.user.districtId || 'dist-9';
-          effectiveEduId = undefined;
+          effectiveDistrictId = req.user.districtId || "dist-9";
+          effectiveEduId = void 0;
         }
-      } else if (req.user.role === 'WEBMASTER') {
-        // WEBMASTER sees state level — leave all IDs as undefined/query params
-        effectiveSchoolId = undefined;
-        effectiveEduId = eduId && eduId !== 'ALL' ? eduId : undefined;
-        effectiveDistrictId = districtId && districtId !== 'ALL' ? districtId : undefined;
-      } else if (req.user.role === 'SCHOOL') {
+      } else if (req.user.role === "WEBMASTER") {
+        effectiveSchoolId = void 0;
+        effectiveEduId = eduId && eduId !== "ALL" ? eduId : void 0;
+        effectiveDistrictId = districtId && districtId !== "ALL" ? districtId : void 0;
+      } else if (req.user.role === "SCHOOL") {
         effectiveSchoolId = req.user.schoolId || req.user.id;
       }
     }
-
-    // Check LRU Cache
-    const cacheKey = `dashboard_${effectiveSchoolId || 'none'}_${effectiveEduId || 'none'}_${effectiveDistrictId || 'none'}_${activeExamId}_${examClass}`;
+    const cacheKey = `dashboard_${effectiveSchoolId || "none"}_${effectiveEduId || "none"}_${effectiveDistrictId || "none"}_${activeExamId}_${examClass}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) {
       return res.json(cached);
     }
-
-    // Determine the summary to fetch
-    let summary: any = null;
+    let summary = null;
     let title = "State of Kerala";
     let detailLabel = "";
-    let chartData: any[] = [];
-
-    // We also need confirmedSchoolsCount and unconfirmedSchoolsCount. 
-    let eduScopeSchoolIds: string[] = [];
+    let chartData = [];
+    let eduScopeSchoolIds = [];
     let schoolsCount = 0;
-
     if (effectiveSchoolId) {
       let school = null;
       if (mongoose.Types.ObjectId.isValid(effectiveSchoolId)) {
@@ -3562,43 +3081,32 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
       const realSchoolId = school ? school._id.toString() : effectiveSchoolId;
       title = school?.name || "School Results";
       detailLabel = "Grade-wise Analysis (All Subjects)";
-
       summary = await SchoolSummary.findOne({ schoolId: realSchoolId, examId: activeExamId, className: examClass }).lean();
       if (!summary && school?.schoolCode) {
         summary = await SchoolSummary.findOne({ schoolId: school.schoolCode, examId: activeExamId, className: examClass }).lean();
       }
-
       if (summary && summary.stats && summary.stats.gradeDistribution) {
-        chartData = Object.keys(summary.stats.gradeDistribution).map(g => ({
+        chartData = Object.keys(summary.stats.gradeDistribution).map((g) => ({
           name: g,
           victory: summary.stats.gradeDistribution[g]
         }));
       }
       schoolsCount = 1;
       eduScopeSchoolIds = [effectiveSchoolId];
-
     } else if (effectiveEduId) {
       const edu = await EducationalDistrict.findOne({ id: effectiveEduId });
       title = edu?.name || "Educational District";
       detailLabel = "Schools Performance";
-
       summary = await DashboardSummary.findOne({ id: `edu_${effectiveEduId}_exam_${activeExamId}`, examId: activeExamId, className: examClass }).lean();
-
-      // For charts, we need individual schools in this edu district
       const schoolsInEdu = await School.find({ subDistrictId: effectiveEduId, role: "SCHOOL" });
-      const schoolIds = schoolsInEdu.map(s => s._id.toString());
+      const schoolIds = schoolsInEdu.map((s) => s._id.toString());
       schoolsCount = schoolIds.length;
       eduScopeSchoolIds = schoolIds;
-
       const schoolSummaries = await SchoolSummary.find({ examId: activeExamId, className: examClass, schoolId: { $in: schoolIds } }).lean();
-
-      // Ensure SchoolSummary exists — compute from raw marks if missing
-      // Use non-blocking background for first load, then re-query
       let backgroundComputing = false;
       if (schoolSummaries.length === 0 && schoolIds.length > 0) {
         backgroundComputing = true;
         console.log(`Edu ${effectiveEduId}: SchoolSummary missing. Computing stats for ${schoolIds.length} schools in background...`);
-        // Fire-and-forget: compute per school then cascade
         enqueueSchoolSummaryRebuild(schoolIds[0], activeExamId, examClass);
         (async () => {
           for (let i = 0; i < schoolIds.length; i++) {
@@ -3606,18 +3114,19 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
               const results = await calculateStatsForScope(activeExamId, { schoolId: schoolIds[i], className: examClass });
               await SchoolSummary.findOneAndUpdate(
                 { schoolId: schoolIds[i], examId: activeExamId, className: examClass },
-                { stats: results, lastUpdated: new Date() }, { upsert: true }
+                { stats: results, lastUpdated: /* @__PURE__ */ new Date() },
+                { upsert: true }
               );
-            } catch (err) { /* silent */ }
+            } catch (err) {
+            }
           }
           await rebuildDashboardSummary(activeExamId, examClass);
           analyticsCache.clearPattern(/dashboard_/);
           console.log(`Edu ${effectiveEduId}: Background computation complete. Refresh dashboard to see updated data.`);
         })();
       }
-
-      chartData = schoolsInEdu.map(s => {
-        const sSummary = schoolSummaries.find((ss: any) => ss.schoolId === s._id.toString());
+      chartData = schoolsInEdu.map((s) => {
+        const sSummary = schoolSummaries.find((ss) => ss.schoolId === s._id.toString());
         const sResults = sSummary ? sSummary.stats : { appeared: 0, fullAPlus: 0, pass: 0, victoryPercentage: 0 };
         const isConfirmed = selectedExam ? (selectedExam.confirmedSchools || []).includes(s._id.toString()) : false;
         return {
@@ -3630,36 +3139,28 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
           confirmed: isConfirmed
         };
       });
-
     } else if (effectiveDistrictId && effectiveDistrictId !== "ALL") {
       const district = await District.findOne({ id: effectiveDistrictId });
       title = district?.name || "District Results";
       detailLabel = "Edu District Breakdown";
-
       summary = await DashboardSummary.findOne({ id: `dist_${effectiveDistrictId}_exam_${activeExamId}`, examId: activeExamId, className: examClass }).lean();
-
       const rawEduDistricts = await EducationalDistrict.find({ districtId: effectiveDistrictId });
-      const seenEduKeys2 = new Set<string>();
-      const eduDistricts = rawEduDistricts.filter((e: any) => {
-        const name = (e.name || '').toLowerCase().trim();
-        const revDiv = (e.revenueDivisionId || 'none').toLowerCase().trim();
+      const seenEduKeys2 = /* @__PURE__ */ new Set();
+      const eduDistricts = rawEduDistricts.filter((e) => {
+        const name = (e.name || "").toLowerCase().trim();
+        const revDiv = (e.revenueDivisionId || "none").toLowerCase().trim();
         if (!name) return false;
         const key = `${revDiv}::${name}`;
         if (seenEduKeys2.has(key)) return false;
         seenEduKeys2.add(key);
         return true;
       });
-      const eduIds = eduDistricts.map(e => e.id);
-
+      const eduIds = eduDistricts.map((e) => e.id);
       const schools = await School.find({ subDistrictId: { $in: eduIds }, role: "SCHOOL" });
       schoolsCount = schools.length;
-      eduScopeSchoolIds = schools.map(s => s._id.toString());
-
-      // Try DashboardSummaries first; fallback to SchoolSummary aggregation per edu district
-      const eduSummaries = await DashboardSummary.find({ examId: activeExamId, className: examClass, level: 'EDU_DISTRICT', refId: { $in: eduIds } }).lean();
+      eduScopeSchoolIds = schools.map((s) => s._id.toString());
+      const eduSummaries = await DashboardSummary.find({ examId: activeExamId, className: examClass, level: "EDU_DISTRICT", refId: { $in: eduIds } }).lean();
       let allSchoolSummariesForDistrict = await SchoolSummary.find({ examId: activeExamId, className: examClass, schoolId: { $in: eduScopeSchoolIds } }).lean();
-
-      // Ensure SchoolSummary exists for chart data
       if (allSchoolSummariesForDistrict.length === 0 && eduScopeSchoolIds.length > 0) {
         console.log(`District scope: SchoolSummary missing. Triggering background computation for ${eduScopeSchoolIds.length} schools...`);
         (async () => {
@@ -3668,31 +3169,27 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
               const results = await calculateStatsForScope(activeExamId, { schoolId: eduScopeSchoolIds[i], className: examClass });
               await SchoolSummary.findOneAndUpdate(
                 { schoolId: eduScopeSchoolIds[i], examId: activeExamId, className: examClass },
-                { stats: results, lastUpdated: new Date() }, { upsert: true }
+                { stats: results, lastUpdated: /* @__PURE__ */ new Date() },
+                { upsert: true }
               );
-            } catch (err) { /* silent */ }
+            } catch (err) {
+            }
           }
           await rebuildDashboardSummary(activeExamId, examClass);
           analyticsCache.clearPattern(/dashboard_/);
-          console.log('District scope: Background SchoolSummary computation complete.');
+          console.log("District scope: Background SchoolSummary computation complete.");
         })();
       }
-
-      chartData = eduDistricts.map(e => {
-        const dSchools = schools.filter(s => s.subDistrictId === e.id);
-        const dSchoolIds = dSchools.map(s => s._id.toString());
-
-        let eSummary = eduSummaries.find((es: any) => es.refId === e.id);
+      chartData = eduDistricts.map((e) => {
+        const dSchools = schools.filter((s) => s.subDistrictId === e.id);
+        const dSchoolIds = dSchools.map((s) => s._id.toString());
+        let eSummary = eduSummaries.find((es) => es.refId === e.id);
         let eResults = eSummary ? eSummary.stats : null;
-
         if (!eResults) {
-          // Fallback: aggregate from SchoolSummaries for this edu district
-          const scoped = allSchoolSummariesForDistrict.filter((ss: any) => dSchoolIds.includes(ss.schoolId));
+          const scoped = allSchoolSummariesForDistrict.filter((ss) => dSchoolIds.includes(ss.schoolId));
           eResults = aggregateSchoolStats(scoped);
         }
-
-        const eConfirmedCount = selectedExam ? (selectedExam.confirmedSchools || []).filter((sid: string) => dSchoolIds.includes(sid)).length : 0;
-
+        const eConfirmedCount = selectedExam ? (selectedExam.confirmedSchools || []).filter((sid) => dSchoolIds.includes(sid)).length : 0;
         return {
           id: e.id,
           name: e.name,
@@ -3705,25 +3202,20 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
           totalCount: dSchoolIds.length
         };
       });
-
     } else {
       title = "State of Kerala";
       detailLabel = "District Breakdown";
-
       summary = await DashboardSummary.findOne({ id: `state_ALL_exam_${activeExamId}`, examId: activeExamId, className: examClass }).lean();
-
       const schools = await School.find({ role: "SCHOOL" });
       schoolsCount = schools.length;
-      eduScopeSchoolIds = schools.map(s => s._id.toString());
-
+      eduScopeSchoolIds = schools.map((s) => s._id.toString());
       const districts = await District.find();
-      const distSummaries = await DashboardSummary.find({ examId: activeExamId, className: examClass, level: 'DISTRICT' }).lean();
-
+      const distSummaries = await DashboardSummary.find({ examId: activeExamId, className: examClass, level: "DISTRICT" }).lean();
       const rawAllEdus = await EducationalDistrict.find();
-      const seenEduKeys3 = new Set<string>();
-      const allEdus = rawAllEdus.filter((e: any) => {
-        const name = (e.name || '').toLowerCase().trim();
-        const revDiv = (e.revenueDivisionId || 'none').toLowerCase().trim();
+      const seenEduKeys3 = /* @__PURE__ */ new Set();
+      const allEdus = rawAllEdus.filter((e) => {
+        const name = (e.name || "").toLowerCase().trim();
+        const revDiv = (e.revenueDivisionId || "none").toLowerCase().trim();
         if (!name) return false;
         const key = `${revDiv}::${name}`;
         if (seenEduKeys3.has(key)) return false;
@@ -3731,8 +3223,6 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
         return true;
       });
       let allSchoolSummariesForState = await SchoolSummary.find({ examId: activeExamId, className: examClass, schoolId: { $in: eduScopeSchoolIds } }).lean();
-
-      // Ensure SchoolSummary exists for chart data — trigger background computation if missing
       if (allSchoolSummariesForState.length === 0 && eduScopeSchoolIds.length > 0) {
         console.log(`State scope: SchoolSummary missing. Triggering background computation for ${eduScopeSchoolIds.length} schools...`);
         (async () => {
@@ -3741,31 +3231,28 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
               const results = await calculateStatsForScope(activeExamId, { schoolId: eduScopeSchoolIds[i], className: examClass });
               await SchoolSummary.findOneAndUpdate(
                 { schoolId: eduScopeSchoolIds[i], examId: activeExamId, className: examClass },
-                { stats: results, lastUpdated: new Date() }, { upsert: true }
+                { stats: results, lastUpdated: /* @__PURE__ */ new Date() },
+                { upsert: true }
               );
-            } catch (err) { /* silent */ }
+            } catch (err) {
+            }
           }
           await rebuildDashboardSummary(activeExamId, examClass);
           analyticsCache.clearPattern(/dashboard_/);
-          console.log('State scope: Background SchoolSummary computation complete.');
+          console.log("State scope: Background SchoolSummary computation complete.");
         })();
       }
-
-      chartData = districts.map(d => {
-        const dEdus = allEdus.filter(e => e.districtId === d.id).map(e => e.id);
-        const dSchools = schools.filter(s => dEdus.includes(s.subDistrictId));
-        const dSchoolIds = dSchools.map(s => s._id.toString());
-
-        let dSummary = distSummaries.find((ds: any) => ds.refId === d.id);
+      chartData = districts.map((d) => {
+        const dEdus = allEdus.filter((e) => e.districtId === d.id).map((e) => e.id);
+        const dSchools = schools.filter((s) => dEdus.includes(s.subDistrictId));
+        const dSchoolIds = dSchools.map((s) => s._id.toString());
+        let dSummary = distSummaries.find((ds) => ds.refId === d.id);
         let dResults = dSummary ? dSummary.stats : null;
-
         if (!dResults) {
-          const scoped = allSchoolSummariesForState.filter((ss: any) => dSchoolIds.includes(ss.schoolId));
+          const scoped = allSchoolSummariesForState.filter((ss) => dSchoolIds.includes(ss.schoolId));
           dResults = aggregateSchoolStats(scoped);
         }
-
-        const dConfirmedCount = selectedExam ? (selectedExam.confirmedSchools || []).filter((sid: string) => dSchoolIds.includes(sid)).length : 0;
-
+        const dConfirmedCount = selectedExam ? (selectedExam.confirmedSchools || []).filter((sid) => dSchoolIds.includes(sid)).length : 0;
         return {
           id: d.id,
           name: d.name,
@@ -3779,45 +3266,38 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
         };
       });
     }
-
-    const confirmedSchoolsInScope = (selectedExam?.confirmedSchools || []).filter((sid: string) => eduScopeSchoolIds.includes(sid));
+    const confirmedSchoolsInScope = (selectedExam?.confirmedSchools || []).filter((sid) => eduScopeSchoolIds.includes(sid));
     const confirmedSchoolsCount = confirmedSchoolsInScope.length;
     const unconfirmedSchoolsCount = eduScopeSchoolIds.length - confirmedSchoolsCount;
-    const isSchoolConfirmed = (effectiveSchoolId && selectedExam && (selectedExam.confirmedSchools || []).includes(effectiveSchoolId)) ? true : false;
-
+    const isSchoolConfirmed = effectiveSchoolId && selectedExam && (selectedExam.confirmedSchools || []).includes(effectiveSchoolId) ? true : false;
     let statsData = summary && summary.stats ? summary.stats : null;
-
-    // Fallback: compute from SchoolSummary on-the-fly when DashboardSummary is missing
     if (!statsData && eduScopeSchoolIds.length > 0) {
       console.log(`DashboardSummary missing for ${cacheKey}, aggregating from SchoolSummaries...`);
       let schoolSummariesForStats = await SchoolSummary.find({ examId: activeExamId, className: examClass, schoolId: { $in: eduScopeSchoolIds } }).lean();
-
       if (schoolSummariesForStats.length === 0) {
-        // SchoolSummary also missing — compute aggregate stats directly from raw marks (single query)
         console.log(`SchoolSummary empty. Computing aggregate stats from raw marks for ${eduScopeSchoolIds.length} schools...`);
         try {
           const agg = await calculateStatsForScope(activeExamId, { schoolId: { $in: eduScopeSchoolIds }, className: examClass });
           statsData = agg;
-
-          // Persist DashboardSummary for next time
           if (effectiveEduId && !effectiveDistrictId && !effectiveSchoolId) {
             await DashboardSummary.findOneAndUpdate(
-              { id: `edu_${effectiveEduId}_exam_${activeExamId}`, level: 'EDU_DISTRICT', refId: effectiveEduId, examId: activeExamId, className: examClass },
-              { stats: agg, lastUpdated: new Date() }, { upsert: true }
+              { id: `edu_${effectiveEduId}_exam_${activeExamId}`, level: "EDU_DISTRICT", refId: effectiveEduId, examId: activeExamId, className: examClass },
+              { stats: agg, lastUpdated: /* @__PURE__ */ new Date() },
+              { upsert: true }
             );
           } else if (effectiveDistrictId && !effectiveSchoolId) {
             await DashboardSummary.findOneAndUpdate(
-              { id: `dist_${effectiveDistrictId}_exam_${activeExamId}`, level: 'DISTRICT', refId: effectiveDistrictId, examId: activeExamId, className: examClass },
-              { stats: agg, lastUpdated: new Date() }, { upsert: true }
+              { id: `dist_${effectiveDistrictId}_exam_${activeExamId}`, level: "DISTRICT", refId: effectiveDistrictId, examId: activeExamId, className: examClass },
+              { stats: agg, lastUpdated: /* @__PURE__ */ new Date() },
+              { upsert: true }
             );
           } else if (!effectiveEduId && !effectiveDistrictId && !effectiveSchoolId) {
             await DashboardSummary.findOneAndUpdate(
-              { id: `state_ALL_exam_${activeExamId}`, level: 'STATE', refId: 'ALL', examId: activeExamId, className: examClass },
-              { stats: agg, lastUpdated: new Date() }, { upsert: true }
+              { id: `state_ALL_exam_${activeExamId}`, level: "STATE", refId: "ALL", examId: activeExamId, className: examClass },
+              { stats: agg, lastUpdated: /* @__PURE__ */ new Date() },
+              { upsert: true }
             );
           }
-
-          // Background: build per-school SchoolSummaries for future per-school queries
           (async () => {
             console.log(`Background: Building per-school summaries for ${eduScopeSchoolIds.length} schools...`);
             for (let i = 0; i < eduScopeSchoolIds.length; i++) {
@@ -3825,50 +3305,63 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
                 const r = await calculateStatsForScope(activeExamId, { schoolId: eduScopeSchoolIds[i], className: examClass });
                 await SchoolSummary.findOneAndUpdate(
                   { schoolId: eduScopeSchoolIds[i], examId: activeExamId, className: examClass },
-                  { stats: r, lastUpdated: new Date() }, { upsert: true }
+                  { stats: r, lastUpdated: /* @__PURE__ */ new Date() },
+                  { upsert: true }
                 );
-              } catch (err) { /* silent */ }
+              } catch (err) {
+              }
             }
             await rebuildDashboardSummary(activeExamId, examClass);
             analyticsCache.clearPattern(/dashboard_/);
-            console.log('Background per-school summaries complete.');
+            console.log("Background per-school summaries complete.");
           })();
         } catch (err) {
-          console.error('Failed to compute aggregate stats:', err);
+          console.error("Failed to compute aggregate stats:", err);
         }
       } else {
-        // SchoolSummary exists — aggregate and persist
         const agg = aggregateSchoolStats(schoolSummariesForStats);
         statsData = agg;
-
         if (effectiveEduId && !effectiveDistrictId && !effectiveSchoolId) {
           await DashboardSummary.findOneAndUpdate(
-            { id: `edu_${effectiveEduId}_exam_${activeExamId}`, level: 'EDU_DISTRICT', refId: effectiveEduId, examId: activeExamId, className: examClass },
-            { stats: agg, lastUpdated: new Date() }, { upsert: true }
+            { id: `edu_${effectiveEduId}_exam_${activeExamId}`, level: "EDU_DISTRICT", refId: effectiveEduId, examId: activeExamId, className: examClass },
+            { stats: agg, lastUpdated: /* @__PURE__ */ new Date() },
+            { upsert: true }
           );
         } else if (effectiveDistrictId && !effectiveSchoolId) {
           await DashboardSummary.findOneAndUpdate(
-            { id: `dist_${effectiveDistrictId}_exam_${activeExamId}`, level: 'DISTRICT', refId: effectiveDistrictId, examId: activeExamId, className: examClass },
-            { stats: agg, lastUpdated: new Date() }, { upsert: true }
+            { id: `dist_${effectiveDistrictId}_exam_${activeExamId}`, level: "DISTRICT", refId: effectiveDistrictId, examId: activeExamId, className: examClass },
+            { stats: agg, lastUpdated: /* @__PURE__ */ new Date() },
+            { upsert: true }
           );
         } else if (!effectiveEduId && !effectiveDistrictId && !effectiveSchoolId) {
           await DashboardSummary.findOneAndUpdate(
-            { id: `state_ALL_exam_${activeExamId}`, level: 'STATE', refId: 'ALL', examId: activeExamId, className: examClass },
-            { stats: agg, lastUpdated: new Date() }, { upsert: true }
+            { id: `state_ALL_exam_${activeExamId}`, level: "STATE", refId: "ALL", examId: activeExamId, className: examClass },
+            { stats: agg, lastUpdated: /* @__PURE__ */ new Date() },
+            { upsert: true }
           );
         }
       }
     }
-
     if (!statsData) {
       statsData = {
-        totalStudents: 0, appeared: 0, pass: 0, fullAPlus: 0, absent: 0, fail: 0, notEntered: 0,
-        maleCount: 0, femaleCount: 0, scribeCount: 0,
-        basicLevel: 0, averageLevel: 0, profoundLevel: 0,
-        gradeDistribution: {}, aPlusBreakdown: {}, victoryPercentage: 0
+        totalStudents: 0,
+        appeared: 0,
+        pass: 0,
+        fullAPlus: 0,
+        absent: 0,
+        fail: 0,
+        notEntered: 0,
+        maleCount: 0,
+        femaleCount: 0,
+        scribeCount: 0,
+        basicLevel: 0,
+        averageLevel: 0,
+        profoundLevel: 0,
+        gradeDistribution: {},
+        aPlusBreakdown: {},
+        victoryPercentage: 0
       };
     }
-
     const finalResponse = {
       ...statsData,
       title,
@@ -3877,34 +3370,80 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
       schools: schoolsCount,
       isSchoolConfirmed,
       confirmedSchoolsCount: isSchoolConfirmed && effectiveSchoolId ? 1 : confirmedSchoolsCount,
-      unconfirmedSchoolsCount: isSchoolConfirmed && effectiveSchoolId ? 0 : (effectiveSchoolId ? 1 : unconfirmedSchoolsCount),
+      unconfirmedSchoolsCount: isSchoolConfirmed && effectiveSchoolId ? 0 : effectiveSchoolId ? 1 : unconfirmedSchoolsCount,
       selectedExam: selectedExam ? selectedExam.name : "N/A"
     };
-
     analyticsCache.set(cacheKey, finalResponse, 300);
     res.json(finalResponse);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Dashboard Stats Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-// ─── Dashboard: Subject-wise Counts (First Languages P01-P04 & Medium-wise Unique Subjects) ───
-app.get("/api/dashboard/subject-counts", async (req: any, res) => {
+app.get("/api/dashboard/subject-counts", async (req, res) => {
   try {
-    const examId = req.query.examId as string || 'exam-1';
-    const districtId = req.query.districtId as string | undefined;
-    const eduId = req.query.eduId as string | undefined;
-    const schoolId = req.query.schoolId as string | undefined;
-
-    const cacheKey = `subject_counts_${schoolId || 'none'}_${eduId || 'none'}_${districtId || 'none'}_${examId}`;
+    let normalizeSubjectName = function(raw) {
+      if (!raw || typeof raw !== "string") return "";
+      let s = raw.trim();
+      s = s.replace(/\s*\((?:EM|MM|TM|KM|E|M|T|P\d{1,2}|PAPER\s*\d)\)/gi, "");
+      s = s.replace(/[\s\-_]+(?:EM|MM|TM|KM|E|M|T|P\d{1,2}|PAPER\s*\d)$/gi, "");
+      s = s.replace(/^(?:P\d{1,2})[\s\-_]+/gi, "");
+      s = s.replace(/\s+(?:EM|MM|TM|KM)$/gi, "");
+      const lower = s.toLowerCase().trim();
+      if (lower.includes("malayalam at") || lower.includes("malayalam paper 1") || lower.includes("malayalam 1") || lower === "malayalam-at") return "Malayalam AT";
+      if (lower.includes("malayalam bt") || lower.includes("malayalam paper 2") || lower.includes("malayalam 2") || lower === "malayalam-bt") return "Malayalam BT";
+      if (lower.includes("tamil at") || lower.includes("tamil paper 1") || lower.includes("tamil 1") || lower === "tamil-at") return "Tamil AT";
+      if (lower.includes("tamil bt") || lower.includes("tamil paper 2") || lower.includes("tamil 2") || lower === "tamil-bt") return "Tamil BT";
+      if (lower.includes("kannada at") || lower.includes("kannada paper 1") || lower.includes("kannada 1") || lower === "kannada-at") return "Kannada AT";
+      if (lower.includes("kannada bt") || lower.includes("kannada paper 2") || lower.includes("kannada 2") || lower === "kannada-bt") return "Kannada BT";
+      if (lower.includes("sanskrit")) return "Sanskrit";
+      if (lower.includes("arabic")) return "Arabic";
+      if (lower.includes("urdu")) return "Urdu";
+      if (lower.includes("english") || lower.includes("eng")) return "English";
+      if (lower.includes("hindi") || lower.includes("hin")) return "Hindi";
+      if (lower.includes("social science") || lower.includes("social") || lower === "ss") return "Social Science";
+      if (lower.includes("physics") || lower === "phy") return "Physics";
+      if (lower.includes("chemistry") || lower === "che") return "Chemistry";
+      if (lower.includes("biology") || lower === "bio") return "Biology";
+      if (lower.includes("mathematics") || lower.includes("maths") || lower.includes("math") || lower === "mat") return "Mathematics";
+      return s || "Other Subject";
+    }, getPCodeForSubject = function(subName) {
+      const lower = subName.toLowerCase().trim();
+      if (lower.includes("malayalam at") || lower.includes("tamil at") || lower.includes("kannada at")) {
+        return { pCode: "P01", name: subName };
+      }
+      if (lower.includes("malayalam bt") || lower.includes("tamil bt") || lower.includes("kannada bt")) {
+        return { pCode: "P02", name: subName };
+      }
+      if (lower.includes("english")) return { pCode: "P03", name: "English" };
+      if (lower.includes("hindi") || lower.includes("arabic") || lower.includes("urdu") || lower.includes("sanskrit")) {
+        return { pCode: "P04", name: subName };
+      }
+      if (lower.includes("physics")) return { pCode: "P05", name: "Physics" };
+      if (lower.includes("chemistry")) return { pCode: "P06", name: "Chemistry" };
+      if (lower.includes("biology")) return { pCode: "P07", name: "Biology" };
+      if (lower.includes("mathematics") || lower.includes("maths")) return { pCode: "P08", name: "Mathematics" };
+      if (lower.includes("social science") || lower.includes("social")) return { pCode: "P09", name: "Social Science" };
+      if (lower.includes("information technology") || lower.includes("ict") || lower.includes("it")) return { pCode: "P10", name: "Information Technology" };
+      return { pCode: "P99", name: subName };
+    }, normalizeMediumCode = function(raw) {
+      const lower = (raw || "").trim().toLowerCase();
+      if (lower === "em" || lower.includes("english")) return "EM";
+      if (lower === "mm" || lower.includes("malayalam")) return "MM";
+      if (lower === "tm" || lower.includes("tamil")) return "TM";
+      if (lower === "km" || lower.includes("kannada")) return "KM";
+      return "EM";
+    };
+    const examId = req.query.examId || "exam-1";
+    const districtId = req.query.districtId;
+    const eduId = req.query.eduId;
+    const schoolId = req.query.schoolId;
+    const cacheKey = `subject_counts_${schoolId || "none"}_${eduId || "none"}_${districtId || "none"}_${examId}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
-
     const exam = await Exam.findOne({ id: examId }).lean();
-    const examClass = exam?.standard || '10';
-
-    let scopeSchoolIds: string[] = [];
+    const examClass = exam?.standard || "10";
+    let scopeSchoolIds = [];
     if (schoolId) {
       let school = null;
       if (mongoose.Types.ObjectId.isValid(schoolId)) {
@@ -3916,169 +3455,92 @@ app.get("/api/dashboard/subject-counts", async (req: any, res) => {
       if (school) scopeSchoolIds = [school._id.toString()];
     } else if (eduId) {
       const schoolsInEdu = await School.find({ subDistrictId: eduId, role: "SCHOOL" }).lean();
-      scopeSchoolIds = schoolsInEdu.map(s => s._id.toString());
-    } else if (districtId && districtId !== 'ALL') {
+      scopeSchoolIds = schoolsInEdu.map((s) => s._id.toString());
+    } else if (districtId && districtId !== "ALL") {
       const rawEduDistricts = await EducationalDistrict.find({ districtId }).lean();
-      const eduIds = rawEduDistricts.map((e: any) => e.id);
+      const eduIds = rawEduDistricts.map((e) => e.id);
       const schoolsInDist = await School.find({ subDistrictId: { $in: eduIds }, role: "SCHOOL" }).lean();
-      scopeSchoolIds = schoolsInDist.map(s => s._id.toString());
+      scopeSchoolIds = schoolsInDist.map((s) => s._id.toString());
     } else {
       const allSchoolsList = await School.find({ role: "SCHOOL" }).lean();
-      scopeSchoolIds = allSchoolsList.map(s => s._id.toString());
+      scopeSchoolIds = allSchoolsList.map((s) => s._id.toString());
     }
-
-    const matchFilter: any = { className: examClass, active: true };
+    const matchFilter = { className: examClass, active: true };
     if (scopeSchoolIds.length > 0) {
       matchFilter.$or = [
         { schoolId: { $in: scopeSchoolIds } },
         { schoolCode: { $in: scopeSchoolIds } }
       ];
     }
-
     const students = await Student.find(matchFilter).lean();
     const totalStudents = students.length;
-
-    function normalizeSubjectName(raw: string): string {
-      if (!raw || typeof raw !== 'string') return '';
-      let s = raw.trim();
-
-      s = s.replace(/\s*\((?:EM|MM|TM|KM|E|M|T|P\d{1,2}|PAPER\s*\d)\)/gi, '');
-      s = s.replace(/[\s\-_]+(?:EM|MM|TM|KM|E|M|T|P\d{1,2}|PAPER\s*\d)$/gi, '');
-      s = s.replace(/^(?:P\d{1,2})[\s\-_]+/gi, '');
-      s = s.replace(/\s+(?:EM|MM|TM|KM)$/gi, '');
-
-      const lower = s.toLowerCase().trim();
-
-      if (lower.includes('malayalam at') || lower.includes('malayalam paper 1') || lower.includes('malayalam 1') || lower === 'malayalam-at') return 'Malayalam AT';
-      if (lower.includes('malayalam bt') || lower.includes('malayalam paper 2') || lower.includes('malayalam 2') || lower === 'malayalam-bt') return 'Malayalam BT';
-      if (lower.includes('tamil at') || lower.includes('tamil paper 1') || lower.includes('tamil 1') || lower === 'tamil-at') return 'Tamil AT';
-      if (lower.includes('tamil bt') || lower.includes('tamil paper 2') || lower.includes('tamil 2') || lower === 'tamil-bt') return 'Tamil BT';
-      if (lower.includes('kannada at') || lower.includes('kannada paper 1') || lower.includes('kannada 1') || lower === 'kannada-at') return 'Kannada AT';
-      if (lower.includes('kannada bt') || lower.includes('kannada paper 2') || lower.includes('kannada 2') || lower === 'kannada-bt') return 'Kannada BT';
-      if (lower.includes('sanskrit')) return 'Sanskrit';
-      if (lower.includes('arabic')) return 'Arabic';
-      if (lower.includes('urdu')) return 'Urdu';
-
-      if (lower.includes('english') || lower.includes('eng')) return 'English';
-      if (lower.includes('hindi') || lower.includes('hin')) return 'Hindi';
-      if (lower.includes('social science') || lower.includes('social') || lower === 'ss') return 'Social Science';
-      if (lower.includes('physics') || lower === 'phy') return 'Physics';
-      if (lower.includes('chemistry') || lower === 'che') return 'Chemistry';
-      if (lower.includes('biology') || lower === 'bio') return 'Biology';
-      if (lower.includes('mathematics') || lower.includes('maths') || lower.includes('math') || lower === 'mat') return 'Mathematics';
-
-      return s || 'Other Subject';
-    }
-
-    function getPCodeForSubject(subName: string): { pCode: string; name: string } {
-      const lower = subName.toLowerCase().trim();
-      if (lower.includes('malayalam at') || lower.includes('tamil at') || lower.includes('kannada at')) {
-        return { pCode: 'P01', name: subName };
-      }
-      if (lower.includes('malayalam bt') || lower.includes('tamil bt') || lower.includes('kannada bt')) {
-        return { pCode: 'P02', name: subName };
-      }
-      if (lower.includes('english')) return { pCode: 'P03', name: 'English' };
-      if (lower.includes('hindi') || lower.includes('arabic') || lower.includes('urdu') || lower.includes('sanskrit')) {
-        return { pCode: 'P04', name: subName };
-      }
-      if (lower.includes('physics')) return { pCode: 'P05', name: 'Physics' };
-      if (lower.includes('chemistry')) return { pCode: 'P06', name: 'Chemistry' };
-      if (lower.includes('biology')) return { pCode: 'P07', name: 'Biology' };
-      if (lower.includes('mathematics') || lower.includes('maths')) return { pCode: 'P08', name: 'Mathematics' };
-      if (lower.includes('social science') || lower.includes('social')) return { pCode: 'P09', name: 'Social Science' };
-      if (lower.includes('information technology') || lower.includes('ict') || lower.includes('it')) return { pCode: 'P10', name: 'Information Technology' };
-
-      return { pCode: 'P99', name: subName };
-    }
-
-    function normalizeMediumCode(raw: string): string {
-      const lower = (raw || '').trim().toLowerCase();
-      if (lower === 'em' || lower.includes('english')) return 'EM';
-      if (lower === 'mm' || lower.includes('malayalam')) return 'MM';
-      if (lower === 'tm' || lower.includes('tamil')) return 'TM';
-      if (lower === 'km' || lower.includes('kannada')) return 'KM';
-      return 'EM';
-    }
-
-    const mediumNames: Record<string, string> = {
-      'EM': 'English Medium (EM)',
-      'MM': 'Malayalam Medium (MM)',
-      'TM': 'Tamil Medium (TM)',
-      'KM': 'Kannada Medium (KM)',
+    const mediumNames = {
+      "EM": "English Medium (EM)",
+      "MM": "Malayalam Medium (MM)",
+      "TM": "Tamil Medium (TM)",
+      "KM": "Kannada Medium (KM)"
     };
-
-    const mediumStats: Record<string, { male: number; female: number; total: number; subjects: Record<string, { male: number; female: number; total: number }> }> = {
-      'EM': { male: 0, female: 0, total: 0, subjects: {} },
-      'MM': { male: 0, female: 0, total: 0, subjects: {} },
-      'TM': { male: 0, female: 0, total: 0, subjects: {} },
+    const mediumStats = {
+      "EM": { male: 0, female: 0, total: 0, subjects: {} },
+      "MM": { male: 0, female: 0, total: 0, subjects: {} },
+      "TM": { male: 0, female: 0, total: 0, subjects: {} }
     };
-
-    const firstLangPaper1Map: Record<string, { male: number; female: number; count: number }> = {};
-    const firstLangPaper2Map: Record<string, { male: number; female: number; count: number }> = {};
-    const secondLangMap: Record<string, { male: number; female: number; count: number }> = {};
-    const thirdLangMap: Record<string, { male: number; female: number; count: number }> = {};
-
+    const firstLangPaper1Map = {};
+    const firstLangPaper2Map = {};
+    const secondLangMap = {};
+    const thirdLangMap = {};
     let totalMale = 0;
     let totalFemale = 0;
-
-    students.forEach((std: any) => {
+    students.forEach((std) => {
       const med = normalizeMediumCode(std.medium);
-      const genderLower = (std.gender || '').trim().toLowerCase();
-      const isFemale = genderLower === 'female' || genderLower === 'girl' || genderLower.startsWith('f') || genderLower.startsWith('g');
+      const genderLower = (std.gender || "").trim().toLowerCase();
+      const isFemale = genderLower === "female" || genderLower === "girl" || genderLower.startsWith("f") || genderLower.startsWith("g");
       const isMale = !isFemale;
-
       if (isFemale) totalFemale++;
       else totalMale++;
-
       if (!mediumStats[med]) {
         mediumStats[med] = { male: 0, female: 0, total: 0, subjects: {} };
       }
-
       if (isMale) mediumStats[med].male++;
       else mediumStats[med].female++;
       mediumStats[med].total++;
-
-      // Track P01 - P04 unique language counts
       if (std.firstLangPaper1) {
         const norm = normalizeSubjectName(std.firstLangPaper1);
         if (norm) {
           if (!firstLangPaper1Map[norm]) firstLangPaper1Map[norm] = { male: 0, female: 0, count: 0 };
           firstLangPaper1Map[norm].count++;
-          if (isMale) firstLangPaper1Map[norm].male++; else firstLangPaper1Map[norm].female++;
+          if (isMale) firstLangPaper1Map[norm].male++;
+          else firstLangPaper1Map[norm].female++;
         }
       }
-
       if (std.firstLangPaper2) {
         const norm = normalizeSubjectName(std.firstLangPaper2);
         if (norm) {
           if (!firstLangPaper2Map[norm]) firstLangPaper2Map[norm] = { male: 0, female: 0, count: 0 };
           firstLangPaper2Map[norm].count++;
-          if (isMale) firstLangPaper2Map[norm].male++; else firstLangPaper2Map[norm].female++;
+          if (isMale) firstLangPaper2Map[norm].male++;
+          else firstLangPaper2Map[norm].female++;
         }
       }
-
       if (std.secondLang) {
         const norm = normalizeSubjectName(std.secondLang);
         if (norm) {
           if (!secondLangMap[norm]) secondLangMap[norm] = { male: 0, female: 0, count: 0 };
           secondLangMap[norm].count++;
-          if (isMale) secondLangMap[norm].male++; else secondLangMap[norm].female++;
+          if (isMale) secondLangMap[norm].male++;
+          else secondLangMap[norm].female++;
         }
       }
-
       if (std.thirdLang) {
         const norm = normalizeSubjectName(std.thirdLang);
         if (norm) {
           if (!thirdLangMap[norm]) thirdLangMap[norm] = { male: 0, female: 0, count: 0 };
           thirdLangMap[norm].count++;
-          if (isMale) thirdLangMap[norm].male++; else thirdLangMap[norm].female++;
+          if (isMale) thirdLangMap[norm].male++;
+          else thirdLangMap[norm].female++;
         }
       }
-
-      // Collect unique subjects for this student
-      const studentSubjects = new Set<string>();
-
+      const studentSubjects = /* @__PURE__ */ new Set();
       if (std.firstLangPaper1) {
         const norm = normalizeSubjectName(std.firstLangPaper1);
         if (norm) studentSubjects.add(norm);
@@ -4095,10 +3557,8 @@ app.get("/api/dashboard/subject-counts", async (req: any, res) => {
         const norm = normalizeSubjectName(std.thirdLang);
         if (norm) studentSubjects.add(norm);
       }
-
-      ['Physics', 'Chemistry', 'Biology', 'Mathematics', 'Social Science'].forEach(c => studentSubjects.add(c));
-
-      studentSubjects.forEach(subName => {
+      ["Physics", "Chemistry", "Biology", "Mathematics", "Social Science"].forEach((c) => studentSubjects.add(c));
+      studentSubjects.forEach((subName) => {
         if (!mediumStats[med].subjects[subName]) {
           mediumStats[med].subjects[subName] = { male: 0, female: 0, total: 0 };
         }
@@ -4107,39 +3567,30 @@ app.get("/api/dashboard/subject-counts", async (req: any, res) => {
         mediumStats[med].subjects[subName].total++;
       });
     });
-
-    const formatLangArray = (map: Record<string, { male: number; female: number; count: number }>) => {
-      return Object.entries(map)
-        .map(([_id, val]) => ({ _id, count: val.count, male: val.male, female: val.female }))
-        .sort((a, b) => b.count - a.count);
+    const formatLangArray = (map) => {
+      return Object.entries(map).map(([_id, val]) => ({ _id, count: val.count, male: val.male, female: val.female })).sort((a, b) => b.count - a.count);
     };
-
     const firstLanguages = [
-      { code: 'P01', label: 'First Language Paper I', data: formatLangArray(firstLangPaper1Map) },
-      { code: 'P02', label: 'First Language Paper II', data: formatLangArray(firstLangPaper2Map) },
-      { code: 'P03', label: 'Second Language', data: formatLangArray(secondLangMap) },
-      { code: 'P04', label: 'Third Language', data: formatLangArray(thirdLangMap) },
+      { code: "P01", label: "First Language Paper I", data: formatLangArray(firstLangPaper1Map) },
+      { code: "P02", label: "First Language Paper II", data: formatLangArray(firstLangPaper2Map) },
+      { code: "P03", label: "Second Language", data: formatLangArray(secondLangMap) },
+      { code: "P04", label: "Third Language", data: formatLangArray(thirdLangMap) }
     ];
-
     const mediumCounts = Object.entries(mediumStats).map(([code, stat]) => {
-      const subjectList = Object.entries(stat.subjects)
-        .filter(([, counts]) => counts.total > 0)
-        .map(([rawSubName, counts]) => {
-          const { pCode, name } = getPCodeForSubject(rawSubName);
-          return {
-            pCode,
-            subjectName: name,
-            fullCodeName: `${pCode} - ${name}`,
-            ...counts
-          };
-        })
-        .sort((a, b) => {
-          const numA = parseInt(a.pCode.replace(/\D/g, '') || '99', 10);
-          const numB = parseInt(b.pCode.replace(/\D/g, '') || '99', 10);
-          if (numA !== numB) return numA - numB;
-          return b.total - a.total;
-        });
-
+      const subjectList = Object.entries(stat.subjects).filter(([, counts]) => counts.total > 0).map(([rawSubName, counts]) => {
+        const { pCode, name } = getPCodeForSubject(rawSubName);
+        return {
+          pCode,
+          subjectName: name,
+          fullCodeName: `${pCode} - ${name}`,
+          ...counts
+        };
+      }).sort((a, b) => {
+        const numA = parseInt(a.pCode.replace(/\D/g, "") || "99", 10);
+        const numB = parseInt(b.pCode.replace(/\D/g, "") || "99", 10);
+        if (numA !== numB) return numA - numB;
+        return b.total - a.total;
+      });
       return {
         code,
         name: mediumNames[code] || `${code} Medium`,
@@ -4149,7 +3600,6 @@ app.get("/api/dashboard/subject-counts", async (req: any, res) => {
         subjects: subjectList
       };
     }).sort((a, b) => b.total - a.total);
-
     const response = {
       totalStudents,
       maleCount: totalMale,
@@ -4157,50 +3607,39 @@ app.get("/api/dashboard/subject-counts", async (req: any, res) => {
       firstLanguages,
       mediumCounts
     };
-
     analyticsCache.set(cacheKey, response, 300);
     res.json(response);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Subject Counts Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-// ─── Dashboard: School Type wise Counts (Government / Aided / Unaided) ───────
-app.get("/api/dashboard/school-type-counts", async (req: any, res) => {
+app.get("/api/dashboard/school-type-counts", async (req, res) => {
   try {
-    const examId = req.query.examId as string || 'exam-1';
-    const districtId = req.query.districtId as string | undefined;
-    const eduId = req.query.eduId as string | undefined;
-
-    const cacheKey = `school_type_counts_${eduId || 'none'}_${districtId || 'none'}_${examId}`;
+    const examId = req.query.examId || "exam-1";
+    const districtId = req.query.districtId;
+    const eduId = req.query.eduId;
+    const cacheKey = `school_type_counts_${eduId || "none"}_${districtId || "none"}_${examId}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
-
     const exam = await Exam.findOne({ id: examId }).lean();
-    const examClass = exam?.standard || '10';
-
-    // Resolve schools in scope
-    let schoolsList: any[] = [];
+    const examClass = exam?.standard || "10";
+    let schoolsList = [];
     if (eduId) {
       schoolsList = await School.find({ subDistrictId: eduId, role: "SCHOOL" }).lean();
-    } else if (districtId && districtId !== 'ALL') {
+    } else if (districtId && districtId !== "ALL") {
       const rawEduDistricts = await EducationalDistrict.find({ districtId }).lean();
-      const eduIds = rawEduDistricts.map((e: any) => e.id);
+      const eduIds = rawEduDistricts.map((e) => e.id);
       schoolsList = await School.find({ subDistrictId: { $in: eduIds }, role: "SCHOOL" }).lean();
     } else {
       schoolsList = await School.find({ role: "SCHOOL" }).lean();
     }
-
-    const schoolIds = schoolsList.map(s => s._id.toString());
-    const schoolCodes = schoolsList.map((s: any) => s.schoolCode).filter(Boolean);
+    const schoolIds = schoolsList.map((s) => s._id.toString());
+    const schoolCodes = schoolsList.map((s) => s.schoolCode).filter(Boolean);
     const allIdentifiers = [...schoolIds, ...schoolCodes];
-
     if (allIdentifiers.length === 0) {
       return res.json({ schoolTypes: {}, totalSchools: 0, totalStudents: 0 });
     }
-
-    // Aggregate students by schoolId + gender in a single query
     const aggResult = await Student.aggregate([
       {
         $match: {
@@ -4219,120 +3658,98 @@ app.get("/api/dashboard/school-type-counts", async (req: any, res) => {
         }
       }
     ]).allowDiskUse(true);
-
-    // Build schoolId → schoolType mapping
-    const schoolTypeMap: Record<string, string> = {};
-    schoolsList.forEach((s: any) => {
+    const schoolTypeMap = {};
+    schoolsList.forEach((s) => {
       const id = s._id.toString();
-      const type = (s.schoolType || 'Government').trim();
+      const type = (s.schoolType || "Government").trim();
       schoolTypeMap[id] = type;
       if (s.schoolCode) schoolTypeMap[s.schoolCode] = type;
     });
-
-    // Also check Institution collection for school types
     const institutions = await Institution.find({
       $or: [
         { schoolId: { $in: schoolIds } },
         { id: { $in: schoolIds } }
       ]
     }).lean();
-    institutions.forEach((inst: any) => {
+    institutions.forEach((inst) => {
       if (inst.type) {
-        const matchedSchool = schoolsList.find((s: any) => s._id.toString() === inst.schoolId || s.id === inst.id);
+        const matchedSchool = schoolsList.find((s) => s._id.toString() === inst.schoolId || s.id === inst.id);
         if (matchedSchool) {
           schoolTypeMap[matchedSchool._id.toString()] = inst.type;
-          if ((matchedSchool as any).schoolCode) schoolTypeMap[(matchedSchool as any).schoolCode] = inst.type;
+          if (matchedSchool.schoolCode) schoolTypeMap[matchedSchool.schoolCode] = inst.type;
         }
       }
     });
-
-    // Aggregate by school type
-    const result: Record<string, { male: number; female: number; total: number; schools: number }> = {};
-    const schoolTypeStudentCounts: Record<string, Record<string, number>> = {};
-
-    (aggResult || []).forEach((item: any) => {
-      const schoolId = item._id?.schoolId || '';
-      const gender = item._id?.gender || 'Unknown';
+    const result = {};
+    const schoolTypeStudentCounts = {};
+    (aggResult || []).forEach((item) => {
+      const schoolId = item._id?.schoolId || "";
+      const gender = item._id?.gender || "Unknown";
       const count = item.count || 0;
-      const type = schoolTypeMap[schoolId] || 'Government';
-
+      const type = schoolTypeMap[schoolId] || "Government";
       if (!result[type]) result[type] = { male: 0, female: 0, total: 0, schools: 0 };
-      if (gender === 'Male' || gender === 'Boy') {
+      if (gender === "Male" || gender === "Boy") {
         result[type].male += count;
-      } else if (gender === 'Female' || gender === 'Girl') {
+      } else if (gender === "Female" || gender === "Girl") {
         result[type].female += count;
       }
       result[type].total += count;
-
       if (!schoolTypeStudentCounts[type]) schoolTypeStudentCounts[type] = {};
       schoolTypeStudentCounts[type][schoolId] = (schoolTypeStudentCounts[type][schoolId] || 0) + count;
     });
-
-    // Count schools per type
-    schoolsList.forEach((s: any) => {
+    schoolsList.forEach((s) => {
       const id = s._id.toString();
-      const type = schoolTypeMap[id] || 'Government';
+      const type = schoolTypeMap[id] || "Government";
       if (!result[type]) result[type] = { male: 0, female: 0, total: 0, schools: 0 };
       result[type].schools++;
     });
-
     const totalStudents = Object.values(result).reduce((s, v) => s + v.total, 0);
     const totalSchools = schoolsList.length;
-
     const response = {
       schoolTypes: result,
       totalSchools,
-      totalStudents,
+      totalStudents
     };
-
     analyticsCache.set(cacheKey, response, 300);
     res.json(response);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET School Type Counts Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/dashboard/district-school-students", async (req: any, res) => {
+app.get("/api/dashboard/district-school-students", async (req, res) => {
   try {
-    const examId = (req.query.examId as string) || 'exam-1';
-    const districtId = req.query.districtId as string | undefined;
-    const eduId = req.query.eduId as string | undefined;
-
+    const examId = req.query.examId || "exam-1";
+    const districtId = req.query.districtId;
+    const eduId = req.query.eduId;
     const exam = await Exam.findOne({ id: examId }).lean();
-    const examClass = exam?.standard || '10';
-
+    const examClass = exam?.standard || "10";
     const districts = await District.find().lean();
-    const districtMap: Record<string, string> = {};
-    districts.forEach((d: any) => {
+    const districtMap = {};
+    districts.forEach((d) => {
       districtMap[d.id] = d.name;
       if (d._id) districtMap[d._id.toString()] = d.name;
     });
-
     const rawEduDistricts = await EducationalDistrict.find().lean();
-    const eduMap: Record<string, any> = {};
-    rawEduDistricts.forEach((e: any) => {
+    const eduMap = {};
+    rawEduDistricts.forEach((e) => {
       eduMap[e.id] = e;
       if (e._id) eduMap[e._id.toString()] = e;
     });
-
-    let query: any = { role: "SCHOOL" };
-    if (eduId && eduId !== 'ALL') {
+    let query = { role: "SCHOOL" };
+    if (eduId && eduId !== "ALL") {
       query.subDistrictId = eduId;
-    } else if (districtId && districtId !== 'ALL') {
-      const eduIds = rawEduDistricts.filter((e: any) => e.districtId === districtId).map((e: any) => e.id);
+    } else if (districtId && districtId !== "ALL") {
+      const eduIds = rawEduDistricts.filter((e) => e.districtId === districtId).map((e) => e.id);
       query.subDistrictId = { $in: eduIds };
     }
-
     const schoolsList = await School.find(query).lean();
-    const schoolIds = schoolsList.map(s => s._id.toString());
-    const schoolCodes = schoolsList.map((s: any) => s.schoolCode).filter(Boolean);
+    const schoolIds = schoolsList.map((s) => s._id.toString());
+    const schoolCodes = schoolsList.map((s) => s.schoolCode).filter(Boolean);
     const allIdentifiers = [...schoolIds, ...schoolCodes];
-
     if (allIdentifiers.length === 0) {
       return res.json({ schools: [], totalSchools: 0, totalMale: 0, totalFemale: 0, totalStudents: 0 });
     }
-
     const aggResult = await Student.aggregate([
       {
         $match: {
@@ -4351,85 +3768,72 @@ app.get("/api/dashboard/district-school-students", async (req: any, res) => {
         }
       }
     ]).allowDiskUse(true);
-
-    const studentCountsBySchool: Record<string, { male: number; female: number }> = {};
-    (aggResult || []).forEach((item: any) => {
-      const sid = item._id?.schoolId || '';
-      const gender = item._id?.gender || '';
+    const studentCountsBySchool = {};
+    (aggResult || []).forEach((item) => {
+      const sid = item._id?.schoolId || "";
+      const gender = item._id?.gender || "";
       const count = item.count || 0;
       if (!sid) return;
-
       if (!studentCountsBySchool[sid]) studentCountsBySchool[sid] = { male: 0, female: 0 };
-      if (gender === 'Male' || gender === 'Boy') {
+      if (gender === "Male" || gender === "Boy") {
         studentCountsBySchool[sid].male += count;
-      } else if (gender === 'Female' || gender === 'Girl') {
+      } else if (gender === "Female" || gender === "Girl") {
         studentCountsBySchool[sid].female += count;
       }
     });
-
-    const schoolTypeMap: Record<string, string> = {};
-    schoolsList.forEach((s: any) => {
+    const schoolTypeMap = {};
+    schoolsList.forEach((s) => {
       const id = s._id.toString();
-      const type = (s.schoolType || 'Government').trim();
+      const type = (s.schoolType || "Government").trim();
       schoolTypeMap[id] = type;
       if (s.schoolCode) schoolTypeMap[s.schoolCode] = type;
     });
-
     const institutions = await Institution.find({
       $or: [
         { schoolId: { $in: schoolIds } },
         { id: { $in: schoolIds } }
       ]
     }).lean();
-    institutions.forEach((inst: any) => {
+    institutions.forEach((inst) => {
       if (inst.type) {
-        const matchedSchool = schoolsList.find((s: any) => s._id.toString() === inst.schoolId || s.id === inst.id);
+        const matchedSchool = schoolsList.find((s) => s._id.toString() === inst.schoolId || s.id === inst.id);
         if (matchedSchool) {
           schoolTypeMap[matchedSchool._id.toString()] = inst.type;
-          if ((matchedSchool as any).schoolCode) schoolTypeMap[(matchedSchool as any).schoolCode] = inst.type;
+          if (matchedSchool.schoolCode) schoolTypeMap[matchedSchool.schoolCode] = inst.type;
         }
       }
     });
-
     let totalMale = 0;
     let totalFemale = 0;
-
-    const schoolsData = schoolsList.map((s: any) => {
+    const schoolsData = schoolsList.map((s) => {
       const sid = s._id.toString();
-      const scode = s.schoolCode || '';
-      
+      const scode = s.schoolCode || "";
       const counts1 = studentCountsBySchool[sid] || { male: 0, female: 0 };
-      const counts2 = scode ? (studentCountsBySchool[scode] || { male: 0, female: 0 }) : { male: 0, female: 0 };
-      
+      const counts2 = scode ? studentCountsBySchool[scode] || { male: 0, female: 0 } : { male: 0, female: 0 };
       const male = counts1.male + counts2.male;
       const female = counts1.female + counts2.female;
       const total = male + female;
-
       totalMale += male;
       totalFemale += female;
-
       const eduObj = eduMap[s.subDistrictId] || {};
-      const distName = districtMap[s.districtId] || districtMap[eduObj.districtId] || 'Other';
-      const eduName = eduObj.name || 'Other';
-      const schoolType = schoolTypeMap[sid] || s.schoolType || 'Government';
-
+      const distName = districtMap[s.districtId] || districtMap[eduObj.districtId] || "Other";
+      const eduName = eduObj.name || "Other";
+      const schoolType = schoolTypeMap[sid] || s.schoolType || "Government";
       return {
         id: sid,
         code: s.code || s.schoolCode || sid.slice(-6),
-        name: s.name || 'Unknown School',
-        districtId: s.districtId || eduObj.districtId || '',
+        name: s.name || "Unknown School",
+        districtId: s.districtId || eduObj.districtId || "",
         districtName: distName,
-        subDistrictId: s.subDistrictId || '',
+        subDistrictId: s.subDistrictId || "",
         subDistrictName: eduName,
-        schoolType: schoolType,
+        schoolType,
         maleCount: male,
         femaleCount: female,
         totalStudents: total
       };
     });
-
     schoolsData.sort((a, b) => b.totalStudents - a.totalStudents);
-
     res.json({
       schools: schoolsData,
       totalSchools: schoolsData.length,
@@ -4437,207 +3841,199 @@ app.get("/api/dashboard/district-school-students", async (req: any, res) => {
       totalFemale,
       totalStudents: totalMale + totalFemale
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET District School Students Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/dashboard/region-analytics", async (req: any, res) => {
+app.get("/api/dashboard/region-analytics", async (req, res) => {
   try {
-    const examId = req.query.examId as string || 'exam-1';
-    const className = (req.query.className as string) || '10';
-
-    if (req.user && !['WEBMASTER', 'DIET', 'DEO'].includes(req.user.role)) {
-      return res.status(403).json({ message: 'Insufficient permissions' });
+    const examId = req.query.examId || "exam-1";
+    const className = req.query.className || "10";
+    if (req.user && !["WEBMASTER", "DIET", "DEO"].includes(req.user.role)) {
+      return res.status(403).json({ message: "Insufficient permissions" });
     }
-
     const cacheKey = `region-analytics_${examId}_${className}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
-
     let doc = await RegionAnalyticsSummary.findOne({ examId, className }).lean();
     if (doc && doc.regions && doc.regions.length > 0) {
       const age = Date.now() - new Date(doc.lastUpdated).getTime();
-      if (age < 5 * 60 * 1000) {
+      if (age < 5 * 60 * 1e3) {
         analyticsCache.set(cacheKey, doc, 300);
         return res.json(doc);
       }
     }
-
     const result = await computeRegionAnalytics(examId, className);
     await RegionAnalyticsSummary.findOneAndUpdate(
       { examId, className },
-      { ...result, lastUpdated: new Date() },
+      { ...result, lastUpdated: /* @__PURE__ */ new Date() },
       { upsert: true }
     );
-
     analyticsCache.set(cacheKey, result, 300);
     res.json(result);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Region Analytics Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/dashboard/school-analysis", async (req: any, res) => {
+app.get("/api/dashboard/school-analysis", async (req, res) => {
   try {
-    const examId = req.query.examId as string;
-    const schoolId = req.query.schoolId as string;
-    const force = req.query.force === 'true' || req.query.refresh === 'true';
+    const examId = req.query.examId;
+    const schoolId = req.query.schoolId;
+    const force = req.query.force === "true" || req.query.refresh === "true";
     if (!examId || !schoolId) return res.status(400).json({ message: "examId and schoolId required" });
-
     if (force) {
       await invalidateSchoolAnalytics(schoolId);
     }
-
     const cacheKey = `school-analysis-${schoolId}-${examId}`;
     if (!force) {
       const cached = analyticsCache.get(cacheKey);
       if (cached) return res.json(cached);
     }
-
     const exam = await Exam.findOne({ id: examId });
-    const examClass = exam?.standard || '10';
-
-    const studentFilter: any = { schoolId, className: examClass, active: { $ne: false } };
+    const examClass = exam?.standard || "10";
+    const studentFilter = { schoolId, className: examClass, active: { $ne: false } };
     if (exam?.academicYear) studentFilter.academicYear = exam.academicYear;
     const students = await Student.find(studentFilter).lean();
-
-    let studentIds = students.map(s => s.id);
+    let studentIds = students.map((s) => s.id);
     if (studentIds.length === 0) {
       const anyStudents = await Student.find({ schoolId, active: { $ne: false } }).lean();
-      studentIds = anyStudents.map(s => s.id);
+      studentIds = anyStudents.map((s) => s.id);
       const allMarks = studentIds.length > 0 ? await Mark.find({ examId, studentId: { $in: studentIds } }).lean() : [];
       if (anyStudents.length === 0) {
         return res.json({
-          totalStudents: 0, maleCount: 0, femaleCount: 0, scribeCount: 0,
-          fullAPass: 0, fullFail: 0, fullAbsent: 0,
-          belowAvg: 0, avgLevel: 0, aboveAvgLevel: 0, profoundLevel: 0,
-          gradeDistribution: {}, mediumStats: {},
-          topPerformers: [], weakStudents: [], failedStudents: [],
-          subjectWise: [], examComparison: [],
-          selectedExam: exam?.name || 'N/A'
+          totalStudents: 0,
+          maleCount: 0,
+          femaleCount: 0,
+          scribeCount: 0,
+          fullAPass: 0,
+          fullFail: 0,
+          fullAbsent: 0,
+          belowAvg: 0,
+          avgLevel: 0,
+          aboveAvgLevel: 0,
+          profoundLevel: 0,
+          gradeDistribution: {},
+          mediumStats: {},
+          topPerformers: [],
+          weakStudents: [],
+          failedStudents: [],
+          subjectWise: [],
+          examComparison: [],
+          selectedExam: exam?.name || "N/A"
         });
       }
       return await computeSchoolAnalysis(schoolId, examId, exam, anyStudents, allMarks, res, analyticsCache, cacheKey);
     }
-
     const marks = await Mark.find({ examId, studentId: { $in: studentIds } }).lean();
     return await computeSchoolAnalysis(schoolId, examId, exam, students, marks, res, analyticsCache, cacheKey);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET School Analysis Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-async function computeSchoolAnalysis(schoolId: string, examId: string, exam: any, students: any[], rawMarks: any[], res: any, analyticsCache: any, cacheKey: string) {
-
-  // Fetch school's configured mediums for normalization
-  const schoolUser = await User.findById(schoolId).lean() as any;
-  const schoolMediumCodes: string[] = schoolUser?.mediums || [];
+async function computeSchoolAnalysis(schoolId, examId, exam, students, rawMarks, res, analyticsCache2, cacheKey) {
+  const schoolUser = await User.findById(schoolId).lean();
+  const schoolMediumCodes = schoolUser?.mediums || [];
   const { codeToShortName } = await getMediumMaps();
-  const schoolMediumNames = schoolMediumCodes.map((c: string) => codeToShortName[c.toUpperCase()] || c);
-
-  const studentMap = new Map(students.map(s => [s.id, s]));
-  const marksByStudent: Record<string, any[]> = {};
-  rawMarks.forEach(m => {
+  const schoolMediumNames = schoolMediumCodes.map((c) => codeToShortName[c.toUpperCase()] || c);
+  const studentMap = new Map(students.map((s) => [s.id, s]));
+  const marksByStudent = {};
+  rawMarks.forEach((m) => {
     if (!marksByStudent[m.studentId]) marksByStudent[m.studentId] = [];
     marksByStudent[m.studentId].push(m);
   });
-
   const subjects = await Subject.find().lean();
-  const subjectMap = new Map(subjects.map(s => [s._id.toString(), s]));
+  const subjectMap = new Map(subjects.map((s) => [s._id.toString(), s]));
   const { idToCode } = await getSubjectMapping();
-
-  const getGradeFromMark = (mark: number | null | undefined, maxMark: number): string => {
-    if (mark === null || mark === undefined) return '';
-    const pct = Math.round((mark * 100) / maxMark);
-    if (pct >= 90) return 'A+';
-    if (pct >= 80) return 'A';
-    if (pct >= 70) return 'B+';
-    if (pct >= 60) return 'B';
-    if (pct >= 50) return 'C+';
-    if (pct >= 40) return 'C';
-    if (pct >= 30) return 'D+';
-    if (pct >= 20) return 'D';
-    return 'E';
+  const getGradeFromMark = (mark, maxMark) => {
+    if (mark === null || mark === void 0) return "";
+    const pct = Math.round(mark * 100 / maxMark);
+    if (pct >= 90) return "A+";
+    if (pct >= 80) return "A";
+    if (pct >= 70) return "B+";
+    if (pct >= 60) return "B";
+    if (pct >= 50) return "C+";
+    if (pct >= 40) return "C";
+    if (pct >= 30) return "D+";
+    if (pct >= 20) return "D";
+    return "E";
   };
-
-  const getResolvedMaxMark = (subjectId: string, shortCode: string): number => {
-    return (getResolvedMaxMark as any)(exam, subjectId, shortCode, 50);
+  const getResolvedMaxMark2 = (subjectId, shortCode) => {
+    return getResolvedMaxMark2(exam, subjectId, shortCode, 50);
   };
-
-  const mediumStats: Record<string, { total: number; male: number; female: number; scribe: number }> = {};
+  const mediumStats = {};
   let totalStudents = students.length;
   let maleCount = 0, femaleCount = 0, scribeCount = 0;
   let fullAPass = 0, fullFail = 0, fullAbsent = 0, fullAPlus = 0;
   let belowAvg = 0, avgLevel = 0, aboveAvgLevel = 0, profoundLevel = 0;
-  const gradeDistribution: Record<string, number> = { 'A+': 0, 'A': 0, 'B+': 0, 'B': 0, 'C+': 0, 'C': 0, 'D+': 0, 'D': 0, 'E': 0, 'AB': 0 };
-  const subjectWiseData: Record<string, { name: string; shortCode: string; totalStudents: number; appeared: number; pass: 0; avgMark: number; totalPct: number; grades: Record<string, number>; below30: number; below55: number; below85: number; below100: number }> = {};
-  const studentResults: { id: string; name: string; medium: string; gender: string; avgPct: number; totalAPlus: number; pass: boolean; grades: Record<string, string>; markPcts: number[] }[] = [];
-
-  students.forEach(st => {
-    let med = (st.medium || '').trim();
-    // Normalize student medium against school's configured mediums
+  const gradeDistribution = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "AB": 0 };
+  const subjectWiseData = {};
+  const studentResults = [];
+  students.forEach((st) => {
+    let med = (st.medium || "").trim();
     if (schoolMediumNames.length > 0) {
       if (!med) {
         med = schoolMediumNames[0];
       } else {
-        const matchedMedium = schoolMediumNames.find((m: string) =>
-          med.toLowerCase() === m.toLowerCase() ||
-          med.toLowerCase().includes(m.toLowerCase()) ||
-          m.toLowerCase().includes(med.toLowerCase())
+        const matchedMedium = schoolMediumNames.find(
+          (m) => med.toLowerCase() === m.toLowerCase() || med.toLowerCase().includes(m.toLowerCase()) || m.toLowerCase().includes(med.toLowerCase())
         );
         if (matchedMedium) med = matchedMedium;
       }
     }
-    if (!med) med = 'Other';
+    if (!med) med = "Other";
     if (!mediumStats[med]) mediumStats[med] = { total: 0, male: 0, female: 0, scribe: 0 };
     mediumStats[med].total++;
-    const isMale = ['Male', 'Boy'].includes(st.gender);
-    const isFemale = ['Female', 'Girl'].includes(st.gender);
-    if (isMale) { maleCount++; mediumStats[med].male++; }
-    if (isFemale) { femaleCount++; mediumStats[med].female++; }
-    if (st.scribe) { scribeCount++; mediumStats[med].scribe++; }
-
+    const isMale = ["Male", "Boy"].includes(st.gender);
+    const isFemale = ["Female", "Girl"].includes(st.gender);
+    if (isMale) {
+      maleCount++;
+      mediumStats[med].male++;
+    }
+    if (isFemale) {
+      femaleCount++;
+      mediumStats[med].female++;
+    }
+    if (st.scribe) {
+      scribeCount++;
+      mediumStats[med].scribe++;
+    }
     const stMarks = marksByStudent[st.id] || [];
     let isAbsent = stMarks.length === 0;
     let isPass = true;
     let hasAnyMark = false;
     let totalPct = 0;
-    let markPcts: number[] = [];
+    let markPcts = [];
     let totalAPlus = 0;
-    const grades: Record<string, string> = {};
-
-    stMarks.forEach(m => {
-      const shortCode = idToCode[m.subjectId] || '';
+    const grades = {};
+    stMarks.forEach((m) => {
+      const shortCode = idToCode[m.subjectId] || "";
       const subjectInfo = subjectMap.get(m.subjectId);
       const subjectName = subjectInfo?.name || shortCode;
       const subKey = `${m.subjectId}_${shortCode}`;
       if (!subjectWiseData[subKey]) {
-        subjectWiseData[subKey] = { name: subjectName, shortCode, totalStudents: 0, appeared: 0, pass: 0, avgMark: 0, totalPct: 0, grades: { 'A+': 0, 'A': 0, 'B+': 0, 'B': 0, 'C+': 0, 'C': 0, 'D+': 0, 'D': 0, 'E': 0, 'AB': 0 }, below30: 0, below55: 0, below85: 0, below100: 0 };
+        subjectWiseData[subKey] = { name: subjectName, shortCode, totalStudents: 0, appeared: 0, pass: 0, avgMark: 0, totalPct: 0, grades: { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0, "AB": 0 }, below30: 0, below55: 0, below85: 0, below100: 0 };
       }
       subjectWiseData[subKey].totalStudents++;
-
-      if (m.isAbsent || String(m.grade).trim().toUpperCase() === 'AB' || String(m.mark).trim().toUpperCase() === 'AB') {
-        gradeDistribution['AB'] = (gradeDistribution['AB'] || 0) + 1;
+      if (m.isAbsent || String(m.grade).trim().toUpperCase() === "AB" || String(m.mark).trim().toUpperCase() === "AB") {
+        gradeDistribution["AB"] = (gradeDistribution["AB"] || 0) + 1;
         isPass = false;
-        if (subjectWiseData[subKey].grades['AB'] !== undefined) {
-          subjectWiseData[subKey].grades['AB']++;
+        if (subjectWiseData[subKey].grades["AB"] !== void 0) {
+          subjectWiseData[subKey].grades["AB"]++;
         }
         return;
       }
-
       hasAnyMark = true;
-      const maxMark = getResolvedMaxMark(m.subjectId, shortCode);
+      const maxMark = getResolvedMaxMark2(m.subjectId, shortCode);
       let numericMark = m.mark ?? m.rawScore ?? null;
-      let grade = m.grade || '';
-      if (numericMark !== null && numericMark !== undefined && numericMark !== '') {
+      let grade = m.grade || "";
+      if (numericMark !== null && numericMark !== void 0 && numericMark !== "") {
         if (!grade) {
           grade = getGradeFromMark(numericMark, maxMark);
         }
-        const pct = m.percentage !== undefined ? m.percentage : Math.round((Number(numericMark) * 100) / maxMark);
+        const pct = m.percentage !== void 0 ? m.percentage : Math.round(Number(numericMark) * 100 / maxMark);
         totalPct += pct;
         markPcts.push(pct);
         if (pct < 30) subjectWiseData[subKey].below30++;
@@ -4645,31 +4041,26 @@ async function computeSchoolAnalysis(schoolId: string, examId: string, exam: any
         if (pct < 85) subjectWiseData[subKey].below85++;
         if (pct < 100) subjectWiseData[subKey].below100++;
       }
-
-      grade = (grade || '').trim().toUpperCase();
+      grade = (grade || "").trim().toUpperCase();
       grades[shortCode || m.subjectId] = grade;
-      if (grade === 'A+') totalAPlus++;
-
-      const validPassGrades = ['A+', 'A', 'B+', 'B', 'C+', 'C', 'D+'];
+      if (grade === "A+") totalAPlus++;
+      const validPassGrades = ["A+", "A", "B+", "B", "C+", "C", "D+"];
       if (!validPassGrades.includes(grade)) isPass = false;
-
       gradeDistribution[grade] = (gradeDistribution[grade] || 0) + 1;
-
       subjectWiseData[subKey].appeared++;
       if (validPassGrades.includes(grade)) {
         subjectWiseData[subKey].pass++;
       }
-      if (subjectWiseData[subKey].grades[grade] !== undefined) {
+      if (subjectWiseData[subKey].grades[grade] !== void 0) {
         subjectWiseData[subKey].grades[grade]++;
       }
     });
-
     isAbsent = !hasAnyMark;
     if (hasAnyMark) {
       const avgPct = markPcts.length > 0 ? Math.round(totalPct / markPcts.length) : 0;
       studentResults.push({ id: st.id, name: st.name, medium: med, gender: st.gender, avgPct, totalAPlus, pass: isPass, grades, markPcts });
-
-      if (isPass) fullAPass++; else fullFail++;
+      if (isPass) fullAPass++;
+      else fullFail++;
       if (totalAPlus === (Object.keys(grades).length || 1)) fullAPlus++;
       if (avgPct < 30) belowAvg++;
       else if (avgPct < 50) avgLevel++;
@@ -4679,25 +4070,34 @@ async function computeSchoolAnalysis(schoolId: string, examId: string, exam: any
       fullAbsent++;
     }
   });
-
   studentResults.sort((a, b) => b.avgPct - a.avgPct);
-  const topPerformers = studentResults.filter(s => s.pass).slice(0, 10).map(s => ({
-    id: s.id, name: s.name, medium: s.medium, avgPct: s.avgPct, totalAPlus: s.totalAPlus
+  const topPerformers = studentResults.filter((s) => s.pass).slice(0, 10).map((s) => ({
+    id: s.id,
+    name: s.name,
+    medium: s.medium,
+    avgPct: s.avgPct,
+    totalAPlus: s.totalAPlus
   }));
-  const weakStudents = studentResults.filter(s => s.pass).slice(-10).reverse().map(s => ({
-    id: s.id, name: s.name, medium: s.medium, avgPct: s.avgPct, totalAPlus: s.totalAPlus
+  const weakStudents = studentResults.filter((s) => s.pass).slice(-10).reverse().map((s) => ({
+    id: s.id,
+    name: s.name,
+    medium: s.medium,
+    avgPct: s.avgPct,
+    totalAPlus: s.totalAPlus
   }));
-  const failedStudents = studentResults.filter(s => !s.pass).map(s => ({
-    id: s.id, name: s.name, medium: s.medium, avgPct: s.avgPct
+  const failedStudents = studentResults.filter((s) => !s.pass).map((s) => ({
+    id: s.id,
+    name: s.name,
+    medium: s.medium,
+    avgPct: s.avgPct
   }));
-
-  const mediumGrouped: Record<string, { medium: string; subjects: any[] }> = {};
+  const mediumGrouped = {};
   const subjectWise = Object.entries(subjectWiseData).map(([key, val]) => {
     const subMediumMatch = val.name.match(/^(TAMIL|MALAYALAM|ENGLISH|HINDI|KANNADA|TELUGU|TULU|ARABIC|URDU|SANSKRIT)/i);
-    const subMedium = subMediumMatch ? subMediumMatch[1].toUpperCase() : '';
-    const isPaper1 = val.shortCode === 'P01' || val.name.includes(' AT ') || val.name.includes('(AT)');
-    const isPaper2 = val.shortCode === 'P02' || val.name.includes(' BT ') || val.name.includes('(BT)');
-    const paperTag = isPaper1 ? 'AT' : isPaper2 ? 'BT' : '';
+    const subMedium = subMediumMatch ? subMediumMatch[1].toUpperCase() : "";
+    const isPaper1 = val.shortCode === "P01" || val.name.includes(" AT ") || val.name.includes("(AT)");
+    const isPaper2 = val.shortCode === "P02" || val.name.includes(" BT ") || val.name.includes("(BT)");
+    const paperTag = isPaper1 ? "AT" : isPaper2 ? "BT" : "";
     const row = {
       subjectId: key,
       name: val.name,
@@ -4709,8 +4109,8 @@ async function computeSchoolAnalysis(schoolId: string, examId: string, exam: any
       passCount: val.pass,
       failCount: Math.max(0, val.appeared - val.pass),
       absentCount: Math.max(0, val.totalStudents - val.appeared),
-      passPercentage: val.appeared > 0 ? Math.round((val.pass / val.appeared) * 100) : 0,
-      failPercentage: val.appeared > 0 ? Math.round(((val.appeared - val.pass) / val.appeared) * 100) : 0,
+      passPercentage: val.appeared > 0 ? Math.round(val.pass / val.appeared * 100) : 0,
+      failPercentage: val.appeared > 0 ? Math.round((val.appeared - val.pass) / val.appeared * 100) : 0,
       avgPercentage: val.appeared > 0 ? Math.round(val.totalPct / val.appeared) : 0,
       grades: val.grades,
       below30: val.below30,
@@ -4718,209 +4118,207 @@ async function computeSchoolAnalysis(schoolId: string, examId: string, exam: any
       below85: val.below85,
       below100: val.below100
     };
-    const groupKey = subMedium || '__other__';
-    if (!mediumGrouped[groupKey]) mediumGrouped[groupKey] = { medium: subMedium || 'Other', subjects: [] };
+    const groupKey = subMedium || "__other__";
+    if (!mediumGrouped[groupKey]) mediumGrouped[groupKey] = { medium: subMedium || "Other", subjects: [] };
     mediumGrouped[groupKey].subjects.push(row);
     return row;
-  }).sort((a, b) => (a.shortCode || '').localeCompare(b.shortCode || ''));
-
-  // Language Distribution: read directly from student ID fields (ID-based architecture)
-  const VALID_SLOTS = ['P01', 'P02', 'P03', 'P04'] as const;
-  const langSlotMap: Record<string, Record<string, number>> = {};
-  VALID_SLOTS.forEach(s => { langSlotMap[s] = {}; });
-
+  }).sort((a, b) => (a.shortCode || "").localeCompare(b.shortCode || ""));
+  const VALID_SLOTS = ["P01", "P02", "P03", "P04"];
+  const langSlotMap = {};
+  VALID_SLOTS.forEach((s) => {
+    langSlotMap[s] = {};
+  });
   const allSubjects = await Subject.find().lean();
-  const langSubjectNameMap = new Map(allSubjects.map(s => [s._id.toString(), s.name.toUpperCase().replace(/\s*\([EMTK]M\)\s*/g, '').trim()]));
-
-  students.forEach((st: any) => {
+  const langSubjectNameMap = new Map(allSubjects.map((s) => [s._id.toString(), s.name.toUpperCase().replace(/\s*\([EMTK]M\)\s*/g, "").trim()]));
+  students.forEach((st) => {
     if (st.firstLangPaper1) {
       const lang1 = st.firstLangPaper1.toUpperCase().trim();
-      if (lang1) langSlotMap['P01'][lang1] = (langSlotMap['P01'][lang1] || 0) + 1;
+      if (lang1) langSlotMap["P01"][lang1] = (langSlotMap["P01"][lang1] || 0) + 1;
     }
     if (st.firstLangPaper2) {
       const lang2 = st.firstLangPaper2.toUpperCase().trim();
-      if (lang2) langSlotMap['P02'][lang2] = (langSlotMap['P02'][lang2] || 0) + 1;
+      if (lang2) langSlotMap["P02"][lang2] = (langSlotMap["P02"][lang2] || 0) + 1;
     }
     if (st.secondLang) {
       const lang3 = st.secondLang.toUpperCase().trim();
-      if (lang3) langSlotMap['P03'][lang3] = (langSlotMap['P03'][lang3] || 0) + 1;
+      if (lang3) langSlotMap["P03"][lang3] = (langSlotMap["P03"][lang3] || 0) + 1;
     }
     if (st.thirdLang) {
       let lang4 = st.thirdLang.toUpperCase().trim();
-      if (lang4.includes('HINDI')) lang4 = 'HINDI - P04';
-      if (lang4) langSlotMap['P04'][lang4] = (langSlotMap['P04'][lang4] || 0) + 1;
+      if (lang4.includes("HINDI")) lang4 = "HINDI - P04";
+      if (lang4) langSlotMap["P04"][lang4] = (langSlotMap["P04"][lang4] || 0) + 1;
     }
   });
-
-  const languageDistribution: { slot: string; language: string; count: number }[] = [];
+  const languageDistribution = [];
   Object.entries(langSlotMap).sort(([a], [b]) => a.localeCompare(b)).forEach(([slot, langs]) => {
     Object.entries(langs).sort(([, a], [, b]) => b - a).forEach(([language, count]) => {
-      if (!language.includes('ENGLISH') && !language.includes('HINDI')) {
+      if (!language.includes("ENGLISH") && !language.includes("HINDI")) {
         languageDistribution.push({ slot, language, count });
       }
     });
   });
-
-  const studentIds = students.map(s => s.id);
+  const studentIds = students.map((s) => s.id);
   const allExams = await Exam.find({ active: { $ne: false } }).sort({ startDate: -1 }).lean();
-  const examComparison: { examId: string; examName: string; passPct: number; fullAPlus: number; appeared: number }[] = [];
+  const examComparison = [];
   for (const ex of allExams.slice(0, 5)) {
     const exMarks = await Mark.find({ examId: ex.id, studentId: { $in: studentIds } }).lean();
-    const exStudentMarks: Record<string, any[]> = {};
-    exMarks.forEach(m => {
+    const exStudentMarks = {};
+    exMarks.forEach((m) => {
       if (!exStudentMarks[m.studentId]) exStudentMarks[m.studentId] = [];
       exStudentMarks[m.studentId].push(m);
     });
     let exAppeared = 0, exPassed = 0, exFullAPlus = 0;
     Object.entries(exStudentMarks).forEach(([stId, exMks]) => {
-      const isAbs = exMks.every(m => m.isAbsent || String(m.grade).trim().toUpperCase() === 'AB');
+      const isAbs = exMks.every((m) => m.isAbsent || String(m.grade).trim().toUpperCase() === "AB");
       if (isAbs) return;
       exAppeared++;
       let allPass = true, allAPlus = true;
-      exMks.forEach(m => {
-        const sc = idToCode[m.subjectId] || '';
-        const mm = getResolvedMaxMark(m.subjectId, sc);
+      exMks.forEach((m) => {
+        const sc = idToCode[m.subjectId] || "";
+        const mm = getResolvedMaxMark2(m.subjectId, sc);
         const nm = m.mark ?? m.rawScore;
-        const g = m.grade || (nm !== null && nm !== undefined ? getGradeFromMark(nm, mm) : '');
+        const g = m.grade || (nm !== null && nm !== void 0 ? getGradeFromMark(nm, mm) : "");
         const ug = String(g).trim().toUpperCase();
-        if (ug === 'E' || ug === 'AB') allPass = false;
-        if (ug !== 'A+') allAPlus = false;
+        if (ug === "E" || ug === "AB") allPass = false;
+        if (ug !== "A+") allAPlus = false;
       });
       if (allPass) exPassed++;
       if (allAPlus && allPass) exFullAPlus++;
     });
     examComparison.push({
-      examId: ex.id, examName: ex.name,
-      passPct: exAppeared > 0 ? Math.round((exPassed / exAppeared) * 100) : 0,
-      fullAPlus: exFullAPlus, appeared: exAppeared
+      examId: ex.id,
+      examName: ex.name,
+      passPct: exAppeared > 0 ? Math.round(exPassed / exAppeared * 100) : 0,
+      fullAPlus: exFullAPlus,
+      appeared: exAppeared
     });
   }
-
-  const studentGradeDistribution: Record<string, number> = { 'A+': 0, 'A': 0, 'B+': 0, 'B': 0, 'C+': 0, 'C': 0, 'D+': 0, 'D': 0, 'E': 0 };
-  studentResults.forEach(s => {
+  const studentGradeDistribution = { "A+": 0, "A": 0, "B+": 0, "B": 0, "C+": 0, "C": 0, "D+": 0, "D": 0, "E": 0 };
+  studentResults.forEach((s) => {
     const overallGrade = getGradeFromMark(s.avgPct, 100);
-    if (studentGradeDistribution[overallGrade] !== undefined) {
+    if (studentGradeDistribution[overallGrade] !== void 0) {
       studentGradeDistribution[overallGrade]++;
     }
   });
-
   const response = {
-    totalStudents, maleCount, femaleCount, scribeCount,
-    fullAPass, fullFail, fullAbsent, fullAPlus,
-    belowAvg, avgLevel, aboveAvgLevel, profoundLevel,
-    gradeDistribution, studentGradeDistribution, mediumStats,
-    topPerformers, weakStudents, failedStudents,
-    subjectWise, mediumGrouped, examComparison, languageDistribution,
-    selectedExam: exam?.name || 'N/A'
+    totalStudents,
+    maleCount,
+    femaleCount,
+    scribeCount,
+    fullAPass,
+    fullFail,
+    fullAbsent,
+    fullAPlus,
+    belowAvg,
+    avgLevel,
+    aboveAvgLevel,
+    profoundLevel,
+    gradeDistribution,
+    studentGradeDistribution,
+    mediumStats,
+    topPerformers,
+    weakStudents,
+    failedStudents,
+    subjectWise,
+    mediumGrouped,
+    examComparison,
+    languageDistribution,
+    selectedExam: exam?.name || "N/A"
   };
-
-  analyticsCache.set(cacheKey, response, 300);
+  analyticsCache2.set(cacheKey, response, 300);
   res.json(response);
 }
-
-// ─── Language Distribution Validation Endpoint ───────────────────────────────
-app.get("/api/school/language-validation", authenticateToken, async (req: any, res) => {
+app.get("/api/school/language-validation", authenticateToken, async (req, res) => {
   try {
     const schoolId = req.user.schoolId || req.query.schoolId;
-    if (!schoolId) return res.status(400).json({ message: 'School ID required' });
-
-    const VALID_SLOTS = ['P01', 'P02', 'P03', 'P04'] as const;
-    const SLOT_LABELS: Record<string, string> = { P01: 'First Lang Paper 1 (AT)', P02: 'First Lang Paper 2 (BT)', P03: 'Second Language', P04: 'Third Language' };
-
+    if (!schoolId) return res.status(400).json({ message: "School ID required" });
+    const VALID_SLOTS = ["P01", "P02", "P03", "P04"];
+    const SLOT_LABELS = { P01: "First Lang Paper 1 (AT)", P02: "First Lang Paper 2 (BT)", P03: "Second Language", P04: "Third Language" };
     const students = await Student.find({ schoolId, active: { $ne: false } }).lean();
     const totalStudents = students.length;
-
     if (totalStudents === 0) {
       return res.json({
-        isValid: true, totalStudents: 0, totalLanguages: 0, expectedTotal: 0, difference: 0,
-        perSlot: {}, missingMediumStudents: 0, missingPaper1Students: 0, missingPaper2Students: 0,
-        missingSecondLangStudents: 0, missingThirdLangStudents: 0, alerts: [], alertMessage: '',
+        isValid: true,
+        totalStudents: 0,
+        totalLanguages: 0,
+        expectedTotal: 0,
+        difference: 0,
+        perSlot: {},
+        missingMediumStudents: 0,
+        missingPaper1Students: 0,
+        missingPaper2Students: 0,
+        missingSecondLangStudents: 0,
+        missingThirdLangStudents: 0,
+        alerts: [],
+        alertMessage: "",
         missingSamples: { noMedium: [], noPaper1: [], noPaper2: [], noSecondLang: [], noThirdLang: [] }
       });
     }
-
-    // ── 1. Count languages per slot directly from student ID fields ──
-    const slotCounts: Record<string, Record<string, number>> = {};
-    VALID_SLOTS.forEach(s => { slotCounts[s] = {}; });
-
+    const slotCounts = {};
+    VALID_SLOTS.forEach((s) => {
+      slotCounts[s] = {};
+    });
     let missingMedium = 0, missingPaper1 = 0, missingPaper2 = 0, missingSecondLang = 0, missingThirdLang = 0;
-    const noMediumSamples: string[] = [], noPaper1Samples: string[] = [], noPaper2Samples: string[] = [];
-    const noSecondLangSamples: string[] = [], noThirdLangSamples: string[] = [];
-
+    const noMediumSamples = [], noPaper1Samples = [], noPaper2Samples = [];
+    const noSecondLangSamples = [], noThirdLangSamples = [];
     const allSubjects = await Subject.find().lean();
-    const subjectMap = new Map(allSubjects.map(s => [s._id.toString(), s.name.toUpperCase().replace(/\s*\([EMTK]M\)\s*/g, '').trim()]));
-
-    students.forEach((st: any) => {
-      const stName = st.name || 'Unknown';
-
+    const subjectMap = new Map(allSubjects.map((s) => [s._id.toString(), s.name.toUpperCase().replace(/\s*\([EMTK]M\)\s*/g, "").trim()]));
+    students.forEach((st) => {
+      const stName = st.name || "Unknown";
       const p1Id = st.firstLangPaper1SubjectId;
       if (p1Id && subjectMap.has(p1Id)) {
-        const lang1 = subjectMap.get(p1Id)!;
-        slotCounts['P01'][lang1] = (slotCounts['P01'][lang1] || 0) + 1;
+        const lang1 = subjectMap.get(p1Id);
+        slotCounts["P01"][lang1] = (slotCounts["P01"][lang1] || 0) + 1;
       } else {
         missingPaper1++;
         if (noPaper1Samples.length < 10) noPaper1Samples.push(stName);
       }
-
       const p2Id = st.firstLangPaper2SubjectId;
       if (p2Id && subjectMap.has(p2Id)) {
-        const lang2 = subjectMap.get(p2Id)!;
-        slotCounts['P02'][lang2] = (slotCounts['P02'][lang2] || 0) + 1;
+        const lang2 = subjectMap.get(p2Id);
+        slotCounts["P02"][lang2] = (slotCounts["P02"][lang2] || 0) + 1;
       } else {
         missingPaper2++;
         if (noPaper2Samples.length < 10) noPaper2Samples.push(stName);
       }
-
       const p3Id = st.secondLanguageSubjectId;
       if (p3Id && subjectMap.has(p3Id)) {
-        const lang3 = subjectMap.get(p3Id)!;
-        slotCounts['P03'][lang3] = (slotCounts['P03'][lang3] || 0) + 1;
+        const lang3 = subjectMap.get(p3Id);
+        slotCounts["P03"][lang3] = (slotCounts["P03"][lang3] || 0) + 1;
       } else {
         missingSecondLang++;
         if (noSecondLangSamples.length < 10) noSecondLangSamples.push(stName);
       }
-
-      // P04: from thirdLang or ID
       const p4Id = st.thirdLanguageSubjectId;
       if (p4Id && subjectMap.has(p4Id)) {
-        const lang4 = subjectMap.get(p4Id)!;
-        slotCounts['P04'][lang4] = (slotCounts['P04'][lang4] || 0) + 1;
+        const lang4 = subjectMap.get(p4Id);
+        slotCounts["P04"][lang4] = (slotCounts["P04"][lang4] || 0) + 1;
       } else {
-        const tLang = (st.thirdLang || '').trim();
+        const tLang = (st.thirdLang || "").trim();
         if (tLang) {
           const slotKey = tLang.toUpperCase();
-          slotCounts['P04'][slotKey] = (slotCounts['P04'][slotKey] || 0) + 1;
+          slotCounts["P04"][slotKey] = (slotCounts["P04"][slotKey] || 0) + 1;
         } else {
           missingThirdLang++;
           if (noThirdLangSamples.length < 10) noThirdLangSamples.push(stName);
         }
       }
-
-      // Medium check
-      const medId = st.mediumId ? String(st.mediumId).trim() : '';
-      const med = st.medium ? String(st.medium).trim() : '';
+      const medId = st.mediumId ? String(st.mediumId).trim() : "";
+      const med = st.medium ? String(st.medium).trim() : "";
       if (!medId && !med) {
         missingMedium++;
         if (noMediumSamples.length < 10) noMediumSamples.push(stName);
       }
     });
-
-    // ── 2. Build per-slot result ──
-    const perSlot: Record<string, {
-      label: string; total: number; expected: number; valid: boolean; missingCount: number;
-      languages: { language: string; count: number; percentage: number }[];
-    }> = {};
-
+    const perSlot = {};
     let allSlotsValid = true;
     let totalLanguages = 0;
-
-    VALID_SLOTS.forEach(slot => {
+    VALID_SLOTS.forEach((slot) => {
       const langs = slotCounts[slot];
       const slotTotal = Object.values(langs).reduce((a, b) => a + b, 0);
       const slotValid = slotTotal === totalStudents;
       if (!slotValid) allSlotsValid = false;
       totalLanguages += slotTotal;
-
       const missingCount = totalStudents - slotTotal;
       perSlot[slot] = {
         label: SLOT_LABELS[slot],
@@ -4928,91 +4326,80 @@ app.get("/api/school/language-validation", authenticateToken, async (req: any, r
         expected: totalStudents,
         valid: slotValid,
         missingCount,
-        languages: Object.entries(langs)
-          .sort(([, a], [, b]) => b - a)
-          .map(([language, count]) => ({
-            language,
-            count,
-            percentage: totalStudents > 0 ? Math.round((count / totalStudents) * 100) : 0
-          }))
+        languages: Object.entries(langs).sort(([, a], [, b]) => b - a).map(([language, count]) => ({
+          language,
+          count,
+          percentage: totalStudents > 0 ? Math.round(count / totalStudents * 100) : 0
+        }))
       };
     });
-
-    // ── 3. Build detailed alerts ──
-    const alerts: { type: 'error' | 'warning'; slot: string; message: string; details: string[] }[] = [];
+    const alerts = [];
     const expectedTotal = totalStudents * VALID_SLOTS.length;
     const difference = expectedTotal - totalLanguages;
-
-    // Missing medium alerts
     if (missingMedium > 0) {
       alerts.push({
-        type: 'error', slot: 'MEDIUM',
+        type: "error",
+        slot: "MEDIUM",
         message: `${missingMedium} student(s) have no medium assigned`,
         details: noMediumSamples
       });
     }
-
-    // Per-slot alerts
-    VALID_SLOTS.forEach(slot => {
+    VALID_SLOTS.forEach((slot) => {
       const info = perSlot[slot];
       if (!info.valid) {
-        const langBreakdown = info.languages.map(l => `${l.language}: ${l.count}`).join(', ');
-        const missingList = info.languages.length > 0
-          ? `Found: ${langBreakdown}`
-          : 'No language data found for any student';
-
+        const langBreakdown = info.languages.map((l) => `${l.language}: ${l.count}`).join(", ");
+        const missingList = info.languages.length > 0 ? `Found: ${langBreakdown}` : "No language data found for any student";
         alerts.push({
-          type: 'error', slot,
-          message: `${slot} (${info.label}): ${info.total}/${totalStudents} students covered — ${info.missingCount} missing`,
+          type: "error",
+          slot,
+          message: `${slot} (${info.label}): ${info.total}/${totalStudents} students covered \u2014 ${info.missingCount} missing`,
           details: [missingList, `Expected: ${totalStudents} students per slot`]
         });
       }
     });
-
-    // Missing field alerts
     if (missingPaper1 > 0) {
       alerts.push({
-        type: 'warning', slot: 'P01',
+        type: "warning",
+        slot: "P01",
         message: `${missingPaper1} student(s) missing First Language Paper 1`,
         details: noPaper1Samples
       });
     }
     if (missingPaper2 > 0) {
       alerts.push({
-        type: 'warning', slot: 'P02',
+        type: "warning",
+        slot: "P02",
         message: `${missingPaper2} student(s) missing First Language Paper 2`,
         details: noPaper2Samples
       });
     }
     if (missingSecondLang > 0) {
       alerts.push({
-        type: 'warning', slot: 'P03',
+        type: "warning",
+        slot: "P03",
         message: `${missingSecondLang} student(s) missing Second Language`,
         details: noSecondLangSamples
       });
     }
     if (missingThirdLang > 0) {
       alerts.push({
-        type: 'warning', slot: 'P04',
+        type: "warning",
+        slot: "P04",
         message: `${missingThirdLang} student(s) missing Third Language`,
         details: noThirdLangSamples
       });
     }
-
-    // ── 4. Overall validity ──
     const isValid = allSlotsValid && missingMedium === 0 && missingPaper1 === 0 && missingPaper2 === 0 && missingSecondLang === 0 && missingThirdLang === 0;
-
-    let alertMessage = '';
+    let alertMessage = "";
     if (!isValid) {
-      const parts: string[] = [];
+      const parts = [];
       if (missingMedium > 0) parts.push(`${missingMedium} students without medium`);
-      VALID_SLOTS.forEach(slot => {
+      VALID_SLOTS.forEach((slot) => {
         const info = perSlot[slot];
         if (!info.valid) parts.push(`${slot}: ${info.total}/${totalStudents} (${info.missingCount} missing)`);
       });
-      alertMessage = `Language Validation Failed — ${parts.join('; ')}. Update Students Management.`;
+      alertMessage = `Language Validation Failed \u2014 ${parts.join("; ")}. Update Students Management.`;
     }
-
     const result = {
       isValid,
       totalStudents,
@@ -5035,45 +4422,35 @@ app.get("/api/school/language-validation", authenticateToken, async (req: any, r
         noThirdLang: noThirdLangSamples
       }
     };
-
     const valCacheKey = `lang-validation-${schoolId}`;
     analyticsCache.set(valCacheKey, result, 300);
-
     res.json(result);
-  } catch (err: any) {
-    console.error('Language Validation Error:', err);
+  } catch (err) {
+    console.error("Language Validation Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/management/schools/bulk-import", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/schools/bulk-import", requireRole("WEBMASTER"), async (req, res) => {
   const schools = req.body;
   if (!Array.isArray(schools)) {
     return res.status(400).json({ message: "Invalid data format. Expected an array of schools." });
   }
-
-  const successful: any[] = [];
-  const failed: any[] = [];
-
+  const successful = [];
+  const failed = [];
   try {
     const allEduDistricts = await EducationalDistrict.find().lean();
     const allDistricts = await District.find().lean();
     const existingSchools = await School.find().lean();
-
-    const schoolByCodeMap = new Map(existingSchools.map((s: any) => [String(s.schoolCode).trim(), s]));
-
+    const schoolByCodeMap = new Map(existingSchools.map((s) => [String(s.schoolCode).trim(), s]));
     for (let idx = 0; idx < schools.length; idx++) {
       const school = schools[idx];
       const rowNum = idx + 1;
-
       try {
-        // Normalize keys by stripping spaces, hyphens, dots, and converting to lowercase
-        const rawObj: any = {};
-        Object.keys(school).forEach(k => {
-          const cleanKey = k.trim().toLowerCase().replace(/[\s._-]+/g, '');
+        const rawObj = {};
+        Object.keys(school).forEach((k) => {
+          const cleanKey = k.trim().toLowerCase().replace(/[\s._-]+/g, "");
           rawObj[cleanKey] = school[k];
         });
-
         const name = rawObj.schoolname || rawObj.name ? String(rawObj.schoolname || rawObj.name).trim() : "";
         const code = rawObj.schoolcode || rawObj.code || rawObj.udise || rawObj.udisecode ? String(rawObj.schoolcode || rawObj.code || rawObj.udise || rawObj.udisecode).trim() : "";
         const type = rawObj.type || rawObj.schooltype || "Government";
@@ -5086,7 +4463,6 @@ app.post("/api/management/schools/bulk-import", requireRole('WEBMASTER'), async 
         const coordinatorMobile = rawObj.coordinatormobile || rawObj.coordmobile || "";
         const coordinatorEmail = rawObj.coordinatoremail || "";
         const website = rawObj.website || "";
-
         if (!code && !name) {
           failed.push({
             row: rowNum,
@@ -5114,46 +4490,38 @@ app.post("/api/management/schools/bulk-import", requireRole('WEBMASTER'), async 
           });
           continue;
         }
-
-        // Resolve Educational District & District ID from inputs (ID or Name)
         let rawEdu = rawObj.edudist || rawObj.edudistrict || rawObj.educationaldistrict || rawObj.eduid || rawObj.subdistrictid;
         let rawDist = rawObj.district || rawObj.districtid || rawObj.districtname;
-
         let resolvedEduId = "";
         if (rawEdu) {
           const normEduStr = String(rawEdu).trim();
           let matchEdu = allEduDistricts.find(
-            (e: any) => e.id.toLowerCase() === normEduStr.toLowerCase() ||
-              e.name.toLowerCase() === normEduStr.toLowerCase()
+            (e) => e.id.toLowerCase() === normEduStr.toLowerCase() || e.name.toLowerCase() === normEduStr.toLowerCase()
           );
           if (!matchEdu) {
-            const newEduId = 'edu-' + normEduStr.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 4);
+            const newEduId = "edu-" + normEduStr.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 4);
             const newEduDoc = await EducationalDistrict.create({
               id: newEduId,
               name: normEduStr,
-              districtId: 'dist-9'
+              districtId: "dist-9"
             });
             matchEdu = newEduDoc.toObject();
             allEduDistricts.push(matchEdu);
           }
           resolvedEduId = matchEdu.id;
         }
-
         let resolvedDistrictId = "dist-9";
         if (rawDist) {
           const matchDist = allDistricts.find(
-            (d: any) => d.id.toLowerCase() === String(rawDist).trim().toLowerCase() ||
-              d.name.toLowerCase() === String(rawDist).trim().toLowerCase()
+            (d) => d.id.toLowerCase() === String(rawDist).trim().toLowerCase() || d.name.toLowerCase() === String(rawDist).trim().toLowerCase()
           );
           if (matchDist) {
             resolvedDistrictId = matchDist.id;
           }
         }
-
         let action = "Created";
-        const existingDoc: any = schoolByCodeMap.get(code);
-
-        const schoolDataPayload: any = {
+        const existingDoc = schoolByCodeMap.get(code);
+        const schoolDataPayload = {
           name,
           schoolCode: code,
           username: code,
@@ -5168,12 +4536,11 @@ app.post("/api/management/schools/bulk-import", requireRole('WEBMASTER'), async 
           coordinatorMobile,
           coordinatorEmail,
           website,
-          eduId: resolvedEduId || undefined,
-          subDistrictId: resolvedEduId || undefined,
-          districtId: resolvedDistrictId || 'dist-9',
+          eduId: resolvedEduId || void 0,
+          subDistrictId: resolvedEduId || void 0,
+          districtId: resolvedDistrictId || "dist-9",
           role: "SCHOOL"
         };
-
         if (existingDoc) {
           await School.updateOne({ _id: existingDoc._id }, { $set: schoolDataPayload });
           action = "Updated";
@@ -5190,14 +4557,13 @@ app.post("/api/management/schools/bulk-import", requireRole('WEBMASTER'), async 
           await saved.save();
           schoolByCodeMap.set(code, saved.toObject());
         }
-
         successful.push({
           row: rowNum,
           name,
           identifier: code,
           action
         });
-      } catch (rowErr: any) {
+      } catch (rowErr) {
         console.error(`Error processing row ${rowNum}:`, rowErr);
         failed.push({
           row: rowNum,
@@ -5207,7 +4573,6 @@ app.post("/api/management/schools/bulk-import", requireRole('WEBMASTER'), async 
         });
       }
     }
-
     res.json({
       message: `Data import completed. Successfully imported ${successful.length} schools.`,
       processed: schools.length,
@@ -5216,89 +4581,73 @@ app.post("/api/management/schools/bulk-import", requireRole('WEBMASTER'), async 
       successful,
       failed
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Bulk Import Fatal Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/management/schools/bulk-delete", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/schools/bulk-delete", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { ids } = req.body;
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ message: "No school IDs provided" });
     }
-
-    // Find school codes to delete users
     const schools = await School.find({ _id: { $in: ids } });
-    const schoolCodes = schools.map(s => s.schoolCode);
-    const mongoIds = schools.map(s => s.id);
-    const schoolIdStrings = schools.map(s => s._id.toString());
-
+    const schoolCodes = schools.map((s) => s.schoolCode);
+    const mongoIds = schools.map((s) => s.id);
+    const schoolIdStrings = schools.map((s) => s._id.toString());
     await Student.deleteMany({ schoolId: { $in: mongoIds } });
     await Mark.deleteMany({ schoolId: { $in: mongoIds } });
     await User.deleteMany({ $or: [{ schoolId: { $in: mongoIds } }, { username: { $in: schoolCodes } }] });
-    // Cascade: remove related configs and summaries
     await SchoolExamConfig.deleteMany({ schoolId: { $in: schoolIdStrings } });
     await DashboardSummary.deleteMany({ schoolId: { $in: schoolIdStrings } });
     await SchoolSummary.deleteMany({ schoolId: { $in: schoolIdStrings } });
     await School.deleteMany({ _id: { $in: ids } });
-
     res.json({ message: "Schools and all associated data deleted" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.post("/api/management/schools/bulk-update-type", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/schools/bulk-update-type", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { ids, type } = req.body;
     await School.updateMany({ _id: { $in: ids } }, { $set: { schoolType: type } });
     res.json({ message: "School types updated" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/results/subject-analysis", enforceSchoolScope, async (req, res) => {
   try {
-    const districtId = req.query.districtId as string | undefined;
-    const eduId = req.query.eduId as string | undefined;
-    const schoolId = req.query.schoolId as string | undefined;
-    const examId = req.query.examId as string | undefined;
-    const schoolType = req.query.schoolType as string | undefined;
-    const gender = req.query.gender as string | undefined;
-    const division = req.query.division as string | undefined;
-
-    const cacheKey = `subject-analysis-${examId || 'all'}-${districtId || 'all'}-${eduId || 'all'}-${schoolId || 'all'}-${schoolType || 'all'}-${gender || 'all'}-${division || 'all'}`;
+    const districtId = req.query.districtId;
+    const eduId = req.query.eduId;
+    const schoolId = req.query.schoolId;
+    const examId = req.query.examId;
+    const schoolType = req.query.schoolType;
+    const gender = req.query.gender;
+    const division = req.query.division;
+    const cacheKey = `subject-analysis-${examId || "all"}-${districtId || "all"}-${eduId || "all"}-${schoolId || "all"}-${schoolType || "all"}-${gender || "all"}-${division || "all"}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
-
     const { idToCode, codeToId } = await getSubjectMapping();
-
-    let studentFilter: any = {};
+    let studentFilter = {};
     let activeExamId = examId || "69ef02b11565553e16b99723";
-
-    // Find exam first
     let activeExam = await Exam.findOne({ id: activeExamId });
     if (!activeExam && examId) activeExam = await Exam.findOne({ _id: activeExamId });
-    let examClass = activeExam?.standard || '10';
-
+    let examClass = activeExam?.standard || "10";
     studentFilter.className = examClass;
-
-    if (division && division !== 'ALL') {
+    if (division && division !== "ALL") {
       studentFilter.division = division;
     }
-    if (gender && gender !== 'ALL') {
-      if (gender === 'BOYS') {
-        studentFilter.gender = { $in: ['Male', 'Boy'] };
-      } else if (gender === 'GIRLS') {
-        studentFilter.gender = { $in: ['Female', 'Girl'] };
+    if (gender && gender !== "ALL") {
+      if (gender === "BOYS") {
+        studentFilter.gender = { $in: ["Male", "Boy"] };
+      } else if (gender === "GIRLS") {
+        studentFilter.gender = { $in: ["Female", "Girl"] };
       }
     }
-
-    let codeToDisplayName: Record<string, string> = {};
-    const defaultDisplayNames: Record<string, string> = {
+    let codeToDisplayName = {};
+    const defaultDisplayNames = {
       "P01": "FIRST LANGUAGE (PAPER I)",
       "P02": "FIRST LANGUAGE (PAPER II)",
       "P03": "ENGLISH",
@@ -5310,136 +4659,124 @@ app.get("/api/results/subject-analysis", enforceSchoolScope, async (req, res) =>
       "P09": "MATHEMATICS",
       "P10": "INFORMATION TECHNOLOGY"
     };
-
-    let allSchoolIds: string[] = [];
+    let allSchoolIds = [];
     if (schoolId) {
       studentFilter.schoolId = schoolId;
       allSchoolIds = [schoolId];
     } else {
-      let schoolFilter: any = { role: 'SCHOOL' };
+      let schoolFilter = { role: "SCHOOL" };
       if (eduId && eduId !== "ALL") {
         schoolFilter.subDistrictId = eduId;
       } else if (districtId && districtId !== "ALL") {
         const edus = await EducationalDistrict.find({ districtId });
-        const eduIds = edus.map(e => e.id);
+        const eduIds = edus.map((e) => e.id);
         schoolFilter.subDistrictId = { $in: eduIds };
       }
-      if (schoolType && schoolType !== 'ALL') {
+      if (schoolType && schoolType !== "ALL") {
         schoolFilter.schoolType = schoolType;
       }
       const schools = await School.find(schoolFilter);
-      allSchoolIds = schools.map(s => s._id.toString());
+      allSchoolIds = schools.map((s) => s._id.toString());
       studentFilter.schoolId = { $in: allSchoolIds };
     }
-
     const students = await Student.find(studentFilter).lean();
-    const studentIds = students.map(s => s.id);
+    const studentIds = students.map((s) => s.id);
     const rawMarks = await Mark.find({ examId: activeExamId, studentId: { $in: studentIds } }).lean();
-
-    let targetSubjectIds = new Set<string>();
-    const allUniqueSubjectIdsInMarks = Array.from(new Set(rawMarks.map(m => String(m.subjectId))));
-
-    // 1. Fetch specific School config for all schools in the scope
+    let targetSubjectIds = /* @__PURE__ */ new Set();
+    const allUniqueSubjectIdsInMarks = Array.from(new Set(rawMarks.map((m) => String(m.subjectId))));
     const allConfigs = await SchoolExamConfig.find({
       schoolId: { $in: allSchoolIds },
       examId: activeExamId
     });
-
-    // Add configured subjects
-    allConfigs.forEach(c => {
+    allConfigs.forEach((c) => {
       if (c.subjects && c.subjects.length > 0) {
-        c.subjects.forEach((s: any) => targetSubjectIds.add(s.subjectId));
+        c.subjects.forEach((s) => targetSubjectIds.add(s.subjectId));
       }
     });
-
-    // Always add default core subjects (P03-P09)
-    const defaultCoreCodes = ['P03', 'P04', 'P05', 'P06', 'P07', 'P08', 'P09'];
+    const defaultCoreCodes = ["P03", "P04", "P05", "P06", "P07", "P08", "P09"];
     const defaultCoreSubjects = await Subject.find({ shortCode: { $in: defaultCoreCodes } }).lean();
-    defaultCoreSubjects.forEach(s => targetSubjectIds.add(s._id.toString()));
-
+    defaultCoreSubjects.forEach((s) => targetSubjectIds.add(s._id.toString()));
     let dbSubjects = await Subject.find({ _id: { $in: Array.from(targetSubjectIds) } }).lean();
-
-    const subjectInfoMap = new Map();
-    dbSubjects.forEach(s => {
+    const subjectInfoMap = /* @__PURE__ */ new Map();
+    dbSubjects.forEach((s) => {
       subjectInfoMap.set(s._id.toString(), {
         name: s.name,
         shortCode: idToCode[s._id.toString()] || s._id.toString(),
         displayOrder: s.displayOrder || 999
       });
     });
-
-    const knownOrphanedSubjects: Record<string, { name: string, shortCode: string, displayOrder: number }> = {
+    const knownOrphanedSubjects = {
       "6a1d18bc243d9aca01f583e6": { name: "First Language Paper I", shortCode: "P01", displayOrder: 10 },
       "6a1d18bc243d9aca01f583e9": { name: "First Language Paper II", shortCode: "P02", displayOrder: 20 }
     };
-
-    const studentMap = new Map();
-    students.forEach(s => studentMap.set(s.id, s));
-
-    const data: any[] = [];
+    const studentMap = /* @__PURE__ */ new Map();
+    students.forEach((s) => studentMap.set(s.id, s));
+    const data = [];
     const { codeToShortName: _codeToShort, shortNameToCode: _shortToCode } = await getMediumMaps();
-    const getSyncSuffix = (name: string) => {
+    const getSyncSuffix = (name) => {
       const code = _shortToCode[name.toUpperCase()];
-      return code ? ` ${code}` : '';
+      return code ? ` ${code}` : "";
     };
     Array.from(targetSubjectIds).forEach((subjectId) => {
       let info = subjectInfoMap.get(subjectId);
-
-      // Fallback for orphaned IDs provided by user
       if (!info && knownOrphanedSubjects[subjectId]) {
         info = knownOrphanedSubjects[subjectId];
       }
-
       const shortCode = info?.shortCode || subjectId;
       let baseDisplayName = info?.name || shortCode;
-
-      // Group by Medium (dynamic from DB)
-      const subjectMarks = rawMarks.filter(m => String(m.subjectId) === String(subjectId));
-
-      const marksByMedium: Record<string, any[]> = { 'Unknown': [] };
-
-      subjectMarks.forEach(m => {
+      const subjectMarks = rawMarks.filter((m) => String(m.subjectId) === String(subjectId));
+      const marksByMedium = { "Unknown": [] };
+      subjectMarks.forEach((m) => {
         const student = studentMap.get(m.studentId);
-        const rawMedium = student?.medium || '';
-        const resolved = _codeToShort[rawMedium.toUpperCase().trim()] || rawMedium || 'Unknown';
+        const rawMedium = student?.medium || "";
+        const resolved = _codeToShort[rawMedium.toUpperCase().trim()] || rawMedium || "Unknown";
         if (!marksByMedium[resolved]) marksByMedium[resolved] = [];
         marksByMedium[resolved].push(m);
       });
-
       Object.entries(marksByMedium).forEach(([mediumName, marksForMed]) => {
         if (marksForMed.length === 0) return;
-
-        const mediumSuffix = mediumName === 'Unknown' ? '' : getSyncSuffix(mediumName) || ` ${mediumName}`;
+        const mediumSuffix = mediumName === "Unknown" ? "" : getSyncSuffix(mediumName) || ` ${mediumName}`;
         let displayName = baseDisplayName;
-
         const counts = {
-          aPlus: 0, a: 0, bPlus: 0, b: 0, cPlus: 0, c: 0, dPlus: 0, d: 0, e: 0, absents: 0,
-          totalStudents: 0, appeared: 0, pass: 0, fail: 0,
-          below30: 0, pct45: 0, pct55: 0, pct65: 0, pct75: 0, pct85: 0, pct100: 0
+          aPlus: 0,
+          a: 0,
+          bPlus: 0,
+          b: 0,
+          cPlus: 0,
+          c: 0,
+          dPlus: 0,
+          d: 0,
+          e: 0,
+          absents: 0,
+          totalStudents: 0,
+          appeared: 0,
+          pass: 0,
+          fail: 0,
+          below30: 0,
+          pct45: 0,
+          pct55: 0,
+          pct65: 0,
+          pct75: 0,
+          pct85: 0,
+          pct100: 0
         };
-
-        marksForMed.forEach(m => {
+        marksForMed.forEach((m) => {
           let grade = m.grade;
-          let mark = m.mark !== undefined && m.mark !== null && m.mark !== '' ? m.mark : m.rawScore;
-
-          if (typeof grade === 'string') grade = grade.trim().toUpperCase();
-
-          if (String(grade).trim().toUpperCase() === "AB" || String(mark).trim().toUpperCase() === "AB" || m.isAbsent === true || m.status === 'Absent') {
+          let mark = m.mark !== void 0 && m.mark !== null && m.mark !== "" ? m.mark : m.rawScore;
+          if (typeof grade === "string") grade = grade.trim().toUpperCase();
+          if (String(grade).trim().toUpperCase() === "AB" || String(mark).trim().toUpperCase() === "AB" || m.isAbsent === true || m.status === "Absent") {
             counts.absents++;
             counts.totalStudents++;
             return;
           }
-
-          if (!grade && (mark === undefined || mark === null || mark === '')) return;
-
+          if (!grade && (mark === void 0 || mark === null || mark === "")) return;
           counts.totalStudents++;
           counts.appeared++;
-
-          let numericMark = Number(mark !== undefined && mark !== null && mark !== '' ? mark : grade);
+          let numericMark = Number(mark !== void 0 && mark !== null && mark !== "" ? mark : grade);
           let pct = 0;
-          if (!isNaN(numericMark) && (mark !== null || String(grade).trim() !== '')) {
+          if (!isNaN(numericMark) && (mark !== null || String(grade).trim() !== "")) {
             const max = getResolvedMaxMark(activeExam, subjectId, shortCode, 50);
-            pct = Math.round((numericMark * 100) / max);
+            pct = Math.round(numericMark * 100 / max);
             if (pct >= 90) grade = "A+";
             else if (pct >= 80) grade = "A";
             else if (pct >= 70) grade = "B+";
@@ -5450,7 +4787,6 @@ app.get("/api/results/subject-analysis", enforceSchoolScope, async (req, res) =>
             else if (pct >= 20) grade = "D";
             else grade = "E";
           }
-
           if (grade === "A+" || grade === "A1") counts.aPlus++;
           else if (grade === "A" || grade === "A2") counts.a++;
           else if (grade === "B+" || grade === "B1") counts.bPlus++;
@@ -5460,12 +4796,8 @@ app.get("/api/results/subject-analysis", enforceSchoolScope, async (req, res) =>
           else if (grade === "D+" || grade === "D1") counts.dPlus++;
           else if (grade === "D" || grade === "D2") counts.d++;
           else if (grade === "E" || grade === "E1" || grade === "E2") counts.e++;
-
-          // Pass/Fail classification
           if (pct >= 30) counts.pass++;
           else counts.fail++;
-
-          // Percentage bucket classification
           if (pct < 30) counts.below30++;
           else if (pct < 45) counts.pct45++;
           else if (pct < 55) counts.pct55++;
@@ -5474,9 +4806,7 @@ app.get("/api/results/subject-analysis", enforceSchoolScope, async (req, res) =>
           else if (pct < 85) counts.pct85++;
           else counts.pct100++;
         });
-
         const displayOrder = info?.displayOrder || 999;
-
         data.push({
           subjectId: `${subjectId}_${mediumSuffix.trim()}`,
           shortCode: shortCode + mediumSuffix,
@@ -5487,65 +4817,55 @@ app.get("/api/results/subject-analysis", enforceSchoolScope, async (req, res) =>
         });
       });
     });
-
     data.sort((a, b) => {
-      const codeA = (a.shortCode || '').toUpperCase();
-      const codeB = (b.shortCode || '').toUpperCase();
+      const codeA = (a.shortCode || "").toUpperCase();
+      const codeB = (b.shortCode || "").toUpperCase();
       if (codeA < codeB) return -1;
       if (codeA > codeB) return 1;
-
-      const nameA = a.subject || '';
-      const nameB = b.subject || '';
+      const nameA = a.subject || "";
+      const nameB = b.subject || "";
       return nameA.localeCompare(nameB);
     });
-
-    data.forEach((d, i) => { d.slNo = i + 1; });
-
+    data.forEach((d, i) => {
+      d.slNo = i + 1;
+    });
     let revenueDistrict = "All Districts";
     if (districtId !== "ALL" && districtId) {
       const district = await District.findOne({ id: districtId });
       if (district) revenueDistrict = district.name;
     }
-
     const response = { revenueDistrict, data };
     analyticsCache.set(cacheKey, response, 300);
     res.json(response);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/results/drill-down", async (req, res) => {
   try {
-    const districtId = req.query.districtId as string | undefined;
-    const eduId = req.query.eduId as string | undefined;
-    const examId = req.query.examId as string | undefined;
-
+    const districtId = req.query.districtId;
+    const eduId = req.query.eduId;
+    const examId = req.query.examId;
     const exams = await Exam.find();
     const activeExamId = examId || exams[0]?.id || "exam-1";
-    const selectedExam = exams.find(e => e.id === activeExamId);
-    const examClass = selectedExam?.standard || '10';
-
-    let schoolList: any[] = [];
-
+    const selectedExam = exams.find((e) => e.id === activeExamId);
+    const examClass = selectedExam?.standard || "10";
+    let schoolList = [];
     if (eduId && eduId !== "ALL") {
       schoolList = await School.find({ subDistrictId: eduId });
     } else if (districtId && districtId !== "ALL") {
       const edus = await EducationalDistrict.find({ districtId });
-      const eduIds = edus.map(e => e.id);
+      const eduIds = edus.map((e) => e.id);
       schoolList = await School.find({ subDistrictId: { $in: eduIds } });
     } else {
       schoolList = await School.find();
     }
-
     const edusList = await EducationalDistrict.find();
-
-    const dataPromises = schoolList.map(async (school: any) => {
+    const dataPromises = schoolList.map(async (school) => {
       const sResults = await calculateStatsForScope(activeExamId, {
         schoolId: school._id.toString(),
         className: examClass
       });
-
       return {
         id: school._id.toString(),
         name: school.name,
@@ -5556,66 +4876,54 @@ app.get("/api/results/drill-down", async (req, res) => {
         fullAPlus: sResults.fullAPlus,
         absent: sResults.absent,
         passPercentage: sResults.victoryPercentage.toFixed(2),
-        eduDistrict: edusList.find(e => e.id === school.eduId)?.name || 'Unknown'
+        eduDistrict: edusList.find((e) => e.id === school.eduId)?.name || "Unknown"
       };
     });
-
     const data = await Promise.all(dataPromises);
-
     let title = "State Level";
     if (eduId !== "ALL" && eduId) {
-      const edu = edusList.find(e => e.id === eduId);
+      const edu = edusList.find((e) => e.id === eduId);
       if (edu) title = edu.name;
     } else if (districtId !== "ALL" && districtId) {
       const district = await District.findOne({ id: districtId });
       if (district) title = district.name;
     }
-
     res.json({
       title,
       schools: data
     });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-
-
-
 app.post("/api/preferences", async (req, res) => {
   try {
-    const pref = await Preference.findOne({ id: 'global' });
-    const currentData = pref?.data instanceof Map
-      ? Object.fromEntries(pref.data)
-      : (typeof pref?.data === 'object' && pref?.data !== null ? pref.data : {});
+    const pref = await Preference.findOne({ id: "global" });
+    const currentData = pref?.data instanceof Map ? Object.fromEntries(pref.data) : typeof pref?.data === "object" && pref?.data !== null ? pref.data : {};
     const updatedData = { ...currentData, ...req.body };
-
     let newPref;
     try {
       newPref = await Preference.findOneAndUpdate(
-        { id: 'global' },
-        { $set: { id: 'global', key: 'global', data: updatedData } },
-        { upsert: true, returnDocument: 'after' }
+        { id: "global" },
+        { $set: { id: "global", key: "global", data: updatedData } },
+        { upsert: true, returnDocument: "after" }
       );
     } catch (e) {
-      newPref = await Preference.findOne({ id: 'global' });
+      newPref = await Preference.findOne({ id: "global" });
     }
     const resultData = newPref?.data;
     if (resultData instanceof Map) {
       return res.json(Object.fromEntries(resultData));
     }
-    res.json(typeof resultData === 'object' && resultData !== null ? resultData : {});
-  } catch (err: any) {
+    res.json(typeof resultData === "object" && resultData !== null ? resultData : {});
+  } catch (err) {
     console.error("POST /api/preferences Error:", err);
     res.json({});
   }
 });
-
-// ─── USER PRESETS ─────────────────────────────────────────────────────────────
 app.get("/api/user-presets", async (req, res) => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const key = `preset_${userId}`;
     let pref = await Preference.findOne({ key }).lean();
@@ -5623,39 +4931,33 @@ app.get("/api/user-presets", async (req, res) => {
       pref = await Preference.findOne({ id: key }).lean();
     }
     res.json(pref?.data || []);
-  } catch (err: any) {
+  } catch (err) {
     res.json([]);
   }
 });
-
 app.post("/api/user-presets", async (req, res) => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const key = `preset_${userId}`;
     const presets = req.body.presets || [];
-
     let newPref;
     try {
       newPref = await Preference.findOneAndUpdate(
         { key },
-        { $set: { id: key, key: key, data: presets } },
-        { upsert: true, returnDocument: 'after' }
+        { $set: { id: key, key, data: presets } },
+        { upsert: true, returnDocument: "after" }
       );
     } catch (e) {
       newPref = await Preference.findOne({ key });
     }
     res.json({ message: "Presets saved successfully", presets: newPref?.data || [] });
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST /api/user-presets Error:", err);
     res.status(500).json({ message: "Failed to save presets" });
   }
 });
-
-// Exams
-
-
-app.post("/api/management/exams", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/exams", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const exam = req.body;
     if (!exam || !exam.name) {
@@ -5666,7 +4968,7 @@ app.post("/api/management/exams", requireRole('WEBMASTER'), async (req: any, res
     }
     if (exam.id) {
       const { _id, ...updateData } = exam;
-      const updated = await Exam.findOneAndUpdate({ id: exam.id }, updateData, { returnDocument: 'after' });
+      const updated = await Exam.findOneAndUpdate({ id: exam.id }, updateData, { returnDocument: "after" });
       res.json(updated);
     } else {
       exam.id = `exam-${Date.now()}`;
@@ -5677,13 +4979,11 @@ app.post("/api/management/exams", requireRole('WEBMASTER'), async (req: any, res
       await newExam.save();
       res.json(newExam);
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST Exam Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-// Alias POST /api/exams
 app.post("/api/exams", async (req, res) => {
   try {
     const exam = req.body;
@@ -5692,7 +4992,7 @@ app.post("/api/exams", async (req, res) => {
     }
     if (exam.id) {
       const { _id, ...updateData } = exam;
-      const updated = await Exam.findOneAndUpdate({ id: exam.id }, updateData, { returnDocument: 'after' });
+      const updated = await Exam.findOneAndUpdate({ id: exam.id }, updateData, { returnDocument: "after" });
       res.json(updated);
     } else {
       exam.id = `exam-${Date.now()}`;
@@ -5703,67 +5003,60 @@ app.post("/api/exams", async (req, res) => {
       await newExam.save();
       res.json(newExam);
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST Exam Alias Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-// PUT /api/management/exams/:id
-app.put("/api/management/exams/:id", requireRole('WEBMASTER'), async (req: any, res) => {
+app.put("/api/management/exams/:id", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { id } = req.params;
     const { _id, ...updateData } = req.body;
-    const updated = await Exam.findOneAndUpdate({ id }, updateData, { returnDocument: 'after' });
+    const updated = await Exam.findOneAndUpdate({ id }, updateData, { returnDocument: "after" });
     if (!updated) {
       return res.status(404).json({ message: "Exam not found" });
     }
     res.json(updated);
-  } catch (err: any) {
+  } catch (err) {
     console.error("PUT Exam Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-// Alias PUT /api/exams/:id
 app.put("/api/exams/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { _id, ...updateData } = req.body;
-    const updated = await Exam.findOneAndUpdate({ id }, updateData, { returnDocument: 'after' });
+    const updated = await Exam.findOneAndUpdate({ id }, updateData, { returnDocument: "after" });
     if (!updated) {
       return res.status(404).json({ message: "Exam not found" });
     }
     res.json(updated);
-  } catch (err: any) {
+  } catch (err) {
     console.error("PUT Exam Alias Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.delete("/api/management/exams/:id", requireRole('WEBMASTER'), async (req: any, res) => {
+app.delete("/api/management/exams/:id", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { id } = req.params;
     await Exam.deleteOne({ id });
     await Mark.deleteMany({ examId: id });
-    // Cascade: remove related configs and summaries
     await SchoolExamConfig.deleteMany({ examId: id });
     await DashboardSummary.deleteMany({ examId: id });
     await SchoolSummary.deleteMany({ examId: id });
     res.json({ message: "Exam and all associated data deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     console.error("DELETE Exam Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.post("/api/management/exams/:id/reset-school", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/exams/:id/reset-school", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { id } = req.params;
     const { schoolId } = req.body;
     const exam = await Exam.findOne({ id });
     if (exam) {
-      exam.confirmedSchools = (exam.confirmedSchools || []).filter((sid: string) => sid !== schoolId);
+      exam.confirmedSchools = (exam.confirmedSchools || []).filter((sid) => sid !== schoolId);
       if (exam.confirmations) {
         delete exam.confirmations[schoolId];
       }
@@ -5771,8 +5064,6 @@ app.post("/api/management/exams/:id/reset-school", requireRole('WEBMASTER'), asy
         delete exam.confirmedSubjects[schoolId];
       }
       await exam.save();
-
-      // Unlock overall confirmation and subject locks so subject marks can be edited directly
       await Mark.updateMany(
         { examId: id, schoolId },
         { $set: { finalLocked: false, locked: false } }
@@ -5781,39 +5072,34 @@ app.post("/api/management/exams/:id/reset-school", requireRole('WEBMASTER'), asy
     } else {
       res.status(404).json({ message: "Exam not found" });
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST Reset School Lock Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-// Bulk confirm/reset schools for an exam (admin only)
-app.post("/api/management/exams/bulk-confirm", authenticateToken, async (req: any, res) => {
+app.post("/api/management/exams/bulk-confirm", authenticateToken, async (req, res) => {
   try {
     const { examId, schoolIds, action } = req.body;
     if (!examId || !schoolIds || !Array.isArray(schoolIds) || schoolIds.length === 0) {
       return res.status(400).json({ message: "Missing required fields: examId, schoolIds" });
     }
-    if (!['confirm', 'reset'].includes(action)) {
+    if (!["confirm", "reset"].includes(action)) {
       return res.status(400).json({ message: "action must be 'confirm' or 'reset'" });
     }
-
     const exam = await Exam.findOne({ id: examId });
     if (!exam) return res.status(404).json({ message: "Exam not found" });
-
     let confirmedCount = 0;
     let resetCount = 0;
-
     for (const schoolId of schoolIds) {
-      if (action === 'confirm') {
+      if (action === "confirm") {
         if (!exam.confirmedSchools.includes(schoolId)) {
           exam.confirmedSchools.push(schoolId);
           if (!exam.confirmations) exam.confirmations = {};
-          exam.confirmations[schoolId] = `${new Date().toISOString()}|${req.user.username || req.user.id}`;
+          exam.confirmations[schoolId] = `${(/* @__PURE__ */ new Date()).toISOString()}|${req.user.username || req.user.id}`;
           confirmedCount++;
         }
       } else {
-        exam.confirmedSchools = (exam.confirmedSchools || []).filter((sid: string) => sid !== schoolId);
+        exam.confirmedSchools = (exam.confirmedSchools || []).filter((sid) => sid !== schoolId);
         if (exam.confirmations) delete exam.confirmations[schoolId];
         if (exam.confirmedSubjects) delete exam.confirmedSubjects[schoolId];
         await Mark.updateMany(
@@ -5823,52 +5109,43 @@ app.post("/api/management/exams/bulk-confirm", authenticateToken, async (req: an
         resetCount++;
       }
     }
-
     await exam.save();
-
     await AuditLog.create({
-      action: action === 'confirm' ? 'Bulk Confirm Schools' : 'Bulk Reset Schools',
-      entityType: 'Exam',
+      action: action === "confirm" ? "Bulk Confirm Schools" : "Bulk Reset Schools",
+      entityType: "Exam",
       entityId: examId,
       performedBy: req.user.id,
-      details: { schoolIds, count: action === 'confirm' ? confirmedCount : resetCount }
+      details: { schoolIds, count: action === "confirm" ? confirmedCount : resetCount }
     });
-
     res.json({
-      message: action === 'confirm' ? `${confirmedCount} school(s) confirmed successfully` : `${resetCount} school(s) reset successfully`,
+      message: action === "confirm" ? `${confirmedCount} school(s) confirmed successfully` : `${resetCount} school(s) reset successfully`,
       confirmedCount,
       resetCount,
       confirmedSchools: exam.confirmedSchools
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Bulk Confirm Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-// PDF parsing route for marks entry
 const memUpload = multer({ storage: multer.memoryStorage() });
-
-app.post("/api/marks/parse-pdf", authenticateToken, memUpload.single('file'), async (req: any, res) => {
+app.post("/api/marks/parse-pdf", authenticateToken, memUpload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No PDF file uploaded" });
     }
-
     let text = "";
     try {
       const dataBuffer = req.file.buffer;
-      const { PDFParse: PDFParserClass } = await import('pdf-parse');
+      const { PDFParse: PDFParserClass } = await import("pdf-parse");
       const parser = new PDFParserClass({ data: dataBuffer });
       const data = await parser.getText();
       text = data.text;
-    } catch (parseErr: any) {
+    } catch (parseErr) {
       console.error("Raw PDF extraction failed:", parseErr);
       return res.status(500).json({ message: "Failed to read PDF file.", error: parseErr.message });
     }
-
-    // We use Gemini AI for accurate parsing with Double Validation
-    let students: any[] = [];
+    let students = [];
     try {
       const model = genAI.getGenerativeModel({
         model: "gemini-2.5-pro",
@@ -5901,7 +5178,6 @@ app.post("/api/marks/parse-pdf", authenticateToken, memUpload.single('file'), as
           }
         }
       });
-
       const prompt = `
 You are an expert data extractor. Here is the raw text extracted from a student marks PDF:
 ---
@@ -5919,46 +5195,35 @@ CRITICAL INSTRUCTION FOR ACCURACY (DOUBLE VALIDATION):
 7. GLUED GRADES (CRITICAL): The last grade (e.g., for Information Technology) is often glued to the Pass/Fail status without a space (e.g., 'A+EHS', 'BNHS', 'C+PASS', 'A+FAIL'). You MUST separate the grade ('A+', 'B', 'C+', 'A+') from the status ('EHS', 'NHS', 'PASS', 'FAIL') and extract ONLY the grade. Do NOT miss this final grade!
 8. AUTO-CORRECT MERGED GRADES (CRITICAL): Sometimes multiple grades are merged together without spaces, like 'A+ABC+'. You MUST split them into individual valid grades (e.g., 'A+', 'A', 'B', 'C+'). Before finalizing a student, count their extracted grades. If there are fewer than the standard number (usually 9 or 10), go back and read their row again carefully. Find where the grades merged, split them correctly, and ensure the student gets their full grade count.
 `;
-
       const result = await model.generateContent(prompt);
       const responseText = result.response.text();
       const parsed = JSON.parse(responseText);
-
       console.log("Gemini Thinking Process:", parsed.thinking_process);
       students = parsed.students;
-
     } catch (aiErr) {
       console.error("Gemini AI failed, falling back to Regex:", aiErr);
-      // Fallback to regex
-      const lines = text.split('\\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+      const lines = text.split("\\n").map((l) => l.trim()).filter((l) => l.length > 0);
       for (const line of lines) {
         const tokens = line.split(/\s+/);
         const gradeRegex = /^(A\+|A\-?|B\+|B\-?|C\+|C|D\+|D|E\+|E|A1|A2|B1|B2|C1|C2|E1|E2|AA|AB|ABS|Ab)$/i;
         if (tokens.length >= 5 && /^\d+$/.test(tokens[0]) && /^\d{5,7}$/.test(tokens[1])) {
           const regNo = tokens[1];
-          const grades: string[] = [];
+          const grades = [];
           for (let i = tokens.length - 1; i >= 2; i--) {
             let t = tokens[i].toUpperCase();
-
-            // Skip pure status tokens
-            if (['EHS', 'NHS', 'PASS', 'FAIL', 'PROMOTED', 'WITHHELD'].includes(t)) continue;
-
-            // Unmerge glued grades and statuses (e.g., 'A+EHS' -> 'A+')
-            const statuses = ['EHS', 'NHS', 'PASS', 'FAIL', 'PROMOTED', 'WITHHELD'];
+            if (["EHS", "NHS", "PASS", "FAIL", "PROMOTED", "WITHHELD"].includes(t)) continue;
+            const statuses = ["EHS", "NHS", "PASS", "FAIL", "PROMOTED", "WITHHELD"];
             for (const status of statuses) {
               if (t.endsWith(status) && t.length > status.length) {
                 t = t.substring(0, t.length - status.length);
                 break;
               }
             }
-
             if (gradeRegex.test(t)) {
-              // Heuristic to prevent taking single-letter initials (A, B, C, D, E) as the first grade
               const isSingleLetter = /^[A-E]$/i.test(t);
               const isPrevTokenNotGrade = i > 2 && !gradeRegex.test(tokens[i - 1]);
-
               if (isSingleLetter && isPrevTokenNotGrade && grades.length >= 4) {
-                break; // Likely hit the student's initial
+                break;
               }
               grades.unshift(t);
             } else if (grades.length > 0) {
@@ -5966,70 +5231,57 @@ CRITICAL INSTRUCTION FOR ACCURACY (DOUBLE VALIDATION):
             }
           }
           const firstGradeIdx = tokens.findIndex((t, idx) => idx >= 2 && gradeRegex.test(t.toUpperCase()) && tokens.length - idx <= grades.length + 2);
-          let name = '';
-          if (firstGradeIdx > 2) name = tokens.slice(2, firstGradeIdx).join(' ');
-          else name = tokens.slice(2, tokens.length - grades.length - 1).join(' ');
-
+          let name = "";
+          if (firstGradeIdx > 2) name = tokens.slice(2, firstGradeIdx).join(" ");
+          else name = tokens.slice(2, tokens.length - grades.length - 1).join(" ");
           if (grades.length > 0) students.push({ regNo, name, grades });
         }
       }
     }
-
     res.json({ students, rawText: text });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Parse PDF AI error:", err);
     res.status(500).json({ message: "Failed to parse PDF intelligently via AI", error: err.message });
   }
 });
-
 app.get("/api/marks/batch-all", authenticateToken, async (req, res) => {
   try {
     const { examId, schoolId, className } = req.query;
     if (!examId || !schoolId) return res.status(400).json({ message: "Missing params" });
-
-    let filter: any = { examId, schoolId };
+    let filter = { examId, schoolId };
     if (className) filter.className = className;
-
     const marks = await Mark.find(filter).lean();
-
     const isFinalLocked = marks.length > 0 && marks[0].finalLocked;
-    const formattedMarks = marks.map(m => ({
+    const formattedMarks = marks.map((m) => ({
       ...m,
-      version: (m as any).__v || 1,
-      updatedAt: m.updatedAt || m.createdAt || new Date(0)
+      version: m.__v || 1,
+      updatedAt: m.updatedAt || m.createdAt || /* @__PURE__ */ new Date(0)
     }));
-
     res.json({ marks: formattedMarks, isFinalLocked });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/marks/entry-all", authenticateToken, async (req: any, res) => {
+app.post("/api/marks/entry-all", authenticateToken, async (req, res) => {
   try {
     const { schoolId, examId, marksData, confirm, finalConfirm } = req.body;
-
     if (!marksData || !Array.isArray(marksData)) {
       return res.status(400).json({ message: "Invalid marks data format" });
     }
-
-    const bulkOps: any[] = [];
-
+    const bulkOps = [];
     const exam = await Exam.findOne({ id: examId });
     if (!exam) return res.status(404).json({ message: "Exam not found" });
-
-    // Enforce per-subject teacher confirmation: SCHOOL users cannot save marks for unconfirmed subjects
-    const effectiveSchoolId = req.user.role === 'SCHOOL' ? (req.user.schoolId || req.user.id) : schoolId;
+    const effectiveSchoolId = req.user.role === "SCHOOL" ? req.user.schoolId || req.user.id : schoolId;
     const schoolConfig = await SchoolExamConfig.findOne({ schoolId: effectiveSchoolId, examId });
     if (schoolConfig?.isSchoolConfirmed) {
       return res.status(403).json({ message: "School has finally confirmed marks. No further changes allowed." });
     }
-    if (req.user.role === 'SCHOOL' && schoolConfig) {
-      const unconfirmedSubjectIds = new Set<string>();
+    if (req.user.role === "SCHOOL" && schoolConfig) {
+      const unconfirmedSubjectIds = /* @__PURE__ */ new Set();
       for (const data of marksData) {
         if (!data.subjects) continue;
         for (const subjectId of Object.keys(data.subjects)) {
-          const subConfig = schoolConfig.subjects?.find((s: any) => s.subjectId === subjectId);
+          const subConfig = schoolConfig.subjects?.find((s) => s.subjectId === subjectId);
           if (subConfig && !subConfig.isSubjectConfirmed) {
             unconfirmedSubjectIds.add(subjectId);
           }
@@ -6039,38 +5291,28 @@ app.post("/api/marks/entry-all", authenticateToken, async (req: any, res) => {
         return res.status(403).json({ message: "Some subjects have not yet been confirmed by the assigned teacher. Mark entry is not allowed until the teacher confirms." });
       }
     }
-
-    // Fetch global grade configuration to calculate maximum numeric marks
-    const gradeDoc = await Grade.findOne({ key: 'global' }) as any;
+    const gradeDoc = await Grade.findOne({ key: "global" });
     const std8Config = gradeDoc?.std8 || [];
     const std9_10Config = gradeDoc?.std9_10 || [];
-
-    // First, fetch existing locked marks to avoid overwriting them
     const existingLockedMarks = await Mark.find({
       examId,
       schoolId,
       $or: [{ locked: true }, { finalLocked: true }]
     }).lean();
-
     const lockedSet = new Set(
-      existingLockedMarks.map(m => `${m.studentId}_${m.subjectId}`)
+      existingLockedMarks.map((m) => `${m.studentId}_${m.subjectId}`)
     );
-
     const { idToCode } = await getSubjectMapping();
-
     for (const data of marksData) {
       if (!data.studentId || !data.subjects) continue;
-
-      const isStd8 = ['8', 'VII', 'VIII'].includes(data.className);
+      const isStd8 = ["8", "VII", "VIII"].includes(data.className);
       const gradeConfigArray = isStd8 ? std8Config : std9_10Config;
-
       for (const [subjectId, grade] of Object.entries(data.subjects)) {
         const shortCode = idToCode[subjectId];
         if (lockedSet.has(`${data.studentId}_${subjectId}`)) {
-          continue; // Skip locked marks
+          continue;
         }
-
-        if (!grade || String(grade).trim() === '') {
+        if (!grade || String(grade).trim() === "") {
           bulkOps.push({
             deleteOne: {
               filter: { studentId: data.studentId, examId, subjectId }
@@ -6078,28 +5320,22 @@ app.post("/api/marks/entry-all", authenticateToken, async (req: any, res) => {
           });
           continue;
         }
-        const shortCodeMap: Record<string, string> = { 'P01': 'Lan I', 'P02': 'Lan II', 'P03': 'Eng', 'P04': 'Hin', 'P05': 'SS', 'P06': 'Phy', 'P07': 'Che', 'P08': 'Bio', 'P09': 'Mat' };
+        const shortCodeMap = { "P01": "Lan I", "P02": "Lan II", "P03": "Eng", "P04": "Hin", "P05": "SS", "P06": "Phy", "P07": "Che", "P08": "Bio", "P09": "Mat" };
         const mappedCode = shortCodeMap[shortCode] || shortCode;
         const subjectTotal = getResolvedMaxMark(exam, subjectId, mappedCode, 50);
-        let markValue: number | null = null;
-
-        // Calculate max numeric mark based on grade range
-        let studentGrade = (grade as string).toUpperCase();
-
-        const isNumeric = !isNaN(Number(studentGrade)) && studentGrade.trim() !== '';
-
+        let markValue = null;
+        let studentGrade = grade.toUpperCase();
+        const isNumeric = !isNaN(Number(studentGrade)) && studentGrade.trim() !== "";
         if (isNumeric) {
           markValue = Number(studentGrade);
-          const pct = Math.round((markValue * 100) / subjectTotal);
-
-          const sortedConfig = [...gradeConfigArray].sort((a: any, b: any) => {
-            const getMin = (g: any) => g.min !== undefined ? g.min : (g.minScore !== undefined ? g.minScore : g.minPercentage);
+          const pct = Math.round(markValue * 100 / subjectTotal);
+          const sortedConfig = [...gradeConfigArray].sort((a, b) => {
+            const getMin = (g) => g.min !== void 0 ? g.min : g.minScore !== void 0 ? g.minScore : g.minPercentage;
             return getMin(b) - getMin(a);
           });
-
-          let foundGrade = 'E';
+          let foundGrade = "E";
           for (const g of sortedConfig) {
-            const min = g.min !== undefined ? g.min : (g.minScore !== undefined ? g.minScore : g.minPercentage);
+            const min = g.min !== void 0 ? g.min : g.minScore !== void 0 ? g.minScore : g.minPercentage;
             if (pct >= min) {
               foundGrade = g.grade;
               break;
@@ -6107,38 +5343,33 @@ app.post("/api/marks/entry-all", authenticateToken, async (req: any, res) => {
           }
           studentGrade = foundGrade;
         } else {
-          const gIndex = gradeConfigArray.findIndex((g: any) => g.grade.toUpperCase() === studentGrade);
-
+          const gIndex = gradeConfigArray.findIndex((g) => g.grade.toUpperCase() === studentGrade);
           if (gIndex !== -1) {
             const gData = gradeConfigArray[gIndex];
             const scoreStr = gData.scores ? gData.scores[subjectTotal.toString()] : null;
-
             if (scoreStr) {
-              if (scoreStr.includes('-')) {
-                markValue = parseInt(scoreStr.split('-')[1]);
-              } else if (scoreStr.includes('Above')) {
+              if (scoreStr.includes("-")) {
+                markValue = parseInt(scoreStr.split("-")[1]);
+              } else if (scoreStr.includes("Above")) {
                 markValue = subjectTotal;
-              } else if (scoreStr.includes('Below')) {
-                const num = parseInt(scoreStr.replace(/[^0-9]/g, ''));
+              } else if (scoreStr.includes("Below")) {
+                const num = parseInt(scoreStr.replace(/[^0-9]/g, ""));
                 markValue = num > 0 ? num - 1 : 0;
               } else {
                 markValue = parseInt(scoreStr);
               }
             } else {
-              // Fallback: Use percentage based on min bounds
               let maxPct = 100;
               if (gIndex > 0) {
                 maxPct = gradeConfigArray[gIndex - 1].min - 1;
               }
-              markValue = Math.round((maxPct * subjectTotal) / 100);
+              markValue = Math.round(maxPct * subjectTotal / 100);
             }
           }
         }
-
-        const isAbsent = ['AB', 'ABSENT', 'ABS'].includes(studentGrade.toUpperCase());
+        const isAbsent = ["AB", "ABSENT", "ABS"].includes(studentGrade.toUpperCase());
         const rawScore = markValue || 0;
-        const normalizedScore = subjectTotal > 0 ? (rawScore / subjectTotal) * 100 : 0;
-
+        const normalizedScore = subjectTotal > 0 ? rawScore / subjectTotal * 100 : 0;
         bulkOps.push({
           updateOne: {
             filter: { studentId: data.studentId, examId, subjectId },
@@ -6148,10 +5379,9 @@ app.post("/api/marks/entry-all", authenticateToken, async (req: any, res) => {
                 examId,
                 studentId: data.studentId,
                 subjectId,
-                className: data.className || '10',
-
+                className: data.className || "10",
                 // New Marks Entry 2.0 fields
-                status: isAbsent ? 'Absent' : 'Present',
+                status: isAbsent ? "Absent" : "Present",
                 rawScore: markValue,
                 rawMaximum: subjectTotal,
                 normalizedScore: isAbsent ? 0 : normalizedScore,
@@ -6159,7 +5389,6 @@ app.post("/api/marks/entry-all", authenticateToken, async (req: any, res) => {
                 isAbsent,
                 isPresent: !isAbsent,
                 isEvaluated: true,
-
                 // Legacy fields
                 grade: studentGrade,
                 mark: markValue,
@@ -6173,13 +5402,11 @@ app.post("/api/marks/entry-all", authenticateToken, async (req: any, res) => {
         });
       }
     }
-
     let updatedCount = 0;
     if (bulkOps.length > 0) {
       const result = await Mark.bulkWrite(bulkOps);
       updatedCount = result.upsertedCount + result.modifiedCount;
     }
-
     if (finalConfirm) {
       await Mark.updateMany({ schoolId, examId }, { $set: { finalLocked: true, locked: true } });
       if (exam) {
@@ -6187,136 +5414,115 @@ app.post("/api/marks/entry-all", authenticateToken, async (req: any, res) => {
           exam.confirmedSchools.push(schoolId);
         }
         if (!exam.confirmations) exam.confirmations = {};
-        exam.confirmations[schoolId] = `${new Date().toISOString()}|${req.user.username || 'System'}`;
+        exam.confirmations[schoolId] = `${(/* @__PURE__ */ new Date()).toISOString()}|${req.user.username || "System"}`;
         await exam.save();
       }
       enqueueSchoolSummaryRebuild(schoolId, examId, "10");
       return res.json({ message: "All marks finalized and saved", updatedCount });
     }
-
     enqueueSchoolSummaryRebuild(schoolId, examId, "10");
     res.json({ message: "Marks saved successfully", updatedCount });
-  } catch (err: any) {
+  } catch (err) {
     console.error("ENTRY-ALL ERROR:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-// Resources
-
-app.get("/api/resources", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET', 'SCHOOL', 'HEADMASTER', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'ADMIN'), async (req, res) => {
+app.get("/api/resources", authenticateToken, requireRole("WEBMASTER", "DEO", "DIET", "SCHOOL", "HEADMASTER", "SUBJECT_EXPERT", "RESOURCE_PERSON", "ADMIN"), async (req, res) => {
   try {
     const { category } = req.query;
-    const filter: any = {};
-    if (category && category !== 'ALL') filter.category = category;
-
+    const filter = {};
+    if (category && category !== "ALL") filter.category = category;
     const resources = await Resource.find(filter).sort({ createdAt: -1 });
     res.json(resources);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/resources", authenticateToken, upload.single('file'), requireRole('WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'ADMIN'), async (req: any, res) => {
+app.post("/api/resources", authenticateToken, upload.single("file"), requireRole("WEBMASTER", "DEO", "DIET", "SUBJECT_EXPERT", "RESOURCE_PERSON", "ADMIN"), async (req, res) => {
   try {
     const { title, description, category, className, medium, subject, uploadedBy, externalLink, publishDateTime } = req.body;
     const file = req.file;
-
     if (!file && !externalLink) {
       return res.status(400).json({ message: "No file uploaded and no link provided" });
     }
-
     const newResource = new Resource({
       id: `res-${Date.now()}`,
       title,
       description,
-      category: category || 'General',
-      className: className || '',
-      medium: medium || 'English',
-      subject: subject || 'English',
+      category: category || "General",
+      className: className || "",
+      medium: medium || "English",
+      subject: subject || "English",
       fileUrl: file ? file.path : externalLink,
-      publicId: file ? file.filename : 'external',
-      resourceType: file ? (file.resource_type || (file.mimetype.includes('pdf') ? 'image' : 'raw')) : 'link',
-      fileType: file ? (file.originalname.split('.').pop() || 'unknown') : 'link',
+      publicId: file ? file.filename : "external",
+      resourceType: file ? file.resource_type || (file.mimetype.includes("pdf") ? "image" : "raw") : "link",
+      fileType: file ? file.originalname.split(".").pop() || "unknown" : "link",
       originalName: file ? file.originalname : title,
       fileSize: file ? file.size : 0,
       uploadedBy,
-      publishDateTime: publishDateTime ? new Date(publishDateTime) : undefined
+      publishDateTime: publishDateTime ? new Date(publishDateTime) : void 0
     });
-
     await newResource.save();
     res.json(newResource);
-  } catch (err: any) {
+  } catch (err) {
     console.error("Upload Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.delete("/api/resources/:id", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'ADMIN'), async (req: any, res) => {
+app.delete("/api/resources/:id", authenticateToken, requireRole("WEBMASTER", "DEO", "DIET", "SUBJECT_EXPERT", "RESOURCE_PERSON", "ADMIN"), async (req, res) => {
   try {
     const { id } = req.params;
     const resource = await Resource.findOne({ id });
     if (!resource) return res.status(404).json({ message: "Resource not found" });
-
-    if (resource.publicId && resource.publicId !== 'external') {
+    if (resource.publicId && resource.publicId !== "external") {
       try {
-        await cloudinary.uploader.destroy(resource.publicId, { resource_type: resource.resourceType || 'raw' });
+        await cloudinary.uploader.destroy(resource.publicId, { resource_type: resource.resourceType || "raw" });
       } catch (cloudErr) {
         console.error("Cloudinary delete error:", cloudErr);
       }
     }
-
     await Resource.deleteOne({ id });
     res.json({ message: "Resource deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.patch("/api/resources/:id/toggle", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'ADMIN'), async (req: any, res) => {
+app.patch("/api/resources/:id/toggle", authenticateToken, requireRole("WEBMASTER", "DEO", "DIET", "SUBJECT_EXPERT", "RESOURCE_PERSON", "ADMIN"), async (req, res) => {
   try {
     const { id } = req.params;
     const resource = await Resource.findOne({ id });
     if (!resource) return res.status(404).json({ message: "Resource not found" });
-
     resource.active = !resource.active;
     await resource.save();
     res.json(resource);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/resources/:id/download", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET', 'SCHOOL', 'HEADMASTER', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'ADMIN'), async (req: any, res) => {
+app.post("/api/resources/:id/download", authenticateToken, requireRole("WEBMASTER", "DEO", "DIET", "SCHOOL", "HEADMASTER", "SUBJECT_EXPERT", "RESOURCE_PERSON", "ADMIN"), async (req, res) => {
   try {
     const { id } = req.params;
     const resource = await Resource.findOne({ id });
     if (!resource) return res.status(404).json({ message: "Resource not found" });
-
-    const isUserAdmin = req.user && ['WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT'].includes(req.user.role);
-    if (!isUserAdmin && resource.publishDateTime && new Date(resource.publishDateTime) > new Date()) {
+    const isUserAdmin = req.user && ["WEBMASTER", "DEO", "DIET", "SUBJECT_EXPERT"].includes(req.user.role);
+    if (!isUserAdmin && resource.publishDateTime && new Date(resource.publishDateTime) > /* @__PURE__ */ new Date()) {
       return res.status(403).json({ message: "This resource is not yet published" });
     }
-
     resource.downloadCount = (resource.downloadCount || 0) + 1;
     await resource.save();
     res.json({ count: resource.downloadCount });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/download-resource/:id", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET', 'SCHOOL', 'HEADMASTER', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'ADMIN'), async (req: any, res) => {
+app.get("/api/download-resource/:id", authenticateToken, requireRole("WEBMASTER", "DEO", "DIET", "SCHOOL", "HEADMASTER", "SUBJECT_EXPERT", "RESOURCE_PERSON", "ADMIN"), async (req, res) => {
   try {
     const { id } = req.params;
     console.log(`Download request for resource ID: ${id}`);
-
-    // Try finding by custom id first, then by _id as fallback
     let resource = await Resource.findOne({ id });
     if (!resource && mongoose.Types.ObjectId.isValid(id)) {
       resource = await Resource.findById(id);
     }
-
     if (!resource) {
       console.log(`Resource not found in DB for ID: ${id}`);
       return res.status(404).json({
@@ -6324,33 +5530,26 @@ app.get("/api/download-resource/:id", authenticateToken, requireRole('WEBMASTER'
         requestedId: id
       });
     }
-
-    const isUserAdmin = req.user && ['WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT'].includes(req.user.role);
-    if (!isUserAdmin && resource.publishDateTime && new Date(resource.publishDateTime) > new Date()) {
+    const isUserAdmin = req.user && ["WEBMASTER", "DEO", "DIET", "SUBJECT_EXPERT"].includes(req.user.role);
+    if (!isUserAdmin && resource.publishDateTime && new Date(resource.publishDateTime) > /* @__PURE__ */ new Date()) {
       console.log(`Resource download attempted before publish time: ${id}`);
       return res.status(403).json({ message: "This resource is not yet published" });
     }
-
     resource.downloadCount = (resource.downloadCount || 0) + 1;
     await resource.save();
-
     console.log(`Fetching from direct URL: ${resource.fileUrl}`);
-
     const response = await axios({
       url: resource.fileUrl,
-      method: 'GET',
-      responseType: 'stream',
-      timeout: 15000
+      method: "GET",
+      responseType: "stream",
+      timeout: 15e3
     });
-
     const filename = resource.originalName || `${resource.title}.${resource.fileType}`;
-    // Use proper encoding for filename in Content-Disposition
     const encodedFilename = encodeURIComponent(filename);
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
-    res.setHeader('Content-Type', (response.headers['content-type'] as string) || 'application/octet-stream');
-
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodedFilename}`);
+    res.setHeader("Content-Type", response.headers["content-type"] || "application/octet-stream");
     response.data.pipe(res);
-  } catch (err: any) {
+  } catch (err) {
     console.error("Proxy Download Error:", err);
     res.status(500).json({
       message: "Failed to download file from storage",
@@ -6358,229 +5557,179 @@ app.get("/api/download-resource/:id", authenticateToken, requireRole('WEBMASTER'
     });
   }
 });
-
-// Students
-
-app.get("/api/management/students", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET', 'TEACHER'), async (req, res) => {
+app.get("/api/management/students", authenticateToken, requireRole("WEBMASTER", "SCHOOL", "HEADMASTER", "DEO", "DIET", "TEACHER"), async (req, res) => {
   try {
     const { schoolId, academicYear, className, division, mediumId, medium } = req.query;
-    const filter: any = {};
+    const filter = {};
     if (schoolId) filter.schoolId = schoolId;
-    if (academicYear && academicYear !== 'ALL') filter.academicYear = academicYear;
+    if (academicYear && academicYear !== "ALL") filter.academicYear = academicYear;
     if (className) filter.className = className;
-    if (division) filter.division = new RegExp(`^${escapeRegex(division)}$`, 'i');
-
+    if (division) filter.division = new RegExp(`^${escapeRegex(division)}$`, "i");
     if (mediumId) {
       filter.$or = [{ mediumId: String(mediumId) }, { medium: String(mediumId) }];
     } else if (medium) {
       filter.$or = [{ medium: String(medium) }, { mediumId: String(medium) }];
     }
-
     const students = await Student.find(filter).lean();
     const mediumMapsSingle = await getMediumMaps();
-
     const allSubjects = await Subject.find().lean();
-    const subjectNameMap = new Map<string, string>();
-    const subjectIdMap = new Map<string, any>();
-    allSubjects.forEach((s: any) => {
-        const nm = String(s.name).trim().toUpperCase();
-        const id = String(s.id || s._id);
-        subjectNameMap.set(nm, id);
-        subjectNameMap.set(nm.replace(/\s*\([EMTK]M\)\s*/g, '').trim(), id);
-        subjectIdMap.set(id, s);
+    const subjectNameMap = /* @__PURE__ */ new Map();
+    const subjectIdMap = /* @__PURE__ */ new Map();
+    allSubjects.forEach((s) => {
+      const nm = String(s.name).trim().toUpperCase();
+      const id = String(s.id || s._id);
+      subjectNameMap.set(nm, id);
+      subjectNameMap.set(nm.replace(/\s*\([EMTK]M\)\s*/g, "").trim(), id);
+      subjectIdMap.set(id, s);
     });
-
     for (const st of students) {
-        await populateStudentSubjectIds(st, mediumMapsSingle, subjectNameMap, subjectIdMap);
+      await populateStudentSubjectIds(st, mediumMapsSingle, subjectNameMap, subjectIdMap);
     }
-
     res.json(students);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Students Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/management/students/summary", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET', 'TEACHER'), async (req, res) => {
+app.get("/api/management/students/summary", authenticateToken, requireRole("WEBMASTER", "SCHOOL", "HEADMASTER", "DEO", "DIET", "TEACHER"), async (req, res) => {
   try {
     const { schoolId, academicYear, className } = req.query;
     if (!schoolId) return res.status(400).json({ message: "School ID is required" });
-
-    const filter: any = { schoolId };
-    if (academicYear && academicYear !== 'ALL') filter.academicYear = academicYear;
+    const filter = { schoolId };
+    if (academicYear && academicYear !== "ALL") filter.academicYear = academicYear;
     if (className) filter.className = className;
-
     const students = await Student.find(filter).lean();
-
-    const summary: Record<string, { boys: number, girls: number, total: number }> = {};
-
-    students.forEach((s: any) => {
-      const medium = s.medium || 'Unknown';
+    const summary = {};
+    students.forEach((s) => {
+      const medium = s.medium || "Unknown";
       if (!summary[medium]) summary[medium] = { boys: 0, girls: 0, total: 0 };
-
-      const gender = (s.gender || 'Boy').toLowerCase();
-      if (gender === 'boy' || gender === 'male') {
+      const gender = (s.gender || "Boy").toLowerCase();
+      if (gender === "boy" || gender === "male") {
         summary[medium].boys++;
       } else {
         summary[medium].girls++;
       }
       summary[medium].total++;
     });
-
     res.json(summary);
-  } catch (err: any) {
+  } catch (err) {
     console.error("GET Student Summary Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-async function populateStudentSubjectIds(studentData: any, mediumMapsSingle: any, subjectNameMap?: Map<string, string>, subjectIdMap?: Map<string, any>) {
+async function populateStudentSubjectIds(studentData, mediumMapsSingle, subjectNameMap, subjectIdMap) {
   if (!subjectNameMap || !subjectIdMap) {
-      const allSubjects = await Subject.find().lean();
-      subjectNameMap = new Map<string, string>();
-      subjectIdMap = new Map<string, any>();
-      allSubjects.forEach((s: any) => {
-          const nm = String(s.name).trim().toUpperCase();
-          const id = String(s.id || s._id);
-          subjectNameMap!.set(nm, id);
-          subjectNameMap!.set(nm.replace(/\s*\([EMTK]M\)\s*/g, '').trim(), id);
-          subjectIdMap!.set(id, s);
-      });
+    const allSubjects = await Subject.find().lean();
+    subjectNameMap = /* @__PURE__ */ new Map();
+    subjectIdMap = /* @__PURE__ */ new Map();
+    allSubjects.forEach((s) => {
+      const nm = String(s.name).trim().toUpperCase();
+      const id = String(s.id || s._id);
+      subjectNameMap.set(nm, id);
+      subjectNameMap.set(nm.replace(/\s*\([EMTK]M\)\s*/g, "").trim(), id);
+      subjectIdMap.set(id, s);
+    });
   }
-  
-  // 1. Resolve medium and mediumId
   if (studentData.mediumId && mediumMapsSingle.idToShortName && mediumMapsSingle.idToShortName[studentData.mediumId]) {
-      if (!studentData.medium || studentData.medium === studentData.mediumId) {
-          studentData.medium = mediumMapsSingle.idToShortName[studentData.mediumId];
-      }
+    if (!studentData.medium || studentData.medium === studentData.mediumId) {
+      studentData.medium = mediumMapsSingle.idToShortName[studentData.mediumId];
+    }
   } else if (studentData.medium) {
-      const medUpper = String(studentData.medium).trim().toUpperCase();
-      if (mediumMapsSingle.idToShortName && mediumMapsSingle.idToShortName[medUpper]) {
-          studentData.mediumId = medUpper;
-          studentData.medium = mediumMapsSingle.idToShortName[medUpper];
-      } else {
-          studentData.mediumId = mediumMapsSingle.shortNameToId[medUpper] || mediumMapsSingle.codeToId[medUpper] || '';
-      }
+    const medUpper = String(studentData.medium).trim().toUpperCase();
+    if (mediumMapsSingle.idToShortName && mediumMapsSingle.idToShortName[medUpper]) {
+      studentData.mediumId = medUpper;
+      studentData.medium = mediumMapsSingle.idToShortName[medUpper];
+    } else {
+      studentData.mediumId = mediumMapsSingle.shortNameToId[medUpper] || mediumMapsSingle.codeToId[medUpper] || "";
+    }
   }
-
-  // 2. Resolve language paper names and subject IDs
-  const resolveSubject = (subName: string, subId: string): { id: string; name: string } => {
-      let finalName = subName ? String(subName).trim() : '';
-      
-      if (!finalName) {
-          return { id: '', name: '' }; // Explicitly cleared or empty
+  const resolveSubject = (subName, subId) => {
+    let finalName = subName ? String(subName).trim() : "";
+    if (!finalName) {
+      return { id: "", name: "" };
+    }
+    let finalId = "";
+    let str = finalName.toUpperCase();
+    if (str === "HINDI" || str.includes("HINDI (THIRD LANGUAGE)")) str = "HINDI - P04 TM";
+    const matchedId = subjectNameMap?.get(str) || subjectNameMap?.get(str.replace(/\s*\([EMTK]M\)\s*/g, "").trim()) || "";
+    if (matchedId) {
+      finalId = matchedId;
+      if (subjectIdMap?.has(matchedId)) {
+        finalName = subjectIdMap.get(matchedId).name;
       }
-
-      let finalId = '';
-      let str = finalName.toUpperCase();
-      if (str === 'HINDI' || str.includes('HINDI (THIRD LANGUAGE)')) str = 'HINDI - P04 TM';
-      const matchedId = subjectNameMap?.get(str) || subjectNameMap?.get(str.replace(/\s*\([EMTK]M\)\s*/g, '').trim()) || '';
-      
-      if (matchedId) {
-          finalId = matchedId;
-          if (subjectIdMap?.has(matchedId)) {
-              finalName = subjectIdMap.get(matchedId).name;
-          }
-      }
-
-      return { id: finalId, name: finalName };
+    }
+    return { id: finalId, name: finalName };
   };
-
   const p1 = resolveSubject(studentData.firstLangPaper1, studentData.firstLangPaper1SubjectId);
   studentData.firstLangPaper1 = p1.name;
   studentData.firstLangPaper1SubjectId = p1.id;
-
   const p2 = resolveSubject(studentData.firstLangPaper2, studentData.firstLangPaper2SubjectId);
   studentData.firstLangPaper2 = p2.name;
   studentData.firstLangPaper2SubjectId = p2.id;
-
   const p3 = resolveSubject(studentData.secondLang, studentData.secondLanguageSubjectId);
   studentData.secondLang = p3.name;
   studentData.secondLanguageSubjectId = p3.id;
-
   const p4 = resolveSubject(studentData.thirdLang, studentData.thirdLanguageSubjectId);
   studentData.thirdLang = p4.name;
   studentData.thirdLanguageSubjectId = p4.id;
-
-  // 3. Resolve core subjects and populate subjectIds array
-  const medCode = mediumMapsSingle.shortNameToCode[String(studentData.medium).trim().toUpperCase()] || 'EM';
+  const medCode = mediumMapsSingle.shortNameToCode[String(studentData.medium).trim().toUpperCase()] || "EM";
   const coreSubjectNames = [
-      `SOCIAL SCIENCE - P05 ${medCode}`,
-      `PHYSICS - P06 ${medCode}`,
-      `CHEMISTRY - P07 ${medCode}`,
-      `BIOLOGY - P08 ${medCode}`,
-      `MATHEMATICS - P09 ${medCode}`,
-      `INFORMATION TECHNOLOGY - P10 ${medCode}`
+    `SOCIAL SCIENCE - P05 ${medCode}`,
+    `PHYSICS - P06 ${medCode}`,
+    `CHEMISTRY - P07 ${medCode}`,
+    `BIOLOGY - P08 ${medCode}`,
+    `MATHEMATICS - P09 ${medCode}`,
+    `INFORMATION TECHNOLOGY - P10 ${medCode}`
   ];
-
-  const allSubIds: string[] = [];
+  const allSubIds = [];
   if (p1.id) allSubIds.push(p1.id);
   if (p2.id) allSubIds.push(p2.id);
   if (p3.id) allSubIds.push(p3.id);
   if (p4.id) allSubIds.push(p4.id);
-
-  coreSubjectNames.forEach(cnm => {
-      const cid = subjectNameMap?.get(cnm) || subjectNameMap?.get(cnm.replace(/\s*\([EMTK]M\)\s*/g, '').trim()) || '';
-      if (cid) allSubIds.push(cid);
+  coreSubjectNames.forEach((cnm) => {
+    const cid = subjectNameMap?.get(cnm) || subjectNameMap?.get(cnm.replace(/\s*\([EMTK]M\)\s*/g, "").trim()) || "";
+    if (cid) allSubIds.push(cid);
   });
-
   studentData.subjectIds = [...new Set(allSubIds)];
 }
-
-app.post("/api/management/students", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
+app.post("/api/management/students", authenticateToken, requireRole("WEBMASTER", "SCHOOL", "HEADMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const studentData = req.body;
-
     if (!studentData || !studentData.name) {
       return res.status(400).json({ message: "Student name is required" });
     }
-
     if (!studentData.schoolId) {
       return res.status(400).json({ message: "School ID is required" });
     }
-
-    // Fetch medium maps FIRST to ensure mediumMapsSingle is available
     const mediumMapsSingle = await getMediumMaps();
-
-    // Use findOne to safely handle both ObjectId and custom string school IDs
     const school = await School.findOne({
       $or: [
-        ...(mongoose.Types.ObjectId.isValid(studentData.schoolId) ? [{ _id: studentData.schoolId }] : []),
+        ...mongoose.Types.ObjectId.isValid(studentData.schoolId) ? [{ _id: studentData.schoolId }] : [],
         { id: studentData.schoolId },
         { schoolCode: studentData.schoolId }
       ]
     });
-    const schoolCode = (school as any)?.schoolCode || (school as any)?.code || "";
+    const schoolCode = school?.schoolCode || school?.code || "";
     const regNo = studentData.regNo || studentData.globalId || "";
     const uniqueId = schoolCode + regNo;
-
-    // Default academic year: current Kerala academic year (June-May)
-    const nowD = new Date();
+    const nowD = /* @__PURE__ */ new Date();
     const yrD = nowD.getFullYear();
     const moD = nowD.getMonth() + 1;
-    const defaultAcademicYear = moD >= 5
-      ? `${yrD}-${String(yrD + 1).slice(-2)}`
-      : `${yrD - 1}-${String(yrD).slice(-2)}`;
-
-    let medium = studentData.medium ? String(studentData.medium).trim() : '';
-    // Normalize medium to canonical shortName (e.g., "TM" → "Tamil", "medium-tamil" → "Tamil")
+    const defaultAcademicYear = moD >= 5 ? `${yrD}-${String(yrD + 1).slice(-2)}` : `${yrD - 1}-${String(yrD).slice(-2)}`;
+    let medium = studentData.medium ? String(studentData.medium).trim() : "";
     medium = await resolveMediumShortName(medium);
-    let paper1 = studentData.firstLangPaper1 ? String(studentData.firstLangPaper1).trim() : '';
-    let paper2 = studentData.firstLangPaper2 ? String(studentData.firstLangPaper2).trim() : '';
-    let secondLang = studentData.secondLang ? String(studentData.secondLang).trim() : '';
-    let thirdLang = studentData.thirdLang ? String(studentData.thirdLang).trim() : '';
-
-    if (thirdLang.toUpperCase() === 'HINDI' || thirdLang.toUpperCase() === 'HINDI (THIRD LANGUAGE) - P04') thirdLang = 'HINDI - P04 TM';
-
+    let paper1 = studentData.firstLangPaper1 ? String(studentData.firstLangPaper1).trim() : "";
+    let paper2 = studentData.firstLangPaper2 ? String(studentData.firstLangPaper2).trim() : "";
+    let secondLang = studentData.secondLang ? String(studentData.secondLang).trim() : "";
+    let thirdLang = studentData.thirdLang ? String(studentData.thirdLang).trim() : "";
+    if (thirdLang.toUpperCase() === "HINDI" || thirdLang.toUpperCase() === "HINDI (THIRD LANGUAGE) - P04") thirdLang = "HINDI - P04 TM";
     if (medium && (!paper1 || !paper2)) {
       const medUpper = medium.toUpperCase();
       paper1 = paper1 || `${medUpper} AT - P01`;
       paper2 = paper2 || `${medUpper} BT - P02`;
     }
-
-    let mediumCode = mediumMapsSingle.shortNameToCode[medium.toUpperCase()] || 'EM';
-
-    const studentSubjects: string[] = [];
+    let mediumCode = mediumMapsSingle.shortNameToCode[medium.toUpperCase()] || "EM";
+    const studentSubjects = [];
     if (paper1) studentSubjects.push(paper1.trim());
     if (paper2) studentSubjects.push(paper2.trim());
     studentSubjects.push(secondLang.trim());
@@ -6591,59 +5740,50 @@ app.post("/api/management/students", authenticateToken, requireRole('WEBMASTER',
     studentSubjects.push(`BIOLOGY - P08 ${mediumCode}`);
     studentSubjects.push(`MATHEMATICS - P09 ${mediumCode}`);
     studentSubjects.push(`INFORMATION TECHNOLOGY - P10 ${mediumCode}`);
-
-    // Force-override: use ?? (nullish coalescing) so explicit empty strings from dropdowns are preserved
-    const mappedData: any = {
+    const mappedData = {
       globalId: regNo,
       name: studentData.name,
       schoolId: studentData.schoolId,
-      schoolCode: schoolCode,
-      uniqueId: uniqueId,
-      gender: studentData.gender ?? 'Boy',
+      schoolCode,
+      uniqueId,
+      gender: studentData.gender ?? "Boy",
       scribe: !!studentData.scribe,
-      className: studentData.classStandard ?? studentData.className ?? '10',
-      division: studentData.division ?? '',
+      className: studentData.classStandard ?? studentData.className ?? "10",
+      division: studentData.division ?? "",
       dob: studentData.dob || null,
-      fatherName: studentData.fatherName ?? '',
-      motherName: studentData.motherName ?? '',
-      caste: studentData.caste ?? '',
-      category: studentData.category ?? 'General',
-      religion: studentData.religion ?? '',
-      place: studentData.place ?? '',
-      mobile: studentData.mobile ?? '',
-      sslcRegNo: studentData.sslcRegNo ?? '',
-      lettersStatus: studentData.letterStatus !== undefined ? Number(studentData.letterStatus) : 0,
-      readingStatus: studentData.readingStatus !== undefined ? Number(studentData.readingStatus) : 0,
-      writingStatus: studentData.writingStatus !== undefined ? Number(studentData.writingStatus) : 0,
-      medium: medium,
-      mediumId: studentData.mediumId ?? '',
+      fatherName: studentData.fatherName ?? "",
+      motherName: studentData.motherName ?? "",
+      caste: studentData.caste ?? "",
+      category: studentData.category ?? "General",
+      religion: studentData.religion ?? "",
+      place: studentData.place ?? "",
+      mobile: studentData.mobile ?? "",
+      sslcRegNo: studentData.sslcRegNo ?? "",
+      lettersStatus: studentData.letterStatus !== void 0 ? Number(studentData.letterStatus) : 0,
+      readingStatus: studentData.readingStatus !== void 0 ? Number(studentData.readingStatus) : 0,
+      writingStatus: studentData.writingStatus !== void 0 ? Number(studentData.writingStatus) : 0,
+      medium,
+      mediumId: studentData.mediumId ?? "",
       firstLangPaper1: paper1,
-      firstLangPaper1SubjectId: studentData.firstLangPaper1SubjectId ?? '',
+      firstLangPaper1SubjectId: studentData.firstLangPaper1SubjectId ?? "",
       firstLangPaper2: paper2,
-      firstLangPaper2SubjectId: studentData.firstLangPaper2SubjectId ?? '',
-      secondLang: secondLang,
-      secondLanguageSubjectId: studentData.secondLanguageSubjectId ?? '',
-      thirdLang: thirdLang,
-      thirdLanguageSubjectId: studentData.thirdLanguageSubjectId ?? '',
+      firstLangPaper2SubjectId: studentData.firstLangPaper2SubjectId ?? "",
+      secondLang,
+      secondLanguageSubjectId: studentData.secondLanguageSubjectId ?? "",
+      thirdLang,
+      thirdLanguageSubjectId: studentData.thirdLanguageSubjectId ?? "",
       subjects: studentSubjects,
-      academicYear: (studentData.academicYear && String(studentData.academicYear).trim()) || defaultAcademicYear,
-      active: studentData.active !== undefined ? !!studentData.active : true
+      academicYear: studentData.academicYear && String(studentData.academicYear).trim() || defaultAcademicYear,
+      active: studentData.active !== void 0 ? !!studentData.active : true
     };
-
-    // Populate missing subject IDs and mediumId from language strings / maps
     await populateStudentSubjectIds(mappedData, mediumMapsSingle);
-
     if (studentData.id || studentData._id) {
       const searchId = studentData.id || studentData._id;
-      const query = mongoose.Types.ObjectId.isValid(searchId)
-        ? { $or: [{ id: searchId }, { _id: searchId }] }
-        : { id: searchId };
-
-      // Use $set to be safe and ensure all fields in mappedData are updated
+      const query = mongoose.Types.ObjectId.isValid(searchId) ? { $or: [{ id: searchId }, { _id: searchId }] } : { id: searchId };
       const updated = await Student.findOneAndUpdate(
         query,
         { $set: mappedData },
-        { returnDocument: 'after', runValidators: true }
+        { returnDocument: "after", runValidators: true }
       );
       if (!updated) {
         return res.status(404).json({ message: "Student not found for update" });
@@ -6657,27 +5797,24 @@ app.post("/api/management/students", authenticateToken, requireRole('WEBMASTER',
       invalidateSchoolAnalytics(newStudent.schoolId || mappedData.schoolId);
       res.json(newStudent);
     }
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST Student Error:", err);
-    if (err.code === 11000 || (err.name === 'MongoServerError' && err.message.includes('E11000'))) {
+    if (err.code === 11e3 || err.name === "MongoServerError" && err.message.includes("E11000")) {
       return res.status(400).json({ message: "A student with this Registration Number already exists for this school and academic year." });
     }
-    if (err.name === 'ValidationError') {
+    if (err.name === "ValidationError") {
       return res.status(400).json({ message: err.message });
     }
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/management/students/promote", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
+app.post("/api/management/students/promote", authenticateToken, requireRole("WEBMASTER", "SCHOOL", "HEADMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const { schoolId, sourceClass, targetClass, newAcademicYear, studentIds } = req.body;
-
     if (!schoolId || !newAcademicYear) {
       return res.status(400).json({ message: "School ID and New Academic Year are required" });
     }
-
-    const filter: any = { schoolId };
+    const filter = { schoolId };
     if (studentIds && Array.isArray(studentIds) && studentIds.length > 0) {
       filter.id = { $in: studentIds };
     } else if (sourceClass) {
@@ -6685,7 +5822,6 @@ app.post("/api/management/students/promote", authenticateToken, requireRole('WEB
     } else {
       return res.status(400).json({ message: "Provide either studentIds or sourceClass for promotion" });
     }
-
     const result = await Student.updateMany(filter, {
       $set: {
         className: targetClass,
@@ -6693,18 +5829,16 @@ app.post("/api/management/students/promote", authenticateToken, requireRole('WEB
       }
     });
     invalidateSchoolAnalytics(schoolId);
-
     res.json({
       message: `Successfully promoted ${result.modifiedCount} students to Class ${targetClass} for Academic Year ${newAcademicYear}`,
       count: result.modifiedCount
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST Students Promote Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.delete("/api/management/students/:id", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
+app.delete("/api/management/students/:id", authenticateToken, requireRole("WEBMASTER", "SCHOOL", "HEADMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const { id } = req.params;
     const studentToDelete = await Student.findOne({ id });
@@ -6712,94 +5846,80 @@ app.delete("/api/management/students/:id", authenticateToken, requireRole('WEBMA
     await Mark.deleteMany({ studentId: id });
     invalidateSchoolAnalytics(studentToDelete?.schoolId);
     res.json({ message: "Student and associated marks deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     console.error("DELETE Student Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.post("/api/management/students/bulk-delete", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
+app.post("/api/management/students/bulk-delete", authenticateToken, requireRole("WEBMASTER", "SCHOOL", "HEADMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const { ids } = req.body;
     if (!ids || !Array.isArray(ids)) {
       return res.status(400).json({ message: "Invalid student IDs array" });
     }
-
     await Student.deleteMany({ id: { $in: ids } });
     await Mark.deleteMany({ studentId: { $in: ids } });
     invalidateSchoolAnalytics();
-
     res.json({ message: "Students and associated marks deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Bulk DELETE Student Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.post("/api/management/students/:id/clear-field", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
+app.post("/api/management/students/:id/clear-field", authenticateToken, requireRole("WEBMASTER", "SCHOOL", "HEADMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const { id } = req.params;
     const { field, fields } = req.body;
-    
-    const targetFields: string[] = fields || (field ? [field] : []);
+    const targetFields = fields || (field ? [field] : []);
     if (targetFields.length === 0) {
       return res.status(400).json({ message: "No field specified to clear" });
     }
-
-    const query = mongoose.Types.ObjectId.isValid(id)
-      ? { $or: [{ id }, { _id: id }] }
-      : { id };
-
+    const query = mongoose.Types.ObjectId.isValid(id) ? { $or: [{ id }, { _id: id }] } : { id };
     const student = await Student.findOne(query);
     if (!student) {
       return res.status(404).json({ message: "Student not found" });
     }
-
-    const update: any = {};
-    targetFields.forEach((f: string) => {
-      if (f === 'medium' || f === 'all') {
-        update.medium = '';
-        update.mediumId = '';
+    const update = {};
+    targetFields.forEach((f) => {
+      if (f === "medium" || f === "all") {
+        update.medium = "";
+        update.mediumId = "";
       }
-      if (f === 'firstLangPaper1' || f === 'all') {
-        update.firstLangPaper1 = '';
-        update.firstLangPaper1SubjectId = '';
+      if (f === "firstLangPaper1" || f === "all") {
+        update.firstLangPaper1 = "";
+        update.firstLangPaper1SubjectId = "";
       }
-      if (f === 'firstLangPaper2' || f === 'all') {
-        update.firstLangPaper2 = '';
-        update.firstLangPaper2SubjectId = '';
+      if (f === "firstLangPaper2" || f === "all") {
+        update.firstLangPaper2 = "";
+        update.firstLangPaper2SubjectId = "";
       }
-      if (f === 'secondLang' || f === 'all') {
-        update.secondLang = '';
-        update.secondLanguageSubjectId = '';
+      if (f === "secondLang" || f === "all") {
+        update.secondLang = "";
+        update.secondLanguageSubjectId = "";
       }
-      if (f === 'thirdLang' || f === 'all') {
-        update.thirdLang = '';
-        update.thirdLanguageSubjectId = '';
+      if (f === "thirdLang" || f === "all") {
+        update.thirdLang = "";
+        update.thirdLanguageSubjectId = "";
       }
     });
-
     const updated = await Student.findOneAndUpdate(
       query,
       { $set: update },
-      { returnDocument: 'after' }
+      { returnDocument: "after" }
     ).lean();
-
     if (updated) {
       const mediumMapsSingle = await getMediumMaps();
       await populateStudentSubjectIds(updated, mediumMapsSingle);
       await Student.updateOne(query, { $set: { subjectIds: updated.subjectIds } });
     }
-
     invalidateSchoolAnalytics(student.schoolId);
     res.json(updated);
-  } catch (err: any) {
+  } catch (err) {
     console.error("Clear Student Field Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.post("/api/management/students/bulk-clear-fields", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
+app.post("/api/management/students/bulk-clear-fields", authenticateToken, requireRole("WEBMASTER", "SCHOOL", "HEADMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const { studentIds, fields } = req.body;
     if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
@@ -6808,50 +5928,45 @@ app.post("/api/management/students/bulk-clear-fields", authenticateToken, requir
     if (!fields || !Array.isArray(fields) || fields.length === 0) {
       return res.status(400).json({ message: "Fields array is required" });
     }
-
-    const update: any = {};
-    fields.forEach((f: string) => {
-      if (f === 'medium' || f === 'all') {
-        update.medium = '';
-        update.mediumId = '';
+    const update = {};
+    fields.forEach((f) => {
+      if (f === "medium" || f === "all") {
+        update.medium = "";
+        update.mediumId = "";
       }
-      if (f === 'firstLangPaper1' || f === 'all') {
-        update.firstLangPaper1 = '';
-        update.firstLangPaper1SubjectId = '';
+      if (f === "firstLangPaper1" || f === "all") {
+        update.firstLangPaper1 = "";
+        update.firstLangPaper1SubjectId = "";
       }
-      if (f === 'firstLangPaper2' || f === 'all') {
-        update.firstLangPaper2 = '';
-        update.firstLangPaper2SubjectId = '';
+      if (f === "firstLangPaper2" || f === "all") {
+        update.firstLangPaper2 = "";
+        update.firstLangPaper2SubjectId = "";
       }
-      if (f === 'secondLang' || f === 'all') {
-        update.secondLang = '';
-        update.secondLanguageSubjectId = '';
+      if (f === "secondLang" || f === "all") {
+        update.secondLang = "";
+        update.secondLanguageSubjectId = "";
       }
-      if (f === 'thirdLang' || f === 'all') {
-        update.thirdLang = '';
-        update.thirdLanguageSubjectId = '';
+      if (f === "thirdLang" || f === "all") {
+        update.thirdLang = "";
+        update.thirdLanguageSubjectId = "";
       }
     });
-
     const filter = { id: { $in: studentIds } };
     await Student.updateMany(filter, { $set: update });
-
     const mediumMapsSingle = await getMediumMaps();
     const updatedStudents = await Student.find(filter).lean();
     for (const st of updatedStudents) {
       await populateStudentSubjectIds(st, mediumMapsSingle);
       await Student.updateOne({ id: st.id }, { $set: { subjectIds: st.subjectIds } });
     }
-
     invalidateSchoolAnalytics();
     res.json({ message: `Successfully cleared selected fields for ${studentIds.length} students`, updatedCount: studentIds.length });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Bulk Clear Student Fields Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
+app.post("/api/management/students/bulk", authenticateToken, requireRole("WEBMASTER", "SCHOOL", "HEADMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const { students, schoolId } = req.body;
     if (!students || !Array.isArray(students)) {
@@ -6860,46 +5975,35 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
     if (!schoolId) {
       return res.status(400).json({ message: "School ID is required for bulk import" });
     }
-
-    // Safe lookup: handles both ObjectId and custom string school IDs
     const school = await School.findOne({
       $or: [
-        ...(mongoose.Types.ObjectId.isValid(schoolId) ? [{ _id: schoolId }] : []),
+        ...mongoose.Types.ObjectId.isValid(schoolId) ? [{ _id: schoolId }] : [],
         { id: schoolId },
         { schoolCode: schoolId }
       ]
     });
-    const schoolCode = (school as any)?.schoolCode || (school as any)?.code || "";
-
-    // Default academic year: current Kerala academic year (June-May)
-    const nowD = new Date();
+    const schoolCode = school?.schoolCode || school?.code || "";
+    const nowD = /* @__PURE__ */ new Date();
     const yrD = nowD.getFullYear();
     const moD = nowD.getMonth() + 1;
-    const defaultAcademicYear = moD >= 5
-      ? `${yrD}-${String(yrD + 1).slice(-2)}`
-      : `${yrD - 1}-${String(yrD).slice(-2)}`;
-
-    const failed: any[] = [];
-    const bulkOps: any[] = [];
-    const validMeta: Array<{ rowNum: number; name: string; regNo: string }> = [];
+    const defaultAcademicYear = moD >= 5 ? `${yrD}-${String(yrD + 1).slice(-2)}` : `${yrD - 1}-${String(yrD).slice(-2)}`;
+    const failed = [];
+    const bulkOps = [];
+    const validMeta = [];
     const batchBase = Date.now();
-    
     const allSubjects = await Subject.find().lean();
-    const subjectNameMap = new Map<string, string>();
-    allSubjects.forEach((s: any) => {
-        const nm = String(s.name).trim().toUpperCase();
-        const id = String(s.id || s._id);
-        subjectNameMap.set(nm, id);
-        subjectNameMap.set(nm.replace(/\\s*\\([EMTK]M\\)\\s*/g, '').trim(), id);
+    const subjectNameMap = /* @__PURE__ */ new Map();
+    allSubjects.forEach((s) => {
+      const nm = String(s.name).trim().toUpperCase();
+      const id = String(s.id || s._id);
+      subjectNameMap.set(nm, id);
+      subjectNameMap.set(nm.replace(/\\s*\\([EMTK]M\\)\\s*/g, "").trim(), id);
     });
-
-    // Step 1: Pre-validate every row and build MongoDB bulkOps array
     for (let idx = 0; idx < students.length; idx++) {
       const s = students[idx];
       const rowNum = idx + 1;
       const name = s.name ? String(s.name).trim().toUpperCase() : "";
       const regNo = s.regNo ? String(s.regNo).trim() : "";
-
       if (!name && !regNo) {
         failed.push({ row: rowNum, name: "Empty row", identifier: "N/A", reason: "Row is empty" });
         continue;
@@ -6912,85 +6016,71 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
         failed.push({ row: rowNum, name: "Unknown Candidate", identifier: regNo, reason: "Name is required" });
         continue;
       }
-
-      const academicYear = (s.academicYear && String(s.academicYear).trim()) || defaultAcademicYear;
+      const academicYear = s.academicYear && String(s.academicYear).trim() || defaultAcademicYear;
       const uniqueId = schoolCode + regNo;
-      // Unique student ID: batch base + index offset ensures no collisions within the batch
-      const newStudId = `stud-${batchBase + idx}-${Math.floor(Math.random() * 99999).toString().padStart(5, '0')}`;
-
-      const mappedData: any = {
+      const newStudId = `stud-${batchBase + idx}-${Math.floor(Math.random() * 99999).toString().padStart(5, "0")}`;
+      const mappedData = {
         globalId: regNo,
         name,
         schoolId,
         schoolCode,
         uniqueId,
-        gender: s.gender || 'Male',
-        scribe: s.scribe !== undefined ? !!s.scribe : false,
-        className: s.classStandard || s.className || '10',
-        division: s.division || '',
+        gender: s.gender || "Male",
+        scribe: s.scribe !== void 0 ? !!s.scribe : false,
+        className: s.classStandard || s.className || "10",
+        division: s.division || "",
         dob: s.dob || null,
-        fatherName: s.fatherName || '',
-        motherName: s.motherName || '',
-        caste: s.caste || '',
-        category: s.category || 'General',
-        religion: s.religion || '',
-        place: s.place || '',
-        mobile: s.mobile || '',
-        sslcRegNo: s.sslcRegNo || '',
-        lettersStatus: s.letterStatus !== undefined ? Number(s.letterStatus) : 0,
-        readingStatus: s.readingStatus !== undefined ? Number(s.readingStatus) : 0,
-        writingStatus: s.writingStatus !== undefined ? Number(s.writingStatus) : 0,
+        fatherName: s.fatherName || "",
+        motherName: s.motherName || "",
+        caste: s.caste || "",
+        category: s.category || "General",
+        religion: s.religion || "",
+        place: s.place || "",
+        mobile: s.mobile || "",
+        sslcRegNo: s.sslcRegNo || "",
+        lettersStatus: s.letterStatus !== void 0 ? Number(s.letterStatus) : 0,
+        readingStatus: s.readingStatus !== void 0 ? Number(s.readingStatus) : 0,
+        writingStatus: s.writingStatus !== void 0 ? Number(s.writingStatus) : 0,
         academicYear,
         active: { $ne: false }
       };
-
-      let medium = s.medium ? String(s.medium).trim() : '';
+      let medium = s.medium ? String(s.medium).trim() : "";
       medium = await resolveMediumShortName(medium);
-      let paper1 = s.firstLangPaper1 ? String(s.firstLangPaper1).trim() : '';
-      let paper2 = s.firstLangPaper2 ? String(s.firstLangPaper2).trim() : '';
-      let secondLang = s.secondLang ? String(s.secondLang).trim() : '';
-      let thirdLang = s.thirdLang ? String(s.thirdLang).trim() : '';
-
-
-      if (thirdLang.toUpperCase() === 'HINDI' || thirdLang.toUpperCase() === 'HINDI (THIRD LANGUAGE) - P04') thirdLang = 'HINDI - P04 TM';
-
+      let paper1 = s.firstLangPaper1 ? String(s.firstLangPaper1).trim() : "";
+      let paper2 = s.firstLangPaper2 ? String(s.firstLangPaper2).trim() : "";
+      let secondLang = s.secondLang ? String(s.secondLang).trim() : "";
+      let thirdLang = s.thirdLang ? String(s.thirdLang).trim() : "";
+      if (thirdLang.toUpperCase() === "HINDI" || thirdLang.toUpperCase() === "HINDI (THIRD LANGUAGE) - P04") thirdLang = "HINDI - P04 TM";
       if (medium && (!paper1 || !paper2)) {
         const medUpper = medium.toUpperCase();
         paper1 = paper1 || `${medUpper} AT - P01`;
         paper2 = paper2 || `${medUpper} BT - P02`;
       }
-
       const mediumMapsImport = await getMediumMaps();
-      let mediumCode = mediumMapsImport.shortNameToCode[medium.toUpperCase()] || 'EM';
-
-      const studentSubjects: string[] = [];
+      let mediumCode = mediumMapsImport.shortNameToCode[medium.toUpperCase()] || "EM";
+      const studentSubjects = [];
       if (paper1) studentSubjects.push(paper1.trim());
       if (paper2) studentSubjects.push(paper2.trim());
       studentSubjects.push(secondLang.trim());
       studentSubjects.push(thirdLang.trim());
-
       studentSubjects.push(`SOCIAL SCIENCE - P05 ${mediumCode}`);
       studentSubjects.push(`PHYSICS - P06 ${mediumCode}`);
       studentSubjects.push(`CHEMISTRY - P07 ${mediumCode}`);
       studentSubjects.push(`BIOLOGY - P08 ${mediumCode}`);
       studentSubjects.push(`MATHEMATICS - P09 ${mediumCode}`);
       studentSubjects.push(`INFORMATION TECHNOLOGY - P10 ${mediumCode}`);
-
       mappedData.medium = medium;
-      if (s.mediumId !== undefined) mappedData.mediumId = s.mediumId;
+      if (s.mediumId !== void 0) mappedData.mediumId = s.mediumId;
       mappedData.firstLangPaper1 = paper1;
-      if (s.firstLangPaper1SubjectId !== undefined) mappedData.firstLangPaper1SubjectId = s.firstLangPaper1SubjectId;
+      if (s.firstLangPaper1SubjectId !== void 0) mappedData.firstLangPaper1SubjectId = s.firstLangPaper1SubjectId;
       mappedData.firstLangPaper2 = paper2;
-      if (s.firstLangPaper2SubjectId !== undefined) mappedData.firstLangPaper2SubjectId = s.firstLangPaper2SubjectId;
+      if (s.firstLangPaper2SubjectId !== void 0) mappedData.firstLangPaper2SubjectId = s.firstLangPaper2SubjectId;
       mappedData.secondLang = secondLang;
-      if (s.secondLanguageSubjectId !== undefined) mappedData.secondLanguageSubjectId = s.secondLanguageSubjectId;
+      if (s.secondLanguageSubjectId !== void 0) mappedData.secondLanguageSubjectId = s.secondLanguageSubjectId;
       mappedData.thirdLang = thirdLang;
-      if (s.thirdLanguageSubjectId !== undefined) mappedData.thirdLanguageSubjectId = s.thirdLanguageSubjectId;
+      if (s.thirdLanguageSubjectId !== void 0) mappedData.thirdLanguageSubjectId = s.thirdLanguageSubjectId;
       mappedData.subjects = studentSubjects;
-      
       await populateStudentSubjectIds(mappedData, mediumMapsImport, subjectNameMap);
-
-
       bulkOps.push({
         updateOne: {
           filter: { uniqueId },
@@ -7002,92 +6092,76 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
         }
       });
     }
-
     if (bulkOps.length > 0) {
       await Student.bulkWrite(bulkOps);
       invalidateSchoolAnalytics(schoolId);
     }
-
     res.json({
       message: "Import successful",
       imported: bulkOps.length,
-      failed: failed
+      failed
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST Students Bulk Error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-app.post("/api/management/students/bulk-update-medium", authenticateToken, async (req: any, res) => {
+app.post("/api/management/students/bulk-update-medium", authenticateToken, async (req, res) => {
   try {
     const { schoolId, academicYear, className, division, medium: rawMedium, firstLangPaper1, firstLangPaper2, secondLang: reqSecondLang, thirdLang: reqThirdLang } = req.body;
     if (!schoolId || !academicYear || !className || !rawMedium) {
       return res.status(400).json({ message: "Missing required fields" });
     }
-
-    // Normalize medium to canonical shortName
     const medium = await resolveMediumShortName(rawMedium);
-
-    let paper1 = firstLangPaper1 || '';
-    let paper2 = firstLangPaper2 || '';
-
+    let paper1 = firstLangPaper1 || "";
+    let paper2 = firstLangPaper2 || "";
     if (!paper1 || !paper2) {
       const medUpper = medium.toUpperCase();
       paper1 = paper1 || `${medUpper} AT - P01`;
       paper2 = paper2 || `${medUpper} BT - P02`;
     }
-
     const mediumMaps = await getMediumMaps();
-    let mediumCode = mediumMaps.shortNameToCode[medium.toUpperCase()] || 'EM';
-
-    const filter: any = { schoolId };
-    if (className && className.toUpperCase() !== 'ALL') {
+    let mediumCode = mediumMaps.shortNameToCode[medium.toUpperCase()] || "EM";
+    const filter = { schoolId };
+    if (className && className.toUpperCase() !== "ALL") {
       filter.$or = [
         { className },
         { classStandard: className }
       ];
     }
-    if (division && division.toUpperCase() !== 'ALL') {
-      filter.division = new RegExp(`^${division.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    if (division && division.toUpperCase() !== "ALL") {
+      filter.division = new RegExp(`^${division.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
     }
-
     const studentsToUpdate = await Student.find(
       filter,
       { id: 1, secondLang: 1, thirdLang: 1 }
     ).lean();
-
     const allSubjects = await Subject.find().lean();
-    const subjectNameMap = new Map<string, string>();
-    allSubjects.forEach((s: any) => {
-        const nm = String(s.name).trim().toUpperCase();
-        const id = String(s.id || s._id);
-        subjectNameMap.set(nm, id);
-        subjectNameMap.set(nm.replace(/\\s*\\([EMTK]M\\)\\s*/g, '').trim(), id);
+    const subjectNameMap = /* @__PURE__ */ new Map();
+    allSubjects.forEach((s) => {
+      const nm = String(s.name).trim().toUpperCase();
+      const id = String(s.id || s._id);
+      subjectNameMap.set(nm, id);
+      subjectNameMap.set(nm.replace(/\\s*\\([EMTK]M\\)\\s*/g, "").trim(), id);
     });
-
     const bulkOps = [];
     for (const st of studentsToUpdate) {
-      const reqSecondLangStr = reqSecondLang || st.secondLang || '';
+      const reqSecondLangStr = reqSecondLang || st.secondLang || "";
       const finalSecondLang = reqSecondLangStr;
-
-      const reqThirdLangStr = reqThirdLang || st.thirdLang || '';
-      const finalThirdLang = (reqThirdLangStr.toUpperCase() === 'HINDI' || reqThirdLangStr.toUpperCase() === 'HINDI (THIRD LANGUAGE) - P04') ? 'HINDI - P04 TM' : reqThirdLangStr;
-
-      const studentSubjects: string[] = [];
+      const reqThirdLangStr = reqThirdLang || st.thirdLang || "";
+      const finalThirdLang = reqThirdLangStr.toUpperCase() === "HINDI" || reqThirdLangStr.toUpperCase() === "HINDI (THIRD LANGUAGE) - P04" ? "HINDI - P04 TM" : reqThirdLangStr;
+      const studentSubjects = [];
       if (paper1) studentSubjects.push(paper1.trim());
       if (paper2) studentSubjects.push(paper2.trim());
-
       studentSubjects.push(finalSecondLang.trim());
       studentSubjects.push(finalThirdLang.trim());
-
       studentSubjects.push(`SOCIAL SCIENCE - P05 ${mediumCode}`);
       studentSubjects.push(`PHYSICS - P06 ${mediumCode}`);
       studentSubjects.push(`CHEMISTRY - P07 ${mediumCode}`);
       studentSubjects.push(`BIOLOGY - P08 ${mediumCode}`);
       studentSubjects.push(`MATHEMATICS - P09 ${mediumCode}`);
       studentSubjects.push(`INFORMATION TECHNOLOGY - P10 ${mediumCode}`);
-
-      const updateData: any = {
+      const updateData = {
         medium,
         firstLangPaper1: paper1,
         firstLangPaper2: paper2,
@@ -7095,15 +6169,12 @@ app.post("/api/management/students/bulk-update-medium", authenticateToken, async
         thirdLang: finalThirdLang,
         subjects: studentSubjects
       };
-
-      if (req.body.mediumId !== undefined) updateData.mediumId = req.body.mediumId;
-      if (req.body.firstLangPaper1SubjectId !== undefined) updateData.firstLangPaper1SubjectId = req.body.firstLangPaper1SubjectId;
-      if (req.body.firstLangPaper2SubjectId !== undefined) updateData.firstLangPaper2SubjectId = req.body.firstLangPaper2SubjectId;
-      if (req.body.secondLanguageSubjectId !== undefined) updateData.secondLanguageSubjectId = req.body.secondLanguageSubjectId;
-      if (req.body.thirdLanguageSubjectId !== undefined) updateData.thirdLanguageSubjectId = req.body.thirdLanguageSubjectId;
-
+      if (req.body.mediumId !== void 0) updateData.mediumId = req.body.mediumId;
+      if (req.body.firstLangPaper1SubjectId !== void 0) updateData.firstLangPaper1SubjectId = req.body.firstLangPaper1SubjectId;
+      if (req.body.firstLangPaper2SubjectId !== void 0) updateData.firstLangPaper2SubjectId = req.body.firstLangPaper2SubjectId;
+      if (req.body.secondLanguageSubjectId !== void 0) updateData.secondLanguageSubjectId = req.body.secondLanguageSubjectId;
+      if (req.body.thirdLanguageSubjectId !== void 0) updateData.thirdLanguageSubjectId = req.body.thirdLanguageSubjectId;
       await populateStudentSubjectIds(updateData, mediumMaps, subjectNameMap);
-
       bulkOps.push({
         updateOne: {
           filter: { _id: st._id },
@@ -7113,115 +6184,108 @@ app.post("/api/management/students/bulk-update-medium", authenticateToken, async
         }
       });
     }
-
     let modifiedCount = 0;
     if (bulkOps.length > 0) {
       const result = await Student.bulkWrite(bulkOps);
       modifiedCount = result.modifiedCount;
       invalidateSchoolAnalytics(schoolId);
     }
-
     res.json({ message: "Updated successfully", modifiedCount });
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST Student Bulk Update Medium Error:", err);
     res.status(500).json({ message: err.message, stack: err.stack });
   }
 });
-
-// ─── Admin: Normalize all existing student medium values to canonical shortNames ──
-app.post("/api/admin/normalize-student-mediums", authenticateToken, requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/admin/normalize-student-mediums", authenticateToken, requireRole("WEBMASTER"), async (req, res) => {
   try {
     const mediumDocs = await Medium.find({ active: { $ne: false } }).lean();
-    // Build lookup: any form → canonical shortName
-    const normalizeMap: Record<string, string> = {};
-    const defaultNorm: Record<string, string> = {
-      'tamil': 'Tamil', 'tm': 'Tamil', 'medium-tm': 'Tamil', 'medium-tamil': 'Tamil', 'tamil medium': 'Tamil',
-      'english': 'English', 'em': 'English', 'medium-em': 'English', 'medium-english': 'English', 'english medium': 'English',
-      'malayalam': 'Malayalam', 'mm': 'Malayalam', 'medium-mm': 'Malayalam', 'medium-malayalam': 'Malayalam', 'malayalam medium': 'Malayalam',
-      'kannada': 'Kannada', 'km': 'Kannada', 'medium-km': 'Kannada', 'medium-kannada': 'Kannada', 'kannada medium': 'Kannada',
+    const normalizeMap = {};
+    const defaultNorm = {
+      "tamil": "Tamil",
+      "tm": "Tamil",
+      "medium-tm": "Tamil",
+      "medium-tamil": "Tamil",
+      "tamil medium": "Tamil",
+      "english": "English",
+      "em": "English",
+      "medium-em": "English",
+      "medium-english": "English",
+      "english medium": "English",
+      "malayalam": "Malayalam",
+      "mm": "Malayalam",
+      "medium-mm": "Malayalam",
+      "medium-malayalam": "Malayalam",
+      "malayalam medium": "Malayalam",
+      "kannada": "Kannada",
+      "km": "Kannada",
+      "medium-km": "Kannada",
+      "medium-kannada": "Kannada",
+      "kannada medium": "Kannada"
     };
-    mediumDocs.forEach((m: any) => {
-      const sn = m.shortName || '';
+    mediumDocs.forEach((m) => {
+      const sn = m.shortName || "";
       if (!sn) return;
-      normalizeMap[(m.code || '').toUpperCase()] = sn;
-      normalizeMap[(m.id || '').toLowerCase()] = sn;
-      normalizeMap[(m.name || '').toLowerCase()] = sn;
+      normalizeMap[(m.code || "").toUpperCase()] = sn;
+      normalizeMap[(m.id || "").toLowerCase()] = sn;
+      normalizeMap[(m.name || "").toLowerCase()] = sn;
       normalizeMap[sn.toLowerCase()] = sn;
     });
-    const normalize = (raw: string): string => {
-      const trimmed = (raw || '').trim();
-      if (!trimmed) return '';
+    const normalize = (raw) => {
+      const trimmed = (raw || "").trim();
+      if (!trimmed) return "";
       const lower = trimmed.toLowerCase();
       if (normalizeMap[lower]) return normalizeMap[lower];
       if (defaultNorm[lower]) return defaultNorm[lower];
       return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
     };
-
-    // Process in batches of 5000
     let totalUpdated = 0;
     let totalSkipped = 0;
     let processed = 0;
-    const BATCH = 5000;
-    
+    const BATCH = 5e3;
     while (true) {
       const batch = await Student.find({}, { id: 1, medium: 1 }).skip(processed).limit(BATCH).lean();
       if (batch.length === 0) break;
-      
-      const ops: any[] = [];
+      const ops = [];
       for (const s of batch) {
-        const raw = (s as any).medium || '';
+        const raw = s.medium || "";
         const normalized = normalize(raw);
         if (normalized && normalized !== raw) {
-          ops.push({ updateOne: { filter: { _id: (s as any)._id }, update: { $set: { medium: normalized } } } });
+          ops.push({ updateOne: { filter: { _id: s._id }, update: { $set: { medium: normalized } } } });
         } else if (!normalized && raw) {
           totalSkipped++;
         }
       }
-      
       if (ops.length > 0) {
         const result = await Student.bulkWrite(ops);
         totalUpdated += result.modifiedCount;
       }
       processed += batch.length;
     }
-
     res.json({ message: `Normalization complete. Updated: ${totalUpdated}, Already correct: ${processed - totalUpdated - totalSkipped}, Skipped (unresolved): ${totalSkipped}`, totalUpdated, processed, totalSkipped });
-  } catch (err: any) {
+  } catch (err) {
     console.error("POST Normalize Student Mediums Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-// Marks
-
-
-app.get("/api/reports/detailed-school/:schoolId/:examId", async (req: any, res: any) => {
+app.get("/api/reports/detailed-school/:schoolId/:examId", async (req, res) => {
   try {
     const { schoolId, examId } = req.params;
-
     const isObjId = mongoose.Types.ObjectId.isValid(schoolId);
-    const schoolQuery = isObjId
-      ? { $or: [{ _id: schoolId }, { id: schoolId }, { schoolCode: schoolId }] }
-      : { $or: [{ id: schoolId }, { schoolCode: schoolId }] };
-
+    const schoolQuery = isObjId ? { $or: [{ _id: schoolId }, { id: schoolId }, { schoolCode: schoolId }] } : { $or: [{ id: schoolId }, { schoolCode: schoolId }] };
     let school = await School.findOne(schoolQuery);
     if (!school && isObjId) {
       school = await School.findById(schoolId);
     }
-
     if (!school) {
       return res.status(404).json({ message: "School not found" });
     }
-
     const exam = await Exam.findOne({ id: examId });
-
-    if (req.user && req.user.role === 'SCHOOL') {
+    if (req.user && req.user.role === "SCHOOL") {
       const userSchoolId = req.user.schoolId || req.user.id;
       if (school.id !== userSchoolId && school._id.toString() !== userSchoolId && school.schoolCode !== userSchoolId) {
         return res.status(403).json({ message: "Access denied to this school" });
       }
     }
-
     const matchedSchoolIds = [school.id, school._id?.toString(), school.schoolCode].filter(Boolean);
     const students = await Student.find({
       $or: [
@@ -7229,11 +6293,10 @@ app.get("/api/reports/detailed-school/:schoolId/:examId", async (req: any, res: 
         { schoolCode: { $in: matchedSchoolIds } }
       ]
     });
-    const studentIds = students.map(s => s.id || s._id.toString());
+    const studentIds = students.map((s) => s.id || s._id.toString());
     const marksList = await findMarksGroupedByStudent(examId, studentIds);
-
     const { idToCode } = await getSubjectMapping();
-    const maxMarksByCode: Record<string, number> = {};
+    const maxMarksByCode = {};
     if (exam && exam.maxMarks) {
       exam.maxMarks.forEach((maxVal, subId) => {
         const code = idToCode[subId] || subId;
@@ -7242,60 +6305,53 @@ app.get("/api/reports/detailed-school/:schoolId/:examId", async (req: any, res: 
         }
       });
     }
-
-    const detailedResults = students.map(s => {
-      const markRecord = marksList.find(m => m.studentId === s.id);
+    const detailedResults = students.map((s) => {
+      const markRecord = marksList.find((m) => m.studentId === s.id);
       return {
         studentId: s.id,
         regNo: s.globalId,
         name: s.name,
         gender: s.gender,
         isScribe: s.scribe,
-        classStandard: s.className || '10',
-        division: s.division || '',
+        classStandard: s.className || "10",
+        division: s.division || "",
         grades: markRecord && markRecord.grades ? Object.fromEntries(markRecord.grades) : {},
         marks: markRecord && markRecord.marks ? Object.fromEntries(markRecord.marks) : {}
       };
     });
-
     detailedResults.sort((a, b) => {
-      const divA = (a.division || '').toUpperCase();
-      const divB = (b.division || '').toUpperCase();
+      const divA = (a.division || "").toUpperCase();
+      const divB = (b.division || "").toUpperCase();
       if (divA < divB) return -1;
       if (divA > divB) return 1;
-
-      const genA = (a.gender || '').toUpperCase();
-      const genB = (b.gender || '').toUpperCase();
-      const isFemaleA = genA === 'FEMALE' || genA === 'GIRL';
-      const isFemaleB = genB === 'FEMALE' || genB === 'GIRL';
+      const genA = (a.gender || "").toUpperCase();
+      const genB = (b.gender || "").toUpperCase();
+      const isFemaleA = genA === "FEMALE" || genA === "GIRL";
+      const isFemaleB = genB === "FEMALE" || genB === "GIRL";
       if (isFemaleA && !isFemaleB) return -1;
       if (isFemaleB && !isFemaleA) return 1;
-
-      const nameA = (a.name || '').toUpperCase();
-      const nameB = (b.name || '').toUpperCase();
+      const nameA = (a.name || "").toUpperCase();
+      const nameB = (b.name || "").toUpperCase();
       if (nameA < nameB) return -1;
       if (nameA > nameB) return 1;
-
       return 0;
     });
-
     const allSubjects = await Subject.find({ active: { $ne: false } }).lean();
     const examSubjectCodes = Object.keys(maxMarksByCode);
-    const examSubjects = examSubjectCodes.map(code => {
-      const sub = allSubjects.find((s: any) => s.shortName === code || s.code === code);
+    const examSubjects = examSubjectCodes.map((code) => {
+      const sub = allSubjects.find((s) => s.shortName === code || s.code === code);
       return {
-        subjectId: sub?._id?.toString() || '',
+        subjectId: sub?._id?.toString() || "",
         code,
         name: sub?.name || code
       };
-    }).filter((s: any) => s.subjectId);
-
+    }).filter((s) => s.subjectId);
     res.json({
       school,
       exam: exam ? {
-        ...(exam.toObject ? exam.toObject() : exam),
+        ...exam.toObject ? exam.toObject() : exam,
         maxMarks: maxMarksByCode,
-        subjects: examSubjects.length > 0 ? examSubjects : allSubjects.map((s: any) => ({
+        subjects: examSubjects.length > 0 ? examSubjects : allSubjects.map((s) => ({
           subjectId: s._id.toString(),
           code: s.shortName || s.code || s.name,
           name: s.name || s.shortName
@@ -7303,149 +6359,125 @@ app.get("/api/reports/detailed-school/:schoolId/:examId", async (req: any, res: 
       } : null,
       results: detailedResults
     });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// ─── ADVANCED ANALYSIS ENGINE APIs ──────────────────────────────────────────
-
 app.get("/api/results/advanced-dashboard", enforceSchoolScope, async (req, res) => {
   try {
     const { examId, schoolId } = req.query;
     if (!examId) return res.status(400).json({ message: "examId is required" });
-
-    let districtId = req.query.districtId as string | undefined;
-    if ((req as any).user?.role === 'DEO') {
-      districtId = (req as any).user.districtId || 'dist-9';
+    let districtId = req.query.districtId;
+    if (req.user?.role === "DEO") {
+      districtId = req.user.districtId || "dist-9";
     }
-
-    const cacheKey = `adv-dashboard-unified-${examId}-${schoolId || 'ALL'}-${districtId || 'ALL'}`;
+    const cacheKey = `adv-dashboard-unified-${examId}-${schoolId || "ALL"}-${districtId || "ALL"}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
-
-    const exam = await Exam.findOne({ id: examId as string }).lean();
-    const examClass = exam?.standard || '10';
-
-    let schoolIdsToFilter: string[] = [];
+    const exam = await Exam.findOne({ id: examId }).lean();
+    const examClass = exam?.standard || "10";
+    let schoolIdsToFilter = [];
     if (schoolId) {
-      schoolIdsToFilter = [schoolId as string];
+      schoolIdsToFilter = [schoolId];
     } else if (districtId) {
       const edus = await EducationalDistrict.find({
-        $or: [{ districtId: districtId }, { id: districtId }, { name: districtId }]
+        $or: [{ districtId }, { id: districtId }, { name: districtId }]
       });
-      const eduIds = edus.map((e: any) => e.id);
+      const eduIds = edus.map((e) => e.id);
       const schools = await School.find({
-        role: 'SCHOOL', active: { $ne: false },
+        role: "SCHOOL",
+        active: { $ne: false },
         $or: [
-          { districtId: districtId },
+          { districtId },
           { subDistrictId: { $in: eduIds } },
           { eduId: { $in: eduIds } }
         ]
       }).lean();
-      schoolIdsToFilter = schools.map((s: any) => s._id.toString());
+      schoolIdsToFilter = schools.map((s) => s._id.toString());
     }
-
     let summaries = [];
     if (schoolIdsToFilter.length > 0) {
       summaries = await SchoolSummary.find({
-        examId: examId as string,
+        examId,
         className: examClass,
         schoolId: { $in: schoolIdsToFilter }
       }).lean();
     } else {
       summaries = await SchoolSummary.find({
-        examId: examId as string,
+        examId,
         className: examClass
       }).lean();
     }
-
     let totalAppeared = 0;
     let totalFullAPlus = 0;
     let totalPass = 0;
-
-    const schoolStats: any[] = [];
-
+    const schoolStats = [];
     for (const sum of summaries) {
       const s = sum.stats;
       if (!s) continue;
-
       totalAppeared += s.appeared || 0;
       totalFullAPlus += s.fullAPlus || 0;
       totalPass += s.pass || 0;
-
       schoolStats.push({
         schoolId: sum.schoolId,
         appeared: s.appeared || 0,
         passPercentage: s.victoryPercentage || 0,
-        qualityIndex: (s.appeared || 0) > 0 ? ((s.fullAPlus || 0) / s.appeared) * 100 : 0
+        qualityIndex: (s.appeared || 0) > 0 ? (s.fullAPlus || 0) / s.appeared * 100 : 0
       });
     }
-
-    const victoryScore = totalAppeared > 0 ? (totalPass / totalAppeared) * 100 : 0;
-    const qualityIndex = totalAppeared > 0 ? (totalFullAPlus / totalAppeared) * 100 : 0;
-    const performanceIndex = (victoryScore * 0.6) + (qualityIndex * 0.4);
-
-    // Fallback if no summaries yet - let frontend show zeros instead of crashing
-
-    // Performance
+    const victoryScore = totalAppeared > 0 ? totalPass / totalAppeared * 100 : 0;
+    const qualityIndex = totalAppeared > 0 ? totalFullAPlus / totalAppeared * 100 : 0;
+    const performanceIndex = victoryScore * 0.6 + qualityIndex * 0.4;
     const performance = {
       performanceIndex: Number(performanceIndex.toFixed(1)),
       victoryScore: Number(victoryScore.toFixed(1)),
       qualityIndex: Number(qualityIndex.toFixed(1)),
       consistency: victoryScore > 0 ? Number((100 - (100 - victoryScore) * 0.5).toFixed(1)) : 0,
-      improvement: 2.4, // Trend diff placeholder
+      improvement: 2.4
+      // Trend diff placeholder
     };
-
-    // Anomalies
-    const critical: any[] = [];
+    const critical = [];
     if (schoolStats.length > 0) {
-      schoolStats.forEach(ss => {
+      schoolStats.forEach((ss) => {
         if (ss.appeared >= 10 && ss.passPercentage === 0) {
           critical.push({
             title: `Zero Pass Rate`,
             desc: `School ID ${ss.schoolId.substring(0, 6)} had ${ss.appeared} students with 0 passes.`,
-            severity: 'high'
+            severity: "high"
           });
         }
       });
     }
     if (critical.length === 0) {
-      critical.push({ title: 'No Critical Anomalies', desc: 'Performance is within expected variance.', severity: 'low' });
+      critical.push({ title: "No Critical Anomalies", desc: "Performance is within expected variance.", severity: "low" });
     }
-
-    // Correlations
     const correlation = {
       pairs: [
-        { name: "Phy ↔ Mat", value: 0.85, fill: "#3b82f6" },
-        { name: "Che ↔ Bio", value: 0.72, fill: "#22c55e" },
-        { name: "Eng ↔ SS", value: 0.65, fill: "#f59e0b" }
+        { name: "Phy \u2194 Mat", value: 0.85, fill: "#3b82f6" },
+        { name: "Che \u2194 Bio", value: 0.72, fill: "#22c55e" },
+        { name: "Eng \u2194 SS", value: 0.65, fill: "#f59e0b" }
       ],
       insights: [
-        { title: "Physics ↔ Math", score: "0.85", desc: "Strong positive correlation" },
-        { title: "Chemistry ↔ Bio", score: "0.72", desc: "Moderate positive correlation" }
+        { title: "Physics \u2194 Math", score: "0.85", desc: "Strong positive correlation" },
+        { title: "Chemistry \u2194 Bio", score: "0.72", desc: "Moderate positive correlation" }
       ]
     };
-
-    // Trends
     const trends = {
       trends: [
-        { year: '2021-22', passRate: 89.2, qualityIndex: 62.0 },
-        { year: '2022-23', passRate: 91.5, qualityIndex: 66.0 },
-        { year: '2023-24', passRate: 94.3, qualityIndex: 71.0 },
-        { year: '2024-25', passRate: victoryScore > 0 ? Number(victoryScore.toFixed(1)) : 96.8, qualityIndex: qualityIndex > 0 ? Number(qualityIndex.toFixed(1)) : 75.0 },
+        { year: "2021-22", passRate: 89.2, qualityIndex: 62 },
+        { year: "2022-23", passRate: 91.5, qualityIndex: 66 },
+        { year: "2023-24", passRate: 94.3, qualityIndex: 71 },
+        { year: "2024-25", passRate: victoryScore > 0 ? Number(victoryScore.toFixed(1)) : 96.8, qualityIndex: qualityIndex > 0 ? Number(qualityIndex.toFixed(1)) : 75 }
       ],
       insights: [
-        { year: '2024-25', rate: victoryScore > 0 ? `${victoryScore.toFixed(1)}%` : '96.8%', desc: 'Current Performance', diff: '+2.5%' },
-        { year: '2023-24', rate: '94.3%', desc: 'Significant improvement', diff: '+2.8%' }
+        { year: "2024-25", rate: victoryScore > 0 ? `${victoryScore.toFixed(1)}%` : "96.8%", desc: "Current Performance", diff: "+2.5%" },
+        { year: "2023-24", rate: "94.3%", desc: "Significant improvement", diff: "+2.8%" }
       ]
     };
-
-    // Benchmarks
-    const sortedSchools = [...schoolStats].filter(s => s.appeared > 0).sort((a, b) => b.passPercentage - a.passPercentage);
+    const sortedSchools = [...schoolStats].filter((s) => s.appeared > 0).sort((a, b) => b.passPercentage - a.passPercentage);
     const avgPassRate = schoolStats.length > 0 ? schoolStats.reduce((sum, s) => sum + s.passPercentage, 0) / schoolStats.length : 0;
     const benchmarks = {
-      schools: sortedSchools.slice(0, 10).map(s => {
+      schools: sortedSchools.slice(0, 10).map((s) => {
         const schoolName = s.schoolId;
         const eduDistrict = schoolName.substring(0, 6);
         return {
@@ -7459,152 +6491,133 @@ app.get("/api/results/advanced-dashboard", enforceSchoolScope, async (req, res) 
         };
       })
     };
-
     const result = { performance, anomalies: { critical }, correlation, trends, benchmarks };
     analyticsCache.set(cacheKey, result);
-
     res.json(result);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/results/performance-index", async (req, res) => {
   try {
     const { examId, schoolId } = req.query;
     if (!examId) return res.status(400).json({ message: "examId is required" });
-
-    let districtId = req.query.districtId as string | undefined;
-    if ((req as any).user?.role === 'DEO') {
-      districtId = (req as any).user.districtId || 'dist-9';
+    let districtId = req.query.districtId;
+    if (req.user?.role === "DEO") {
+      districtId = req.user.districtId || "dist-9";
     }
-
-    const cacheKey = `dashboard-perf-index-${examId}-${schoolId || 'ALL'}-${districtId || 'ALL'}`;
+    const cacheKey = `dashboard-perf-index-${examId}-${schoolId || "ALL"}-${districtId || "ALL"}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
-
-    const exam = await Exam.findOne({ id: examId as string }).lean();
-    const examClass = exam?.standard || '10';
-
-    const filter: any = { className: examClass };
-
+    const exam = await Exam.findOne({ id: examId }).lean();
+    const examClass = exam?.standard || "10";
+    const filter = { className: examClass };
     if (schoolId) {
       filter.schoolId = schoolId;
     } else if (districtId) {
       const edus = await EducationalDistrict.find({
-        $or: [{ districtId: districtId }, { id: districtId }, { name: districtId }]
+        $or: [{ districtId }, { id: districtId }, { name: districtId }]
       });
-      const eduIds = edus.map((e: any) => e.id);
+      const eduIds = edus.map((e) => e.id);
       const schools = await School.find({
-        role: 'SCHOOL', active: { $ne: false },
+        role: "SCHOOL",
+        active: { $ne: false },
         $or: [
-          { districtId: districtId },
+          { districtId },
           { subDistrictId: { $in: eduIds } },
           { eduId: { $in: eduIds } }
         ]
       }).lean();
-      filter.schoolId = { $in: schools.map((s: any) => s._id.toString()) };
+      filter.schoolId = { $in: schools.map((s) => s._id.toString()) };
     }
-
-    const stats = await calculateStatsForScope(examId as string, filter);
-
-    // PI formula: (Victory % * 0.6) + (Quality Index * 0.4)
+    const stats = await calculateStatsForScope(examId, filter);
     const victoryScore = stats.victoryPercentage;
-    const qualityIndex = stats.appeared > 0 ? (stats.fullAPlus / stats.appeared) * 100 : 0;
-    const performanceIndex = (victoryScore * 0.6) + (qualityIndex * 0.4);
-
-    // Calculate actual consistency based on subject-wise performance
+    const qualityIndex = stats.appeared > 0 ? stats.fullAPlus / stats.appeared * 100 : 0;
+    const performanceIndex = victoryScore * 0.6 + qualityIndex * 0.4;
     const students = await Student.find(filter);
-    const studentIds = students.map(s => s.id);
-    const marksList = await findMarksGroupedByStudent(examId as string, studentIds);
-
+    const studentIds = students.map((s) => s.id);
+    const marksList = await findMarksGroupedByStudent(examId, studentIds);
     const subjectsList = [
-      "Lan I", "Lan II", "Eng", "Hin", "SS", "Phy", "Che", "Bio", "Mat", "IT"
+      "Lan I",
+      "Lan II",
+      "Eng",
+      "Hin",
+      "SS",
+      "Phy",
+      "Che",
+      "Bio",
+      "Mat",
+      "IT"
     ];
-
-    const subjectPassRates: number[] = [];
-    subjectsList.forEach(sub => {
+    const subjectPassRates = [];
+    subjectsList.forEach((sub) => {
       let appeared = 0;
       let passed = 0;
-      marksList.forEach(m => {
+      marksList.forEach((m) => {
         const gradesObj = m.grades ? Object.fromEntries(m.grades) : {};
         const grade = gradesObj[sub];
         if (grade) {
           appeared++;
-          if (['A+', 'A', 'B+', 'B', 'C+', 'C', 'D+', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1'].includes(grade)) {
+          if (["A+", "A", "B+", "B", "C+", "C", "D+", "A1", "A2", "B1", "B2", "C1", "C2", "D1"].includes(grade)) {
             passed++;
           }
         }
       });
       if (appeared > 0) {
-        subjectPassRates.push((passed / appeared) * 100);
+        subjectPassRates.push(passed / appeared * 100);
       }
     });
-
-    let consistency = 100.0;
+    let consistency = 100;
     if (subjectPassRates.length > 0) {
       const avg = subjectPassRates.reduce((sum, val) => sum + val, 0) / subjectPassRates.length;
       const variance = subjectPassRates.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / subjectPassRates.length;
       const stdDev = Math.sqrt(variance);
       consistency = Math.max(0, 100 - stdDev);
     }
-
-    // Calculate actual improvement by comparing to the previous exam (if any exists)
-    let improvement = 0.0;
+    let improvement = 0;
     const allExams = await Exam.find().sort({ createdAt: 1 });
-    const currentExamIndex = allExams.findIndex(e => e.id === examId);
+    const currentExamIndex = allExams.findIndex((e) => e.id === examId);
     if (currentExamIndex > 0) {
       const prevExam = allExams[currentExamIndex - 1];
       const prevStats = await calculateStatsForScope(prevExam.id, filter);
       improvement = victoryScore - prevStats.victoryPercentage;
     }
-
     const responseData = {
       performanceIndex: Number(performanceIndex.toFixed(2)),
       victoryScore: Number(victoryScore.toFixed(2)),
       qualityIndex: Number(qualityIndex.toFixed(2)),
       consistency: Number(consistency.toFixed(2)),
       improvement: Number(improvement.toFixed(2)),
-      scope: schoolId || 'ALL'
+      scope: schoolId || "ALL"
     };
-
     analyticsCache.set(cacheKey, responseData, 300);
     res.json(responseData);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/reports/generate-pdf", async (req: any, res: any) => {
+app.post("/api/reports/generate-pdf", async (req, res) => {
   try {
     const { reportLevel, districtId, eduId, schoolId, schoolType, examId } = req.body || {};
-
     let targetEduId = eduId;
-    // DEO should use the eduId requested by the client, they are not locked to a specific subDistrictId
-
     const activeExam = await Exam.findOne({ id: examId }) || await Exam.findOne();
     const examName = activeExam?.name || "SSLC Examination";
-
     let scopeTitle = "Statewide Analysis";
-    let filterQuery: any = { role: "SCHOOL" };
-
+    let filterQuery = { role: "SCHOOL" };
     if (schoolId) {
-      filterQuery.$or = [{ id: schoolId }, { schoolCode: schoolId }, { _id: mongoose.Types.ObjectId.isValid(schoolId) ? schoolId : undefined }].filter(Boolean);
-    } else if (targetEduId && targetEduId !== 'ALL') {
+      filterQuery.$or = [{ id: schoolId }, { schoolCode: schoolId }, { _id: mongoose.Types.ObjectId.isValid(schoolId) ? schoolId : void 0 }].filter(Boolean);
+    } else if (targetEduId && targetEduId !== "ALL") {
       filterQuery.subDistrictId = targetEduId;
       const eduObj = await EducationalDistrict.findOne({ id: targetEduId });
-      scopeTitle = `${eduObj?.name || 'Educational District'} Analysis Report`;
+      scopeTitle = `${eduObj?.name || "Educational District"} Analysis Report`;
     }
-
     const schools = await School.find(filterQuery).lean();
-    const schoolIds = schools.map(s => (s as any).id || (s as any)._id.toString());
+    const schoolIds = schools.map((s) => s.id || s._id.toString());
     const students = await Student.find({ schoolId: { $in: schoolIds } }).lean();
-
-    const appearedCount = students.length || (schools.length * 45);
+    const appearedCount = students.length || schools.length * 45;
     const passCount = Math.round(appearedCount * 0.88);
     const fullAPlusCount = Math.round(appearedCount * 0.12);
-    const victoryPercentage = appearedCount > 0 ? (passCount / appearedCount) * 100 : 92.5;
-
+    const victoryPercentage = appearedCount > 0 ? passCount / appearedCount * 100 : 92.5;
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -7665,12 +6678,12 @@ app.post("/api/reports/generate-pdf", async (req: any, res: any) => {
         </style>
       </head>
       <body>
-        <div class="watermark">OFFICIAL — VIJAYASREE PALAKKAD</div>
+        <div class="watermark">OFFICIAL \u2014 VIJAYASREE PALAKKAD</div>
         
         <div class="header">
           <div>
             <h1 class="title-lg">VIJAYASREE PALAKKAD</h1>
-            <div class="title-sm">വിജയശ്രീ പാലക്കാട് • Academic Performance Audit</div>
+            <div class="title-sm">\u0D35\u0D3F\u0D1C\u0D2F\u0D36\u0D4D\u0D30\u0D40 \u0D2A\u0D3E\u0D32\u0D15\u0D4D\u0D15\u0D3E\u0D1F\u0D4D \u2022 Academic Performance Audit</div>
           </div>
           <div>
             <span class="badge">${examName}</span>
@@ -7679,7 +6692,7 @@ app.post("/api/reports/generate-pdf", async (req: any, res: any) => {
 
         <div style="margin-bottom: 15px;">
           <h2 style="font-size: 15px; font-weight: 800; margin: 0; color: #0f172a;">Executive Summary (${scopeTitle})</h2>
-          <p style="font-size: 11px; color: #64748b; margin-top: 2px;">Generated on ${new Date().toLocaleDateString('en-GB')} for official performance audit and reporting.</p>
+          <p style="font-size: 11px; color: #64748b; margin-top: 2px;">Generated on ${(/* @__PURE__ */ new Date()).toLocaleDateString("en-GB")} for official performance audit and reporting.</p>
         </div>
 
         <div class="kpi-grid">
@@ -7715,16 +6728,16 @@ app.post("/api/reports/generate-pdf", async (req: any, res: any) => {
               </tr>
             </thead>
             <tbody>
-              ${schools.slice(0, 30).map((s: any, idx: number) => `
+              ${schools.slice(0, 30).map((s, idx) => `
                 <tr>
                   <td>${idx + 1}</td>
                   <td><strong>${s.name}</strong></td>
-                  <td>${s.code || s.schoolCode || 'N/A'}</td>
-                  <td>${s.type || s.schoolType || 'Government'}</td>
+                  <td>${s.code || s.schoolCode || "N/A"}</td>
+                  <td>${s.type || s.schoolType || "Government"}</td>
                   <td>${Math.floor(Math.random() * 40) + 30}</td>
                   <td><strong>${(Math.random() * 20 + 80).toFixed(1)}%</strong></td>
                 </tr>
-              `).join('')}
+              `).join("")}
             </tbody>
           </table>
         </div>
@@ -7746,24 +6759,22 @@ app.post("/api/reports/generate-pdf", async (req: any, res: any) => {
       </body>
       </html>
     `;
-
     const browser = await getBrowserInstance();
     const page = await browser.newPage();
-    await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
+    await page.setContent(htmlContent, { waitUntil: "domcontentloaded" });
     const pdfBuffer = await page.pdf({
-      format: 'A4',
+      format: "A4",
       printBackground: true,
-      margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' }
+      margin: { top: "10mm", bottom: "10mm", left: "10mm", right: "10mm" }
     });
     await browser.close();
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=Analytics_Report_${Date.now()}.pdf`);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=Analytics_Report_${Date.now()}.pdf`);
     res.send(pdfBuffer);
-  } catch (err: any) {
+  } catch (err) {
     console.error("Puppeteer PDF Generation Error:", err);
     try {
-      const tempChromium = path.join(os.tmpdir(), 'chromium');
+      const tempChromium = path.join(os.tmpdir(), "chromium");
       if (fs.existsSync(tempChromium)) {
         fs.unlinkSync(tempChromium);
         console.log("Cleaned up potentially corrupted chromium binary at", tempChromium);
@@ -7774,26 +6785,23 @@ app.post("/api/reports/generate-pdf", async (req: any, res: any) => {
     res.status(500).json({ message: "Failed to generate PDF on server", error: err.message });
   }
 });
-
 const pdfConcurrencyLimit = pLimit(2);
-
 app.post("/api/pdf/generate", async (req, res) => {
   pdfConcurrencyLimit(async () => {
-    let browser: any;
+    let browser;
     try {
-      const { html, baseUrl, title = "VIJAYASREE ANALYTICS PORTAL REPORT", headerTemplate, footerTemplate, marginTop = '15mm', marginBottom = '20mm', marginLeft = '10mm', marginRight = '10mm' } = req.body;
+      const { html, baseUrl, title = "VIJAYASREE ANALYTICS PORTAL REPORT", headerTemplate, footerTemplate, marginTop = "15mm", marginBottom = "20mm", marginLeft = "10mm", marginRight = "10mm" } = req.body;
       if (!html) {
         return res.status(400).json({ message: "HTML content is required" });
       }
-
       const fullHtml = `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
           <title>${title}</title>
-        ${baseUrl ? `<base href="${baseUrl}">` : ''}
-        <script src="https://cdn.tailwindcss.com"></script>
+        ${baseUrl ? `<base href="${baseUrl}">` : ""}
+        <script src="https://cdn.tailwindcss.com"><\/script>
         <style>
           @page { size: A4; }
           body { 
@@ -7825,24 +6833,18 @@ app.post("/api/pdf/generate", async (req, res) => {
       </body>
       </html>
     `;
-
       console.log("Generating PDF: Launching browser...");
       browser = await getBrowserInstance();
       console.log("Generating PDF: Browser launched, creating page...");
       const page = await browser.newPage();
-
-      // Use networkidle2 so it doesn't hang if a single background request stays open. Added a reasonable timeout.
       console.log("Generating PDF: Setting content...");
-      await page.setContent(fullHtml, { waitUntil: 'domcontentloaded', timeout: 45000 });
-
-      // Wait for Tailwind CDN and fonts to finish rendering
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
+      await page.setContent(fullHtml, { waitUntil: "domcontentloaded", timeout: 45e3 });
+      await new Promise((resolve) => setTimeout(resolve, 1500));
       console.log("Generating PDF: Creating PDF buffer...");
-      const pdfOptions: any = {
-        format: 'A4',
+      const pdfOptions = {
+        format: "A4",
         printBackground: true,
-        timeout: 45000,
+        timeout: 45e3,
         displayHeaderFooter: true,
         headerTemplate: headerTemplate || `
         <style>
@@ -7875,21 +6877,18 @@ app.post("/api/pdf/generate", async (req, res) => {
         <div class="footer-box">
           <div>Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
         </div>
-      `,
+      `
       };
-
       if (!req.body.useCssMargins) {
         pdfOptions.margin = { top: marginTop, bottom: marginBottom, left: marginLeft, right: marginRight };
       }
-
       const pdfBuffer = await page.pdf(pdfOptions);
-
-      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader("Content-Type", "application/pdf");
       res.end(Buffer.from(pdfBuffer));
-    } catch (err: any) {
+    } catch (err) {
       console.error("Puppeteer PDF Generation Error:", err);
       try {
-        const tempChromium = path.join(os.tmpdir(), 'chromium');
+        const tempChromium = path.join(os.tmpdir(), "chromium");
         if (fs.existsSync(tempChromium)) {
           fs.unlinkSync(tempChromium);
           console.log("Cleaned up potentially corrupted chromium binary at", tempChromium);
@@ -7900,49 +6899,47 @@ app.post("/api/pdf/generate", async (req, res) => {
       res.status(500).json({ message: "Failed to generate PDF on server", error: err.message });
     } finally {
       if (browser) {
-        try { await browser.close(); } catch (e) { console.error('Error closing browser', e); }
+        try {
+          await browser.close();
+        } catch (e) {
+          console.error("Error closing browser", e);
+        }
       }
     }
   });
 });
-
 app.get("/api/results/mark-group-analysis", async (req, res) => {
   try {
     const { examId, schoolId } = req.query;
     if (!examId) return res.status(400).json({ message: "examId is required" });
-
-    const filter: any = { examId };
-
-    let districtId = req.query.districtId as string | undefined;
-    if ((req as any).user?.role === 'DEO') {
-      districtId = (req as any).user.districtId || 'dist-9';
+    const filter = { examId };
+    let districtId = req.query.districtId;
+    if (req.user?.role === "DEO") {
+      districtId = req.user.districtId || "dist-9";
     }
-
     if (schoolId) {
       filter.schoolId = schoolId;
     } else if (districtId) {
       const edus = await EducationalDistrict.find({
-        $or: [{ districtId: districtId }, { id: districtId }, { name: districtId }]
+        $or: [{ districtId }, { id: districtId }, { name: districtId }]
       });
-      const eduIds = edus.map((e: any) => e.id);
+      const eduIds = edus.map((e) => e.id);
       const schools = await School.find({
-        role: 'SCHOOL', active: { $ne: false },
+        role: "SCHOOL",
+        active: { $ne: false },
         $or: [
-          { districtId: districtId },
+          { districtId },
           { subDistrictId: { $in: eduIds } },
           { eduId: { $in: eduIds } }
         ]
       }).lean();
-      filter.schoolId = { $in: schools.map((s: any) => s._id.toString()) };
+      filter.schoolId = { $in: schools.map((s) => s._id.toString()) };
     }
-
     const marks = await Mark.find(filter).lean();
-
-    const groupStats: Record<string, { totalMarksObtained: number, totalMaxMarks: number, count: number }> = {};
-
-    marks.forEach(m => {
+    const groupStats = {};
+    marks.forEach((m) => {
       if (m.markGroups && Array.isArray(m.markGroups)) {
-        m.markGroups.forEach((g: any) => {
+        m.markGroups.forEach((g) => {
           if (!groupStats[g.name]) {
             groupStats[g.name] = { totalMarksObtained: 0, totalMaxMarks: 0, count: 0 };
           }
@@ -7952,144 +6949,118 @@ app.get("/api/results/mark-group-analysis", async (req, res) => {
         });
       }
     });
-
     const analysis = Object.entries(groupStats).map(([name, stats]) => {
-      const avgPercentage = stats.totalMaxMarks > 0 ? (stats.totalMarksObtained / stats.totalMaxMarks) * 100 : 0;
+      const avgPercentage = stats.totalMaxMarks > 0 ? stats.totalMarksObtained / stats.totalMaxMarks * 100 : 0;
       return {
         groupName: name,
         averagePercentage: Number(avgPercentage.toFixed(2)),
         totalEntries: stats.count
       };
     });
-
     res.json({ analysis });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/results/subject-correlation", async (req, res) => {
   try {
     const subjects = await Subject.find().lean();
     if (subjects.length < 2) {
       return res.json({ pairs: [], insights: [], note: "Not enough subjects" });
     }
-
-    // Create some pairs from real subjects
     const pairs = [];
     const insights = [];
-
     for (let i = 0; i < Math.min(subjects.length - 1, 8); i++) {
       for (let j = i + 1; j < Math.min(subjects.length, i + 3); j++) {
         const val = Number((Math.random() * 0.05).toFixed(2));
         pairs.push({
-          name: `${subjects[i].shortName || subjects[i].name.substring(0, 4)} ↔ ${subjects[j].shortName || subjects[j].name.substring(0, 4)}`,
+          name: `${subjects[i].shortName || subjects[i].name.substring(0, 4)} \u2194 ${subjects[j].shortName || subjects[j].name.substring(0, 4)}`,
           value: val,
-          fill: '#34d399'
+          fill: "#34d399"
         });
         insights.push({
-          title: `${subjects[i].name} ↔ ${subjects[j].name}`,
+          title: `${subjects[i].name} \u2194 ${subjects[j].name}`,
           score: val.toString(),
-          desc: 'weak correlation — Moderate association'
+          desc: "weak correlation \u2014 Moderate association"
         });
       }
     }
-
     res.json({ pairs: pairs.slice(0, 8), insights: insights.slice(0, 6) });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/results/improvement-tracking", async (req, res) => {
   try {
     res.json({
       trends: [
-        { year: '2021-22', passRate: 89.2, qualityIndex: 62.0 },
-        { year: '2022-23', passRate: 91.5, qualityIndex: 66.0 },
-        { year: '2023-24', passRate: 94.3, qualityIndex: 71.0 },
-        { year: '2024-25', passRate: 96.8, qualityIndex: 75.0 },
+        { year: "2021-22", passRate: 89.2, qualityIndex: 62 },
+        { year: "2022-23", passRate: 91.5, qualityIndex: 66 },
+        { year: "2023-24", passRate: 94.3, qualityIndex: 71 },
+        { year: "2024-25", passRate: 96.8, qualityIndex: 75 }
       ],
       insights: [
-        { year: '2024-25', rate: '96.8%', desc: 'Continued upward trajectory', diff: '+2.5%' },
-        { year: '2023-24', rate: '94.3%', desc: 'Significant improvement', diff: '+2.8%' },
-        { year: '2022-23', rate: '91.5%', desc: 'Post-pandemic recovery', diff: '+2.3%' },
-        { year: '2021-22', rate: '89.2%', desc: 'Baseline year established', diff: 'Baseline' },
+        { year: "2024-25", rate: "96.8%", desc: "Continued upward trajectory", diff: "+2.5%" },
+        { year: "2023-24", rate: "94.3%", desc: "Significant improvement", diff: "+2.8%" },
+        { year: "2022-23", rate: "91.5%", desc: "Post-pandemic recovery", diff: "+2.3%" },
+        { year: "2021-22", rate: "89.2%", desc: "Baseline year established", diff: "Baseline" }
       ]
     });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/results/anomalies", async (req, res) => {
   try {
-    const examId = req.query.examId as string;
+    const examId = req.query.examId;
     if (!examId) return res.status(400).json({ message: "examId is required" });
-
-    let districtId = req.query.districtId as string | undefined;
-    if ((req as any).user?.role === 'DEO') {
-      districtId = (req as any).user.districtId || 'dist-9';
+    let districtId = req.query.districtId;
+    if (req.user?.role === "DEO") {
+      districtId = req.user.districtId || "dist-9";
     }
-
-    const cacheKey = `dashboard-anomalies-${examId}-${districtId || 'ALL'}`;
+    const cacheKey = `dashboard-anomalies-${examId}-${districtId || "ALL"}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
-
-    const exam = await Exam.findOne({ id: examId as string }).lean();
-    const examClass = exam?.standard || '10';
-
-    // Fetch active schools scoped by role or districtId
-    const schoolQuery: any = { role: 'SCHOOL', active: { $ne: false } };
+    const exam = await Exam.findOne({ id: examId }).lean();
+    const examClass = exam?.standard || "10";
+    const schoolQuery = { role: "SCHOOL", active: { $ne: false } };
     if (districtId) {
       const edus = await EducationalDistrict.find({
-        $or: [{ districtId: districtId }, { id: districtId }, { name: districtId }]
+        $or: [{ districtId }, { id: districtId }, { name: districtId }]
       });
-      const eduIds = edus.map(e => e.id);
+      const eduIds = edus.map((e) => e.id);
       schoolQuery.$or = [
-        { districtId: districtId },
+        { districtId },
         { subDistrictId: { $in: eduIds } },
         { eduId: { $in: eduIds } }
       ];
     }
-
     const schools = await School.find(schoolQuery).lean();
-    const schoolIds = schools.map(s => s._id.toString());
-
-    // Fetch all active students in class for these schools
+    const schoolIds = schools.map((s) => s._id.toString());
     const students = await Student.find({ schoolId: { $in: schoolIds }, className: examClass }).lean();
-    const studentIds = students.map(s => s.id);
-
-    // Fetch all marks for this exam using centralized grouped function
+    const studentIds = students.map((s) => s.id);
     const marksList = await findMarksGroupedByStudent(examId, studentIds);
-
-    // Map subject mapping and group marks by student in-memory
     const { idToCode } = await getSubjectMapping();
-    const studentMarksMap: Record<string, Record<string, any>> = {};
-    marksList.forEach((m: any) => {
+    const studentMarksMap = {};
+    marksList.forEach((m) => {
       const grades = m.grades ? Object.fromEntries(m.grades) : {};
       studentMarksMap[m.studentId] = grades;
     });
-
-    // Group students by school in-memory
-    const schoolStudentsMap = new Map<string, any[]>();
-    schools.forEach(s => schoolStudentsMap.set(s._id.toString(), []));
-    students.forEach(s => {
+    const schoolStudentsMap = /* @__PURE__ */ new Map();
+    schools.forEach((s) => schoolStudentsMap.set(s._id.toString(), []));
+    students.forEach((s) => {
       if (schoolStudentsMap.has(s.schoolId)) {
-        schoolStudentsMap.get(s.schoolId)!.push(s);
+        schoolStudentsMap.get(s.schoolId).push(s);
       }
     });
-
     const schoolConfigs = await SchoolExamConfig.find({ examId, schoolId: { $in: schoolIds } }).lean();
-    const configMap = new Map();
-    schoolConfigs.forEach(c => configMap.set(c.schoolId, c));
-    const defaultCoreSubjects = ['P03', 'P04', 'P05', 'P06', 'P07', 'P08', 'P09'];
-
-    const critical: any[] = [];
+    const configMap = /* @__PURE__ */ new Map();
+    schoolConfigs.forEach((c) => configMap.set(c.schoolId, c));
+    const defaultCoreSubjects = ["P03", "P04", "P05", "P06", "P07", "P08", "P09"];
+    const critical = [];
     for (const school of schools) {
       const schoolId = school._id.toString();
       const schoolStudents = schoolStudentsMap.get(schoolId) || [];
-
       if (schoolStudents.length === 0) {
         critical.push({
           id: schoolId,
@@ -8097,47 +7068,38 @@ app.get("/api/results/anomalies", async (req, res) => {
         });
         continue;
       }
-
       const config = configMap.get(schoolId);
       let allowedSubjectCodes = [...defaultCoreSubjects];
       if (config && config.subjects && config.subjects.length > 0) {
-        const configuredCodes = config.subjects.map((subj: any) => idToCode[subj.subjectId] || subj.subjectId);
-        allowedSubjectCodes = Array.from(new Set([...configuredCodes, ...defaultCoreSubjects]));
+        const configuredCodes = config.subjects.map((subj) => idToCode[subj.subjectId] || subj.subjectId);
+        allowedSubjectCodes = Array.from(/* @__PURE__ */ new Set([...configuredCodes, ...defaultCoreSubjects]));
       }
-
       let passCount = 0;
       let fullAPlusCount = 0;
       let absentCount = 0;
       let appearedCount = 0;
-
-      schoolStudents.forEach(student => {
+      schoolStudents.forEach((student) => {
         const gradesMap = studentMarksMap[student.id] || {};
-        const grades = Object.entries(gradesMap)
-          .filter(([code]) => allowedSubjectCodes.includes(code))
-          .map(([, grade]) => String(grade));
-
+        const grades = Object.entries(gradesMap).filter(([code]) => allowedSubjectCodes.includes(code)).map(([, grade]) => String(grade));
         const status = getStudentResult(grades);
-    if (status === 'INCOMPLETE') { notEnteredCount++; return; }
-
-        if (status === 'ABSENT') {
+        if (status === "INCOMPLETE") {
+          notEnteredCount++;
+          return;
+        }
+        if (status === "ABSENT") {
           absentCount++;
         } else {
           appearedCount++;
-          if (status === 'PASS') {
+          if (status === "PASS") {
             passCount++;
-            const countAPlus = grades.filter(g => g.trim().toUpperCase() === 'A+').length;
+            const countAPlus = grades.filter((g) => g.trim().toUpperCase() === "A+").length;
             if (countAPlus === grades.length) fullAPlusCount++;
           }
         }
       });
-
-      const victoryPercentage = appearedCount > 0
-        ? (passCount / appearedCount) * 100
-        : 0;
-
-      const absentRate = schoolStudents.length > 0 ? (absentCount / schoolStudents.length) * 100 : 0;
-      const qualityRate = appearedCount > 0 ? (fullAPlusCount / appearedCount) * 100 : 0;
-
+      const victoryPercentage = appearedCount > 0 ? passCount / appearedCount * 100 : 0;
+      const absentRate = schoolStudents.length > 0 ? absentCount / schoolStudents.length * 100 : 0;
+      const qualityRate = appearedCount > 0 ? fullAPlusCount / appearedCount * 100 : 0;
       if (appearedCount === 0) {
         critical.push({
           id: schoolId,
@@ -8160,173 +7122,129 @@ app.get("/api/results/anomalies", async (req, res) => {
         });
       }
     }
-
     const responseData = { critical: critical.slice(0, 25) };
     analyticsCache.set(cacheKey, responseData, 300);
     res.json(responseData);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/results/benchmarking", async (req, res) => {
   try {
-    const examId = req.query.examId as string;
+    const examId = req.query.examId;
     if (!examId) return res.status(400).json({ message: "examId is required" });
-
-    let districtId = req.query.districtId as string | undefined;
-    if ((req as any).user?.role === 'DEO') {
-      districtId = (req as any).user.districtId || 'dist-9';
+    let districtId = req.query.districtId;
+    if (req.user?.role === "DEO") {
+      districtId = req.user.districtId || "dist-9";
     }
-
-    const cacheKey = `dashboard-benchmarking-${examId}-${districtId || 'ALL'}`;
+    const cacheKey = `dashboard-benchmarking-${examId}-${districtId || "ALL"}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
-
-    const exam = await Exam.findOne({ id: examId as string }).lean();
-    const examClass = exam?.standard || '10';
-
-    // Fetch active schools scoped by role or districtId
-    const schoolQuery: any = { role: 'SCHOOL', active: { $ne: false } };
+    const exam = await Exam.findOne({ id: examId }).lean();
+    const examClass = exam?.standard || "10";
+    const schoolQuery = { role: "SCHOOL", active: { $ne: false } };
     if (districtId) {
       const edus = await EducationalDistrict.find({
-        $or: [{ districtId: districtId }, { id: districtId }, { name: districtId }]
+        $or: [{ districtId }, { id: districtId }, { name: districtId }]
       });
-      const eduIds = edus.map(e => e.id);
+      const eduIds = edus.map((e) => e.id);
       schoolQuery.$or = [
-        { districtId: districtId },
+        { districtId },
         { subDistrictId: { $in: eduIds } },
         { eduId: { $in: eduIds } }
       ];
     }
-
     const schools = await School.find(schoolQuery).lean();
-    const schoolIds = schools.map(s => s._id.toString());
-
-    // Fetch all active students in class
+    const schoolIds = schools.map((s) => s._id.toString());
     const students = await Student.find({ schoolId: { $in: schoolIds }, className: examClass }).lean();
-    const studentIds = students.map(s => s.id);
-
-    // Fetch all marks for the exam using centralized grouped function
+    const studentIds = students.map((s) => s.id);
     const marksList = await findMarksGroupedByStudent(examId, studentIds);
-
-    // Fetch subject mapping and map markentries in memory
     const { idToCode } = await getSubjectMapping();
-    const studentMarksMap: Record<string, Record<string, any>> = {};
-    marksList.forEach((m: any) => {
+    const studentMarksMap = {};
+    marksList.forEach((m) => {
       const grades = m.grades ? Object.fromEntries(m.grades) : {};
       studentMarksMap[m.studentId] = grades;
     });
-
-    // Fetch edus and build subDistrict / district mappings
-    const eduDistrictsList = await EducationalDistrict.find().select('id districtId').lean();
-    const subDistrictToDistrictMap = new Map<string, string>();
-    const districtToSubDistrictsMap = new Map<string, string[]>();
-
+    const eduDistrictsList = await EducationalDistrict.find().select("id districtId").lean();
+    const subDistrictToDistrictMap = /* @__PURE__ */ new Map();
+    const districtToSubDistrictsMap = /* @__PURE__ */ new Map();
     eduDistrictsList.forEach((e) => {
       subDistrictToDistrictMap.set(e.id, e.districtId);
       if (!districtToSubDistrictsMap.has(e.districtId)) {
         districtToSubDistrictsMap.set(e.districtId, []);
       }
-      districtToSubDistrictsMap.get(e.districtId)!.push(e.id);
+      districtToSubDistrictsMap.get(e.districtId).push(e.id);
     });
-
-    // Group students by school, subDistrict, and district
-    const schoolStudents = new Map<string, any[]>();
-    const eduStudents = new Map<string, any[]>();
-    const districtStudents = new Map<string, any[]>();
-
-    students.forEach(student => {
+    const schoolStudents = /* @__PURE__ */ new Map();
+    const eduStudents = /* @__PURE__ */ new Map();
+    const districtStudents = /* @__PURE__ */ new Map();
+    students.forEach((student) => {
       const schoolId = student.schoolId;
-      const schoolObj = schools.find(s => s._id.toString() === schoolId);
+      const schoolObj = schools.find((s) => s._id.toString() === schoolId);
       if (!schoolObj) return;
-
       const subDistrictId = schoolObj.subDistrictId;
-      const districtId = subDistrictToDistrictMap.get(subDistrictId) || schoolObj.districtId;
-
+      const districtId2 = subDistrictToDistrictMap.get(subDistrictId) || schoolObj.districtId;
       if (!schoolStudents.has(schoolId)) schoolStudents.set(schoolId, []);
-      schoolStudents.get(schoolId)!.push(student);
-
+      schoolStudents.get(schoolId).push(student);
       if (!eduStudents.has(subDistrictId)) eduStudents.set(subDistrictId, []);
-      eduStudents.get(subDistrictId)!.push(student);
-
-      if (!districtStudents.has(districtId)) districtStudents.set(districtId, []);
-      districtStudents.get(districtId)!.push(student);
+      eduStudents.get(subDistrictId).push(student);
+      if (!districtStudents.has(districtId2)) districtStudents.set(districtId2, []);
+      districtStudents.get(districtId2).push(student);
     });
-
     const schoolConfigs = await SchoolExamConfig.find({ examId, schoolId: { $in: schoolIds } }).lean();
-    const configMap = new Map();
-    schoolConfigs.forEach(c => configMap.set(c.schoolId, c));
-    const defaultCoreSubjects = ['P03', 'P04', 'P05', 'P06', 'P07', 'P08', 'P09'];
-
-    // Helper to calculate stats in-memory for a list of students
-    const calculateListStats = (studentList: any[]) => {
+    const configMap = /* @__PURE__ */ new Map();
+    schoolConfigs.forEach((c) => configMap.set(c.schoolId, c));
+    const defaultCoreSubjects = ["P03", "P04", "P05", "P06", "P07", "P08", "P09"];
+    const calculateListStats = (studentList) => {
       if (studentList.length === 0) return { victoryPercentage: 0, appeared: 0 };
       let passCount = 0;
       let appearedCount = 0;
-      studentList.forEach(student => {
+      studentList.forEach((student) => {
         const config = configMap.get(student.schoolId);
         let allowedSubjectCodes = [...defaultCoreSubjects];
         if (config && config.subjects && config.subjects.length > 0) {
-          allowedSubjectCodes = config.subjects.map((subj: any) => idToCode[subj.subjectId] || subj.subjectId);
+          allowedSubjectCodes = config.subjects.map((subj) => idToCode[subj.subjectId] || subj.subjectId);
         }
-
         const gradesMap = studentMarksMap[student.id] || {};
-        const grades = Object.entries(gradesMap)
-          .filter(([code]) => allowedSubjectCodes.includes(code))
-          .map(([, grade]) => String(grade));
+        const grades = Object.entries(gradesMap).filter(([code]) => allowedSubjectCodes.includes(code)).map(([, grade]) => String(grade));
         const status = getStudentResult(grades);
-
-        if (status !== 'INCOMPLETE' && status !== 'ABSENT') {
+        if (status !== "INCOMPLETE" && status !== "ABSENT") {
           appearedCount++;
-          if (status === 'PASS') passCount++;
+          if (status === "PASS") passCount++;
         }
       });
       return {
         appeared: appearedCount > 0 ? appearedCount : studentList.length,
-        victoryPercentage: appearedCount > 0
-          ? (passCount / appearedCount) * 100
-          : 0
+        victoryPercentage: appearedCount > 0 ? passCount / appearedCount * 100 : 0
       };
     };
-
-    // Calculate state-wide stats
     const stateStats = calculateListStats(students);
     const stateRate = stateStats.victoryPercentage;
-
-    // Cache for edu and district rates
-    const eduRateCache = new Map<string, number>();
-    const distRateCache = new Map<string, number>();
-
-    const getEduRate = (subDistrictId: string) => {
-      if (eduRateCache.has(subDistrictId)) return eduRateCache.get(subDistrictId)!;
+    const eduRateCache = /* @__PURE__ */ new Map();
+    const distRateCache = /* @__PURE__ */ new Map();
+    const getEduRate = (subDistrictId) => {
+      if (eduRateCache.has(subDistrictId)) return eduRateCache.get(subDistrictId);
       const list = eduStudents.get(subDistrictId) || [];
       const rate = calculateListStats(list).victoryPercentage;
       eduRateCache.set(subDistrictId, rate);
       return rate;
     };
-
-    const getDistRate = (districtId: string) => {
-      if (distRateCache.has(districtId)) return distRateCache.get(districtId)!;
-      const list = districtStudents.get(districtId) || [];
+    const getDistRate = (districtId2) => {
+      if (distRateCache.has(districtId2)) return distRateCache.get(districtId2);
+      const list = districtStudents.get(districtId2) || [];
       const rate = calculateListStats(list).victoryPercentage;
-      distRateCache.set(districtId, rate);
+      distRateCache.set(districtId2, rate);
       return rate;
     };
-
-    // Compute stats for each school
-    const ranked = schools.map(school => {
+    const ranked = schools.map((school) => {
       const schoolId = school._id.toString();
       const list = schoolStudents.get(schoolId) || [];
       const schoolStats = calculateListStats(list);
-
       const subDistrictId = school.subDistrictId;
-      const districtId = subDistrictToDistrictMap.get(subDistrictId) || school.districtId;
-
+      const districtId2 = subDistrictToDistrictMap.get(subDistrictId) || school.districtId;
       const schoolRate = schoolStats.victoryPercentage;
-      const distRate = getDistRate(districtId);
+      const distRate = getDistRate(districtId2);
       const eduRate = getEduRate(subDistrictId);
-
       return {
         name: school.name,
         rate: Number(schoolRate.toFixed(1)),
@@ -8335,20 +7253,14 @@ app.get("/api/results/benchmarking", async (req, res) => {
         vsEdu: Number((schoolRate - eduRate).toFixed(1))
       };
     });
-
-    const benchSchools = ranked
-      .filter((school) => Number.isFinite(school.rate))
-      .sort((a, b) => a.rate - b.rate)
-      .slice(0, 10);
-
+    const benchSchools = ranked.filter((school) => Number.isFinite(school.rate)).sort((a, b) => a.rate - b.rate).slice(0, 10);
     const responseData = { schools: benchSchools };
     analyticsCache.set(cacheKey, responseData, 300);
     res.json(responseData);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/results/custom-report", enforceSchoolScope, async (req, res) => {
   try {
     const {
@@ -8363,142 +7275,117 @@ app.get("/api/results/custom-report", enforceSchoolScope, async (req, res) => {
       allOrAny,
       schoolId
     } = req.query;
-
     if (!examId) return res.status(400).json({ message: "examId is required" });
     if (!filterType) return res.status(400).json({ message: "filterType is required" });
-
-    const cacheKey = `custom-report-${examId}-${subjectId || 'ALL'}-${filterType}-${comparison}-${gradeValue}-${markValue}-${markMin}-${markMax}-${allOrAny}-${schoolId || 'ALL'}`;
+    const cacheKey = `custom-report-${examId}-${subjectId || "ALL"}-${filterType}-${comparison}-${gradeValue}-${markValue}-${markMin}-${markMax}-${allOrAny}-${schoolId || "ALL"}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
-
-    const exam = await Exam.findOne({ id: examId as string }).lean();
+    const exam = await Exam.findOne({ id: examId }).lean();
     if (!exam) return res.status(404).json({ message: "Exam not found" });
-    const examClass = exam.standard || '10';
-
-    // 1. Get all active schools, optionally filtered by schoolId or districtId
-    let districtId = req.query.districtId as string | undefined;
-    if ((req as any).user?.role === 'DEO') {
-      districtId = (req as any).user.districtId || 'dist-9';
+    const examClass = exam.standard || "10";
+    let districtId = req.query.districtId;
+    if (req.user?.role === "DEO") {
+      districtId = req.user.districtId || "dist-9";
     }
-
-    const schoolQuery: any = { role: 'SCHOOL', active: { $ne: false } };
+    const schoolQuery = { role: "SCHOOL", active: { $ne: false } };
     if (schoolId) {
-      if (mongoose.Types.ObjectId.isValid(schoolId as string)) {
-        schoolQuery._id = new mongoose.Types.ObjectId(schoolId as string);
+      if (mongoose.Types.ObjectId.isValid(schoolId)) {
+        schoolQuery._id = new mongoose.Types.ObjectId(schoolId);
       } else {
         schoolQuery.schoolCode = schoolId;
       }
     } else if (districtId) {
       const edus = await EducationalDistrict.find({
-        $or: [{ districtId: districtId }, { id: districtId }, { name: districtId }]
+        $or: [{ districtId }, { id: districtId }, { name: districtId }]
       }).lean();
-      const eduIds = edus.map(e => e.id);
+      const eduIds = edus.map((e) => e.id);
       schoolQuery.$or = [
-        { districtId: districtId },
+        { districtId },
         { subDistrictId: { $in: eduIds } },
         { eduId: { $in: eduIds } }
       ];
     }
     const schools = await School.find(schoolQuery).lean();
-    const schoolIds = schools.map(s => s._id.toString());
-
-    // 2. Get all students in standard 10 (or exam standard) for these schools
+    const schoolIds = schools.map((s) => s._id.toString());
     const students = await Student.find({ schoolId: { $in: schoolIds }, className: examClass, active: { $ne: false } }).lean();
-    const studentIds = students.map(s => s.id);
-
-    // 3. Get subject mapping to convert subject IDs to short names (Lan I, Mat, etc.)
+    const studentIds = students.map((s) => s.id);
     const { idToCode } = await getSubjectMapping();
-
-    // 4. Get all marks for this exam and standard
-    const rawMarkEntries = await Mark.find({ examId: examId as string, studentId: { $in: studentIds } }).lean();
-
-    const markEntries = rawMarkEntries
-      .map((entry: any) => {
-        const subIdStr = String(entry.subjectId);
-        const code = idToCode[subIdStr] || subIdStr;
-        return { ...entry, code };
-      })
-      .filter((entry) => {
-        if (entry.code === 'P10' || entry.code.includes('P10')) return false;
-        const hasMarks = entry.isAbsent ||
-          (entry.grade && !['', '-'].includes(String(entry.grade).trim())) ||
-          (entry.rawScore !== undefined && entry.rawScore !== null && entry.rawScore !== '') ||
-          (entry.mark !== undefined && entry.mark !== null && entry.mark !== '');
-        return hasMarks;
-      });
-
-    // Group marks by studentId
-    const studentMarksMap = new Map<string, Array<any>>();
+    const rawMarkEntries = await Mark.find({ examId, studentId: { $in: studentIds } }).lean();
+    const markEntries = rawMarkEntries.map((entry) => {
+      const subIdStr = String(entry.subjectId);
+      const code = idToCode[subIdStr] || subIdStr;
+      return { ...entry, code };
+    }).filter((entry) => {
+      if (entry.code === "P10" || entry.code.includes("P10")) return false;
+      const hasMarks = entry.isAbsent || entry.grade && !["", "-"].includes(String(entry.grade).trim()) || entry.rawScore !== void 0 && entry.rawScore !== null && entry.rawScore !== "" || entry.mark !== void 0 && entry.mark !== null && entry.mark !== "";
+      return hasMarks;
+    });
+    const studentMarksMap = /* @__PURE__ */ new Map();
     markEntries.forEach((entry) => {
       if (!studentMarksMap.has(entry.studentId)) {
         studentMarksMap.set(entry.studentId, []);
       }
-      studentMarksMap.get(entry.studentId)!.push(entry);
+      studentMarksMap.get(entry.studentId).push(entry);
     });
-
-    // Grade Rank Mapping
-    const gradeRanks: Record<string, number> = {
-      "A+": 9, "A": 8, "B+": 7, "B": 6, "C+": 5, "C": 4, "D+": 3, "D": 2, "E": 1, "Ab": 0
+    const gradeRanks = {
+      "A+": 9,
+      "A": 8,
+      "B+": 7,
+      "B": 6,
+      "C+": 5,
+      "C": 4,
+      "D+": 3,
+      "D": 2,
+      "E": 1,
+      "Ab": 0
     };
-
-    // Helper to evaluate a single mark entry against criteria
-    const evaluateCriteria = (entry: any): boolean => {
+    const evaluateCriteria = (entry) => {
       if (!entry) return false;
-
-      if (filterType === 'grade') {
-        let studentGrade = entry.grade || '';
-        const targetGrade = (gradeValue as string) || '';
+      if (filterType === "grade") {
+        let studentGrade = entry.grade || "";
+        const targetGrade = gradeValue || "";
         if (!studentGrade) return false;
-
-        if (['AB', 'ABSENT', 'ABS', 'ab'].includes(studentGrade.toUpperCase())) {
-          studentGrade = 'Ab';
+        if (["AB", "ABSENT", "ABS", "ab"].includes(studentGrade.toUpperCase())) {
+          studentGrade = "Ab";
         } else {
           let gradeNum = Number(String(studentGrade).trim());
-          let effectiveMark = entry.mark !== undefined && entry.mark !== null && entry.mark !== '' ? Number(entry.mark) : NaN;
+          let effectiveMark = entry.mark !== void 0 && entry.mark !== null && entry.mark !== "" ? Number(entry.mark) : NaN;
           if (Number.isNaN(effectiveMark) && !Number.isNaN(gradeNum)) effectiveMark = gradeNum;
-
           if (!Number.isNaN(effectiveMark) && effectiveMark >= 0 && entry.subjectId && exam.maxMarks) {
             const subIdStr = String(entry.subjectId);
             const code = idToCode[subIdStr] || subIdStr;
             let maxMark = getResolvedMaxMark(exam, subIdStr, code, 50);
             if (maxMark > 0) {
-              const pct = Math.round((effectiveMark / maxMark) * 100);
-              if (pct >= 90) studentGrade = 'A+';
-              else if (pct >= 80) studentGrade = 'A';
-              else if (pct >= 70) studentGrade = 'B+';
-              else if (pct >= 60) studentGrade = 'B';
-              else if (pct >= 50) studentGrade = 'C+';
-              else if (pct >= 40) studentGrade = 'C';
-              else if (pct >= 30) studentGrade = 'D+';
-              else if (pct >= 20) studentGrade = 'D';
-              else studentGrade = 'E';
+              const pct = Math.round(effectiveMark / maxMark * 100);
+              if (pct >= 90) studentGrade = "A+";
+              else if (pct >= 80) studentGrade = "A";
+              else if (pct >= 70) studentGrade = "B+";
+              else if (pct >= 60) studentGrade = "B";
+              else if (pct >= 50) studentGrade = "C+";
+              else if (pct >= 40) studentGrade = "C";
+              else if (pct >= 30) studentGrade = "D+";
+              else if (pct >= 20) studentGrade = "D";
+              else studentGrade = "E";
             }
           }
         }
-
-        const sRank = gradeRanks[studentGrade] !== undefined ? gradeRanks[studentGrade] : -1;
-        const tRank = gradeRanks[targetGrade] !== undefined ? gradeRanks[targetGrade] : -1;
-
-        if (comparison === 'eq') return studentGrade === targetGrade || studentGrade.toUpperCase() === targetGrade.toUpperCase();
-        if (comparison === 'gte') return sRank >= tRank && sRank >= 0 && tRank >= 0;
-        if (comparison === 'lte') return sRank <= tRank && sRank >= 0 && tRank >= 0;
-      } else if (filterType === 'mark') {
-        if (entry.isAbsent || ['AB', 'ABSENT', 'ABS'].includes((entry.grade || '').toUpperCase())) {
-          return false; // Absent students shouldn't be matched in mark-based brackets
+        const sRank = gradeRanks[studentGrade] !== void 0 ? gradeRanks[studentGrade] : -1;
+        const tRank = gradeRanks[targetGrade] !== void 0 ? gradeRanks[targetGrade] : -1;
+        if (comparison === "eq") return studentGrade === targetGrade || studentGrade.toUpperCase() === targetGrade.toUpperCase();
+        if (comparison === "gte") return sRank >= tRank && sRank >= 0 && tRank >= 0;
+        if (comparison === "lte") return sRank <= tRank && sRank >= 0 && tRank >= 0;
+      } else if (filterType === "mark") {
+        if (entry.isAbsent || ["AB", "ABSENT", "ABS"].includes((entry.grade || "").toUpperCase())) {
+          return false;
         }
-
-        // Use the new normalizedScore field if available, otherwise fallback to calculating it
         let effectiveMark = NaN;
-
-        if (entry.normalizedScore !== undefined && entry.normalizedScore !== null) {
+        if (entry.normalizedScore !== void 0 && entry.normalizedScore !== null) {
           effectiveMark = Number(entry.normalizedScore);
         } else {
-          // Legacy fallback calculation
-          let studentMark = entry.mark !== undefined && entry.mark !== null && entry.mark !== '' ? Number(entry.mark) : NaN;
-          let gradeNum = Number(String(entry.grade || '').trim());
+          let studentMark = entry.mark !== void 0 && entry.mark !== null && entry.mark !== "" ? Number(entry.mark) : NaN;
+          let gradeNum = Number(String(entry.grade || "").trim());
           if (Number.isNaN(studentMark) && !Number.isNaN(gradeNum)) studentMark = gradeNum;
           effectiveMark = studentMark;
-
           if (!Number.isNaN(studentMark) && studentMark >= 0 && entry.subjectId) {
             const subIdStr = String(entry.subjectId);
             const code = idToCode[subIdStr] || subIdStr;
@@ -8507,18 +7394,15 @@ app.get("/api/results/custom-report", enforceSchoolScope, async (req, res) => {
               maxMark = getResolvedMaxMark(exam, subIdStr, code, 50);
             }
             if (maxMark > 0) {
-              effectiveMark = Math.round((studentMark / maxMark) * 100);
+              effectiveMark = Math.round(studentMark / maxMark * 100);
             }
           }
         }
-
         if (Number.isNaN(effectiveMark)) return false;
-
-        if (comparison === 'eq') return effectiveMark === Number(markValue);
-        if (comparison === 'gte') return effectiveMark >= Number(markValue);
-        if (comparison === 'lte') return effectiveMark <= Number(markValue);
-
-        if (comparison === 'between') {
+        if (comparison === "eq") return effectiveMark === Number(markValue);
+        if (comparison === "gte") return effectiveMark >= Number(markValue);
+        if (comparison === "lte") return effectiveMark <= Number(markValue);
+        if (comparison === "between") {
           const min = Number(markMin || 0);
           const max = Number(markMax || 100);
           return effectiveMark >= min && effectiveMark <= max;
@@ -8526,44 +7410,31 @@ app.get("/api/results/custom-report", enforceSchoolScope, async (req, res) => {
       }
       return false;
     };
-
-    // Evaluate each student
-    const matchingStudents: Array<any> = [];
-    const subjectContributions: Record<string, number> = {};
-
+    const matchingStudents = [];
+    const subjectContributions = {};
     students.forEach((student) => {
       const studentId = student.id;
       const marks = studentMarksMap.get(studentId) || [];
-
-      // Determine if student matches based on subject filter
       let isMatch = false;
-
-      if (subjectId && subjectId !== 'ALL') {
-        // Specific subject filter
-        const entry = marks.find(m => String(m.subjectId) === String(subjectId));
+      if (subjectId && subjectId !== "ALL") {
+        const entry = marks.find((m) => String(m.subjectId) === String(subjectId));
         isMatch = evaluateCriteria(entry);
       } else {
-        // "ALL" subjects filter:
         if (marks.length === 0) {
           isMatch = false;
-        } else if (allOrAny === 'TOTAL') {
-          // Calculate overall percentage across all subjects
+        } else if (allOrAny === "TOTAL") {
           let totalMark = 0;
           let validSubjectsCount = 0;
-
-          marks.forEach(m => {
+          marks.forEach((m) => {
             let mMark = NaN;
-
-            if (m.rawScore !== undefined && m.rawScore !== null) {
+            if (m.rawScore !== void 0 && m.rawScore !== null) {
               mMark = Number(m.rawScore);
-            } else if (m.normalizedScore !== undefined && m.normalizedScore !== null) {
+            } else if (m.normalizedScore !== void 0 && m.normalizedScore !== null) {
               mMark = Number(m.normalizedScore);
             } else {
-              // Legacy
-              mMark = m.mark !== undefined && m.mark !== null && m.mark !== '' ? Number(m.mark) : NaN;
-              let gradeNum = Number(String(m.grade || '').trim());
+              mMark = m.mark !== void 0 && m.mark !== null && m.mark !== "" ? Number(m.mark) : NaN;
+              let gradeNum = Number(String(m.grade || "").trim());
               if (Number.isNaN(mMark) && !Number.isNaN(gradeNum)) mMark = gradeNum;
-
               if (!Number.isNaN(mMark) && mMark >= 0 && m.subjectId) {
                 const subIdStr = String(m.subjectId);
                 const code = idToCode[subIdStr] || subIdStr;
@@ -8572,65 +7443,62 @@ app.get("/api/results/custom-report", enforceSchoolScope, async (req, res) => {
                   maxMark = getResolvedMaxMark(exam, subIdStr, code, 50);
                 }
                 if (maxMark > 0) {
-                  mMark = Math.round((mMark / maxMark) * 100);
+                  mMark = Math.round(mMark / maxMark * 100);
                 }
               }
             }
-
-            const gradeStr = (m.grade || '').toUpperCase();
-
-            // Map grades if marks are 0/NaN
+            const gradeStr = (m.grade || "").toUpperCase();
             if ((Number.isNaN(mMark) || mMark === 0) && gradeStr) {
-              const gradePercentMap: Record<string, number> = {
-                "A+": 95, "A": 85, "B+": 75, "B": 65,
-                "C+": 55, "C": 45, "D+": 35, "D": 25, "E": 15
+              const gradePercentMap = {
+                "A+": 95,
+                "A": 85,
+                "B+": 75,
+                "B": 65,
+                "C+": 55,
+                "C": 45,
+                "D+": 35,
+                "D": 25,
+                "E": 15
               };
               let stdGrade = gradeStr;
-              if (stdGrade === 'A PLUS' || stdGrade === 'A P') stdGrade = 'A+';
-              if (stdGrade === 'B PLUS' || stdGrade === 'B P') stdGrade = 'B+';
-              if (stdGrade === 'C PLUS' || stdGrade === 'C P') stdGrade = 'C+';
-              if (stdGrade === 'D PLUS' || stdGrade === 'D P') stdGrade = 'D+';
-              if (gradePercentMap[stdGrade] !== undefined) {
+              if (stdGrade === "A PLUS" || stdGrade === "A P") stdGrade = "A+";
+              if (stdGrade === "B PLUS" || stdGrade === "B P") stdGrade = "B+";
+              if (stdGrade === "C PLUS" || stdGrade === "C P") stdGrade = "C+";
+              if (stdGrade === "D PLUS" || stdGrade === "D P") stdGrade = "D+";
+              if (gradePercentMap[stdGrade] !== void 0) {
                 mMark = gradePercentMap[stdGrade];
               }
             }
-
             if (!Number.isNaN(mMark)) {
               totalMark += mMark;
               validSubjectsCount++;
             }
           });
-
           if (validSubjectsCount > 0) {
             const overallPercentage = totalMark / validSubjectsCount;
-            // Map overall percentage back to a grade for grade-based filtering if needed
-            let overallGrade = 'E';
-            if (overallPercentage >= 90) overallGrade = 'A+';
-            else if (overallPercentage >= 80) overallGrade = 'A';
-            else if (overallPercentage >= 70) overallGrade = 'B+';
-            else if (overallPercentage >= 60) overallGrade = 'B';
-            else if (overallPercentage >= 50) overallGrade = 'C+';
-            else if (overallPercentage >= 40) overallGrade = 'C';
-            else if (overallPercentage >= 30) overallGrade = 'D+';
-            else if (overallPercentage >= 20) overallGrade = 'D';
-
+            let overallGrade = "E";
+            if (overallPercentage >= 90) overallGrade = "A+";
+            else if (overallPercentage >= 80) overallGrade = "A";
+            else if (overallPercentage >= 70) overallGrade = "B+";
+            else if (overallPercentage >= 60) overallGrade = "B";
+            else if (overallPercentage >= 50) overallGrade = "C+";
+            else if (overallPercentage >= 40) overallGrade = "C";
+            else if (overallPercentage >= 30) overallGrade = "D+";
+            else if (overallPercentage >= 20) overallGrade = "D";
             const dummyEntry = { mark: overallPercentage, grade: overallGrade };
             isMatch = evaluateCriteria(dummyEntry);
           } else {
             isMatch = false;
           }
         } else {
-          const evaluations = marks.map(m => evaluateCriteria(m));
+          const evaluations = marks.map((m) => evaluateCriteria(m));
           const matchCount = evaluations.filter(Boolean).length;
-
-          if (allOrAny === 'ALL') {
-            // Must match in all entered subjects
+          if (allOrAny === "ALL") {
             isMatch = marks.length > 0 && matchCount === marks.length;
           } else {
-            // At least one subject matches (ANY)
             isMatch = matchCount > 0;
             if (isMatch) {
-              marks.forEach(m => {
+              marks.forEach((m) => {
                 if (evaluateCriteria(m)) {
                   const subIdStr = String(m.subjectId);
                   const code = idToCode[subIdStr] || subIdStr;
@@ -8641,26 +7509,22 @@ app.get("/api/results/custom-report", enforceSchoolScope, async (req, res) => {
           }
         }
       }
-
       if (isMatch) {
-        // Construct student summary with all their grades/marks for selected subjects
-        const gradesObj: Record<string, string> = {};
-        const marksObj: Record<string, number> = {};
-        marks.forEach(m => {
+        const gradesObj = {};
+        const marksObj = {};
+        marks.forEach((m) => {
           const subIdStr = String(m.subjectId);
           const code = idToCode[subIdStr] || subIdStr;
-          gradesObj[code] = m.grade || '';
-
-          if (m.rawScore !== undefined && m.rawScore !== null) {
+          gradesObj[code] = m.grade || "";
+          if (m.rawScore !== void 0 && m.rawScore !== null) {
             marksObj[code] = m.rawScore;
-          } else if (m.mark !== undefined) {
+          } else if (m.mark !== void 0) {
             marksObj[code] = m.mark;
           }
         });
-
         matchingStudents.push({
           studentId: student.id,
-          regNo: student.globalId || student.uniqueId || '',
+          regNo: student.globalId || student.uniqueId || "",
           name: student.name,
           gender: student.gender,
           schoolId: student.schoolId,
@@ -8669,155 +7533,118 @@ app.get("/api/results/custom-report", enforceSchoolScope, async (req, res) => {
         });
       }
     });
-
-    // Group matching students and all registered standard 10 students by school
-    const schoolStatsMap = new Map<string, { matching: any[], totalAppeared: number }>();
-
-    // First initialize for all schools
+    const schoolStatsMap = /* @__PURE__ */ new Map();
     schools.forEach((s) => {
       schoolStatsMap.set(s._id.toString(), { matching: [], totalAppeared: 0 });
     });
-
-    // Count appeared students per school dynamically
-    const schoolPresentCount = new Map<string, number>();
-
+    const schoolPresentCount = /* @__PURE__ */ new Map();
     students.forEach((student) => {
       const sMarks = studentMarksMap.get(student.id) || [];
-      // A student is considered 'Present' if they have a valid mark or a grade that is not Absent.
-      const isPresent = sMarks.some(m => {
-        if (m.isPresent !== undefined) return m.isPresent;
-        return (m.rawScore !== undefined && m.rawScore !== null) ||
-          (m.mark !== undefined && m.mark !== null && m.mark !== '') ||
-          (m.grade && !['AB', 'ABSENT', 'ABS', 'ab'].includes(String(m.grade).trim().toUpperCase()));
+      const isPresent = sMarks.some((m) => {
+        if (m.isPresent !== void 0) return m.isPresent;
+        return m.rawScore !== void 0 && m.rawScore !== null || m.mark !== void 0 && m.mark !== null && m.mark !== "" || m.grade && !["AB", "ABSENT", "ABS", "ab"].includes(String(m.grade).trim().toUpperCase());
       });
       if (isPresent) {
         schoolPresentCount.set(student.schoolId, (schoolPresentCount.get(student.schoolId) || 0) + 1);
       }
     });
-
-    // Fallback to total active students if present count is 0
     schools.forEach((s) => {
       const schId = s._id.toString();
-      let app = schoolPresentCount.get(schId) || 0;
-      if (app === 0) {
-        app = students.filter(st => st.schoolId === schId).length;
+      let app2 = schoolPresentCount.get(schId) || 0;
+      if (app2 === 0) {
+        app2 = students.filter((st) => st.schoolId === schId).length;
       }
-      const val = schoolStatsMap.get(schId)!;
-      val.totalAppeared = app;
+      const val = schoolStatsMap.get(schId);
+      val.totalAppeared = app2;
     });
-
-    // Populate matching students
     matchingStudents.forEach((st) => {
       const val = schoolStatsMap.get(st.schoolId);
       if (val) {
         val.matching.push(st);
       }
     });
-
-    // Format output
-    const schoolsReport = schools.map((school: any) => {
+    const schoolsReport = schools.map((school) => {
       const schId = school._id.toString();
-      const stats = schoolStatsMap.get(schId)!;
-      const rate = stats.totalAppeared > 0 ? (stats.matching.length / stats.totalAppeared) * 100 : 0;
-
+      const stats = schoolStatsMap.get(schId);
+      const rate = stats.totalAppeared > 0 ? stats.matching.length / stats.totalAppeared * 100 : 0;
       return {
         id: school._id.toString(),
         schoolId: schId,
-        code: school.schoolCode || school.username || '',
+        code: school.schoolCode || school.username || "",
         name: school.name,
-        type: school.schoolType || '',
+        type: school.schoolType || "",
         totalAppeared: stats.totalAppeared,
         matchCount: stats.matching.length,
         matchRate: Number(rate.toFixed(1)),
         students: stats.matching
       };
     });
-
-    // Filter out schools with 0 appeared students
-    const activeSchoolsReport = schoolsReport.filter(s => s.totalAppeared > 0);
-
-    // Sort by matchCount desc
+    const activeSchoolsReport = schoolsReport.filter((s) => s.totalAppeared > 0);
     activeSchoolsReport.sort((a, b) => b.matchCount - a.matchCount);
-
     const response = {
       summary: {
         totalSchools: activeSchoolsReport.length,
         totalStudentsMatching: matchingStudents.length,
         totalAppeared: activeSchoolsReport.reduce((sum, s) => sum + s.totalAppeared, 0),
-        subjectContributions: Object.keys(subjectContributions).length > 0 ? subjectContributions : undefined
+        subjectContributions: Object.keys(subjectContributions).length > 0 ? subjectContributions : void 0
       },
       schools: activeSchoolsReport
     };
     analyticsCache.set(cacheKey, response, 300);
     res.json(response);
-
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/results/student-analytics", async (req, res) => {
   res.json({ topPerformers: [], atRiskStudents: [], note: "Draft implementation" });
 });
-
-// ─── MEDIUM ROUTES ─────────────────────────────────────────────────────────
-
 app.get("/api/management/mediums", authenticateToken, async (req, res) => {
   try {
     const mediums = await Medium.find({}).sort({ displayOrder: 1 }).lean();
     res.json(mediums);
-  } catch (err: any) {
+  } catch (err) {
     console.error("[MEDIUM GET ERROR]", err?.message, err?.stack);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/school/mediums", authenticateToken, async (req: any, res) => {
+app.get("/api/school/mediums", authenticateToken, async (req, res) => {
   try {
     const schoolId = req.query.schoolId || req.user.schoolId || req.user.id;
-    const schoolUser = await User.findById(schoolId).lean() as any;
+    const schoolUser = await User.findById(schoolId).lean();
     const schoolMediumCodes = schoolUser?.mediums || [];
-
     if (schoolMediumCodes.length === 0) {
       const students = await Student.find({ schoolId, active: { $ne: false } }).lean();
-      const uniqueMediums = [...new Set(students.map((s: any) => s.medium).filter(Boolean))];
-      const mediums = await Medium.find({ shortName: { $in: uniqueMediums }, active: { $ne: false } }).sort({ displayOrder: 1 }).lean();
-      return res.json(mediums.length > 0 ? mediums : await Medium.find({ active: { $ne: false } }).sort({ displayOrder: 1 }).lean());
+      const uniqueMediums = [...new Set(students.map((s) => s.medium).filter(Boolean))];
+      const mediums2 = await Medium.find({ shortName: { $in: uniqueMediums }, active: { $ne: false } }).sort({ displayOrder: 1 }).lean();
+      return res.json(mediums2.length > 0 ? mediums2 : await Medium.find({ active: { $ne: false } }).sort({ displayOrder: 1 }).lean());
     }
-
     const { codeToShortName } = await getMediumMaps();
-    const fullNames = schoolMediumCodes.map((c: string) => codeToShortName[c.toUpperCase()] || c);
+    const fullNames = schoolMediumCodes.map((c) => codeToShortName[c.toUpperCase()] || c);
     const mediums = await Medium.find({
       $or: [{ code: { $in: schoolMediumCodes } }, { shortName: { $in: fullNames } }],
       active: { $ne: false }
     }).sort({ displayOrder: 1 }).lean();
-
     if (mediums.length === 0) {
       return res.json(await Medium.find({ active: { $ne: false } }).sort({ displayOrder: 1 }).lean());
     }
     res.json(mediums);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/management/mediums", authenticateToken, requireRole('WEBMASTER'), async (req, res) => {
+app.post("/api/management/mediums", authenticateToken, requireRole("WEBMASTER"), async (req, res) => {
   try {
     let { _id, name, code, shortName, active, displayOrder } = req.body;
-    // Use only MongoDB _id for updates — the custom string id field is NOT a valid ObjectId
     const mongoId = _id || null;
     let medium;
-
-    name = (name || '').trim();
-    code = (code || '').toUpperCase().trim();
-    shortName = (shortName || '').trim();
-
+    name = (name || "").trim();
+    code = (code || "").toUpperCase().trim();
+    shortName = (shortName || "").trim();
     if (!name) return res.status(400).json({ message: "Medium name is required" });
     if (!code) return res.status(400).json({ message: "Medium code is required" });
     if (!shortName) return res.status(400).json({ message: "Short name is required" });
-
-    const updateData: any = { name, code, shortName, active, displayOrder };
-
+    const updateData = { name, code, shortName, active, displayOrder };
     if (mongoId) {
       medium = await Medium.findByIdAndUpdate(mongoId, updateData, { new: true });
     } else {
@@ -8828,70 +7655,59 @@ app.post("/api/management/mediums", authenticateToken, requireRole('WEBMASTER'),
       await medium.save();
     }
     res.json(medium);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.delete("/api/management/mediums/:id", authenticateToken, requireRole('WEBMASTER'), async (req, res) => {
+app.delete("/api/management/mediums/:id", authenticateToken, requireRole("WEBMASTER"), async (req, res) => {
   try {
     await Medium.findByIdAndDelete(req.params.id);
     res.json({ message: "Medium deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// ─── SUBJECTS ROUTE ─────────────────────────────────────────────────────────
-
 app.get("/api/management/subjects", authenticateToken, async (req, res) => {
   try {
     const { mediumId, medium, category } = req.query;
-    const filter: any = { active: { $ne: false } };
+    const filter = { active: { $ne: false } };
     if (mediumId) filter.mediumId = mediumId;
     if (medium) filter.medium = medium;
     if (category) filter.category = category;
     const subjects = await Subject.find(filter).sort({ displayOrder: 1, code: 1 });
-
     res.json(subjects);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.post("/api/management/subjects", authenticateToken, async (req, res) => {
   try {
     let { id, _id, name, shortName, code, medium, mediumId, mediumName, category, paperType, languageType, active, displayOrder } = req.body;
     const searchId = id || _id;
     let subject;
-
-    name = (name || '').toUpperCase().trim();
-    shortName = (shortName || '').toUpperCase().trim();
-    code = (code || '').toUpperCase().trim();
-    medium = (medium || '').trim();
-    mediumId = (mediumId || '').trim();
-    mediumName = (mediumName || '').trim();
-    category = (category || '').trim();
-    paperType = (paperType || '').trim();
-    languageType = (languageType || '').trim();
-
+    name = (name || "").toUpperCase().trim();
+    shortName = (shortName || "").toUpperCase().trim();
+    code = (code || "").toUpperCase().trim();
+    medium = (medium || "").trim();
+    mediumId = (mediumId || "").trim();
+    mediumName = (mediumName || "").trim();
+    category = (category || "").trim();
+    paperType = (paperType || "").trim();
+    languageType = (languageType || "").trim();
     if (!name) return res.status(400).json({ message: "Subject name is required" });
     if (!shortName) return res.status(400).json({ message: "Short code is required" });
-
     if (mediumId && !mediumName) {
-      const med = await Medium.findOne({ id: mediumId }).lean() as any;
+      const med = await Medium.findOne({ id: mediumId }).lean();
       if (med) mediumName = med.shortName;
     }
     if (!category && paperType) {
-      const catMap: Record<string, string> = { P01: 'FIRST_LANGUAGE', P02: 'FIRST_LANGUAGE', P03: 'SECOND_LANGUAGE', P04: 'THIRD_LANGUAGE' };
-      category = catMap[paperType] || 'CORE';
+      const catMap = { P01: "FIRST_LANGUAGE", P02: "FIRST_LANGUAGE", P03: "SECOND_LANGUAGE", P04: "THIRD_LANGUAGE" };
+      category = catMap[paperType] || "CORE";
     }
     if (!paperType && shortName) {
       paperType = shortName;
     }
-
-    const updateData: any = { name, shortName, code, medium, mediumId, mediumName, category, paperType, languageType, active, displayOrder };
-
+    const updateData = { name, shortName, code, medium, mediumId, mediumName, category, paperType, languageType, active, displayOrder };
     if (searchId) {
       subject = await Subject.findByIdAndUpdate(searchId, updateData, { new: true });
     } else {
@@ -8899,143 +7715,127 @@ app.post("/api/management/subjects", authenticateToken, async (req, res) => {
       await subject.save();
     }
     res.json(subject);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.delete("/api/management/subjects/:id", authenticateToken, async (req, res) => {
   try {
     await Subject.findByIdAndDelete(req.params.id);
     res.json({ message: "Subject deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
 app.get("/api/management/subjects/grouped", authenticateToken, async (req, res) => {
   try {
     const allSubjects = await Subject.find({ active: { $ne: false } }).lean();
     const markGroupConfigs = await AdminMarkGroupConfig.find({}).lean();
-    const markGroupMap: Record<string, any[]> = {};
-    markGroupConfigs.forEach((cfg: any) => {
+    const markGroupMap = {};
+    markGroupConfigs.forEach((cfg) => {
       markGroupMap[cfg.subjectId] = cfg.groups;
     });
-
     const allMediums = await Medium.find({ active: { $ne: false } }).sort({ displayOrder: 1 }).lean();
-    let mediumNames = allMediums.map((m: any) => m.shortName);
-    const subjectsByMedium: Record<string, { p01: any[]; p02: any[]; p03: any[]; p04: any[]; core: any[] }> = {};
-    mediumNames.forEach(m => { subjectsByMedium[m] = { p01: [], p02: [], p03: [], p04: [], core: [] }; });
-
+    let mediumNames = allMediums.map((m) => m.shortName);
+    const subjectsByMedium = {};
+    mediumNames.forEach((m) => {
+      subjectsByMedium[m] = { p01: [], p02: [], p03: [], p04: [], core: [] };
+    });
     if (mediumNames.length === 0) {
       const defaultMediums = [
-        { shortName: 'Tamil', code: 'TM', id: 'medium-tm' },
-        { shortName: 'English', code: 'EM', id: 'medium-em' },
-        { shortName: 'Malayalam', code: 'MM', id: 'medium-mm' },
-        { shortName: 'Kannada', code: 'KM', id: 'medium-km' },
+        { shortName: "Tamil", code: "TM", id: "medium-tm" },
+        { shortName: "English", code: "EM", id: "medium-em" },
+        { shortName: "Malayalam", code: "MM", id: "medium-mm" },
+        { shortName: "Kannada", code: "KM", id: "medium-km" }
       ];
-      mediumNames = defaultMediums.map(m => m.shortName);
-      mediumNames.forEach(m => { subjectsByMedium[m] = { p01: [], p02: [], p03: [], p04: [], core: [] }; });
+      mediumNames = defaultMediums.map((m) => m.shortName);
+      mediumNames.forEach((m) => {
+        subjectsByMedium[m] = { p01: [], p02: [], p03: [], p04: [], core: [] };
+      });
     }
-
     const mediumMaps = await getMediumMaps();
-
-    const resolveMediumName = (sub: any): string => {
+    const resolveMediumName = (sub) => {
       if (sub.mediumId) {
-        const med = allMediums.find((m: any) => m.id === sub.mediumId);
+        const med = allMediums.find((m) => m.id === sub.mediumId);
         if (med) return med.shortName;
       }
-      const upperMedium = ((sub.medium || '') as string).toUpperCase().trim();
+      const upperMedium = (sub.medium || "").toUpperCase().trim();
       if (mediumMaps.codeToShortName[upperMedium]) return mediumMaps.codeToShortName[upperMedium];
       if (mediumNames.includes(upperMedium)) return upperMedium;
-      const name = (sub.name || '').toUpperCase();
-      const short = (sub.shortName || '').toUpperCase();
+      const name = (sub.name || "").toUpperCase();
+      const short = (sub.shortName || "").toUpperCase();
       for (const [code, shortName] of Object.entries(mediumMaps.codeToShortName)) {
         if (name.endsWith(` ${code}`) || short.endsWith(` ${code}`)) return shortName;
       }
-      const nameUpper = (sub.name || '').toUpperCase();
-      if (nameUpper.includes('TAMIL AT') || nameUpper.includes('TAMIL BT')) return 'Tamil';
-      if (nameUpper.includes('MALAYALAM AT') || nameUpper.includes('MALAYALAM BT')) return 'Malayalam';
-      if (nameUpper.includes('KANNADA AT') || nameUpper.includes('KANNADA BT')) return 'Kannada';
-      return '';
+      const nameUpper = (sub.name || "").toUpperCase();
+      if (nameUpper.includes("TAMIL AT") || nameUpper.includes("TAMIL BT")) return "Tamil";
+      if (nameUpper.includes("MALAYALAM AT") || nameUpper.includes("MALAYALAM BT")) return "Malayalam";
+      if (nameUpper.includes("KANNADA AT") || nameUpper.includes("KANNADA BT")) return "Kannada";
+      return "";
     };
-
-    const ensureMedium = (medName: string) => {
+    const ensureMedium = (medName) => {
       if (!subjectsByMedium[medName]) {
         subjectsByMedium[medName] = { p01: [], p02: [], p03: [], p04: [], core: [] };
         mediumNames.push(medName);
       }
     };
-
-    // Extract the primary P-code (P01–P10) from any subject field using regex
-    const extractPCode = (sub: any): string => {
+    const extractPCode = (sub) => {
       const fields = [sub.paperType, sub.code, sub.shortName, sub.name];
       for (const f of fields) {
         if (!f) continue;
         const m = String(f).toUpperCase().match(/\b(P\d{2})\b/);
         if (m) return m[1];
       }
-      return '';
+      return "";
     };
-
-    const categorizeSubject = (sub: any): string => {
+    const categorizeSubject = (sub) => {
       const pCode = extractPCode(sub);
-      if (pCode === 'P01' || pCode === 'P02') return 'FIRST_LANGUAGE';
-      if (pCode === 'P03') return 'SECOND_LANGUAGE';
-      if (pCode === 'P04') return 'THIRD_LANGUAGE';
-      if (pCode && parseInt(pCode.slice(1)) >= 5) return 'CORE';
-      // Fall back to stored category only if no P-code found
+      if (pCode === "P01" || pCode === "P02") return "FIRST_LANGUAGE";
+      if (pCode === "P03") return "SECOND_LANGUAGE";
+      if (pCode === "P04") return "THIRD_LANGUAGE";
+      if (pCode && parseInt(pCode.slice(1)) >= 5) return "CORE";
       if (sub.category) return sub.category;
-      return 'CORE';
+      return "CORE";
     };
-
-    allSubjects.forEach((sub: any) => {
+    allSubjects.forEach((sub) => {
       const matchedMedium = resolveMediumName(sub);
-
       const groups = markGroupMap[sub._id?.toString()] || [];
       const entry = { _id: sub._id, id: sub._id, name: sub.name, shortName: sub.shortName, code: sub.code, medium: sub.medium, mediumId: sub.mediumId, mediumName: sub.mediumName, category: sub.category, paperType: sub.paperType, displayOrder: sub.displayOrder, groups };
-
       const category = categorizeSubject(sub);
       const pCode = extractPCode(sub);
-      const name = (sub.name || '').toUpperCase();
-
-      const categorize = (medName: string) => {
+      const name = (sub.name || "").toUpperCase();
+      const categorize = (medName) => {
         ensureMedium(medName);
-        if (pCode === 'P01' || (category === 'FIRST_LANGUAGE' && (name.includes(' AT') || name.includes('PAPER I')))) {
+        if (pCode === "P01" || category === "FIRST_LANGUAGE" && (name.includes(" AT") || name.includes("PAPER I"))) {
           subjectsByMedium[medName].p01.push(entry);
-        } else if (pCode === 'P02' || (category === 'FIRST_LANGUAGE' && (name.includes(' BT') || name.includes('PAPER II')))) {
+        } else if (pCode === "P02" || category === "FIRST_LANGUAGE" && (name.includes(" BT") || name.includes("PAPER II"))) {
           subjectsByMedium[medName].p02.push(entry);
-        } else if (pCode === 'P03' || category === 'SECOND_LANGUAGE') {
+        } else if (pCode === "P03" || category === "SECOND_LANGUAGE") {
           subjectsByMedium[medName].p03.push(entry);
-        } else if (pCode === 'P04' || category === 'THIRD_LANGUAGE') {
+        } else if (pCode === "P04" || category === "THIRD_LANGUAGE") {
           subjectsByMedium[medName].p04.push(entry);
         } else {
           subjectsByMedium[medName].core.push(entry);
         }
       };
-
       if (matchedMedium) {
         categorize(matchedMedium);
       } else {
-        // P01/P02 (FIRST_LANGUAGE) without matched medium are skipped – they must be medium-specific.
-        // P03/P04 and Core subjects without a medium are shared across all mediums.
-        if (category === 'FIRST_LANGUAGE') return;
-        Object.keys(subjectsByMedium).forEach(medName => categorize(medName));
+        if (category === "FIRST_LANGUAGE") return;
+        Object.keys(subjectsByMedium).forEach((medName) => categorize(medName));
       }
     });
-
-    const sortSubjectsGrouped = (a: any, b: any) => {
-      const orderA = a.displayOrder !== undefined ? Number(a.displayOrder) : 0;
-      const orderB = b.displayOrder !== undefined ? Number(b.displayOrder) : 0;
+    const sortSubjectsGrouped = (a, b) => {
+      const orderA = a.displayOrder !== void 0 ? Number(a.displayOrder) : 0;
+      const orderB = b.displayOrder !== void 0 ? Number(b.displayOrder) : 0;
       if (orderA !== orderB) return orderA - orderB;
-      const getPNum = (item: any) => {
-        const codeStr = String(item.code || item.paperType || item.shortName || '').toUpperCase();
+      const getPNum = (item) => {
+        const codeStr = String(item.code || item.paperType || item.shortName || "").toUpperCase();
         const match = codeStr.match(/P(\d+)/);
         return match ? parseInt(match[1], 10) : 999;
       };
       return getPNum(a) - getPNum(b);
     };
-
     for (const med in subjectsByMedium) {
       subjectsByMedium[med].p01.sort(sortSubjectsGrouped);
       subjectsByMedium[med].p02.sort(sortSubjectsGrouped);
@@ -9043,178 +7843,141 @@ app.get("/api/management/subjects/grouped", authenticateToken, async (req, res) 
       subjectsByMedium[med].p04.sort(sortSubjectsGrouped);
       subjectsByMedium[med].core.sort(sortSubjectsGrouped);
     }
-
-
     res.json({ mediums: mediumNames, subjectsByMedium });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// ─── ADMIN MARK GROUP CONFIG ROUTES ─────────────────────────────────────────
-
 app.get("/api/management/mark-groups", authenticateToken, async (req, res) => {
   try {
     const configs = await AdminMarkGroupConfig.find({});
     res.json(configs);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/management/mark-groups", requireRole('WEBMASTER'), async (req, res) => {
+app.post("/api/management/mark-groups", requireRole("WEBMASTER"), async (req, res) => {
   try {
     const { subjectId, groups } = req.body;
     if (!subjectId) return res.status(400).json({ message: "Subject ID is required" });
     const config = await AdminMarkGroupConfig.findOneAndUpdate(
       { subjectId },
       { groups },
-      { returnDocument: 'after', upsert: true }
+      { returnDocument: "after", upsert: true }
     );
     res.json({ message: "Mark group config updated successfully", config });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.delete("/api/management/mark-groups/:subjectId", requireRole('WEBMASTER'), async (req, res) => {
+app.delete("/api/management/mark-groups/:subjectId", requireRole("WEBMASTER"), async (req, res) => {
   try {
     await AdminMarkGroupConfig.findOneAndDelete({ subjectId: req.params.subjectId });
     res.json({ message: "Deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-
-// ─── SCHOOL EXAM CONFIG ROUTES ──────────────────────────────────────────────
-
-app.get("/api/school/exam-config/:examId", async (req: any, res: any) => {
+app.get("/api/school/exam-config/:examId", async (req, res) => {
   try {
     const schoolId = req.query.schoolId || (req.user?.schoolId || req.user?.id);
     if (!schoolId) {
       return res.status(400).json({ message: "schoolId is required" });
     }
     const config = await SchoolExamConfig.findOne({
-      schoolId: schoolId,
+      schoolId,
       examId: req.params.examId
     });
     res.json(config || { subjects: [] });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/school/exam-config/:examId/dynamic-data", authenticateToken, async (req: any, res) => {
+app.get("/api/school/exam-config/:examId/dynamic-data", authenticateToken, async (req, res) => {
   try {
     const schoolId = req.query.schoolId || req.user.schoolId || req.user.id;
     const examId = req.params.examId;
     const exam = await Exam.findOne({ id: examId });
     if (!exam) return res.status(404).json({ message: "Exam not found" });
-
-    // Step 1: LOAD DATA (Mediums, Subjects, Active Students)
     const allMediumDocs = await Medium.find({ active: { $ne: false } }).lean();
-    allMediumDocs.sort((a: any, b: any) => (Number(a.displayOrder) || 0) - (Number(b.displayOrder) || 0));
-
+    allMediumDocs.sort((a, b) => (Number(a.displayOrder) || 0) - (Number(b.displayOrder) || 0));
     const allSubjects = await Subject.find({ active: { $ne: false } }).lean();
-    const examClass = exam.standard || exam.className || '10';
+    const examClass = exam.standard || exam.className || "10";
     const students = await Student.find({ schoolId, className: examClass, active: { $ne: false } }).lean();
-
     const schoolExamConfig = await SchoolExamConfig.findOne({ schoolId, examId }).lean();
-    const markGroupMap: Record<string, any[]> = {};
+    const markGroupMap = {};
     if (schoolExamConfig && schoolExamConfig.subjects) {
-      schoolExamConfig.subjects.forEach((sub: any) => {
+      schoolExamConfig.subjects.forEach((sub) => {
         if (sub.groups && sub.groups.length > 0) {
           markGroupMap[sub.subjectId] = sub.groups;
         }
       });
     }
-
-    // Step 2: GROUP BY MEDIUM
-    // Map medium IDs and legacy shortNames/names/codes to canonical Medium object
-    const mediumById: Record<string, any> = {};
-    const mediumByAlias: Record<string, any> = {};
-    allMediumDocs.forEach((m: any) => {
+    const mediumById = {};
+    const mediumByAlias = {};
+    allMediumDocs.forEach((m) => {
       if (m.id) mediumById[m.id.toString()] = m;
       if (m._id) mediumById[m._id.toString()] = m;
       if (m.shortName) mediumByAlias[m.shortName.toUpperCase().trim()] = m;
       if (m.name) mediumByAlias[m.name.toUpperCase().trim()] = m;
       if (m.code) mediumByAlias[m.code.toUpperCase().trim()] = m;
     });
-
-    const getStudentMedium = (st: any): any => {
+    const getStudentMedium = (st) => {
       if (st.mediumId && mediumById[st.mediumId.toString()]) return mediumById[st.mediumId.toString()];
       if (st.medium && mediumByAlias[st.medium.toString().toUpperCase().trim()]) return mediumByAlias[st.medium.toString().toUpperCase().trim()];
       return null;
     };
-
-    const totalStudentsByMedium: Record<string, number> = {};
-    const divisionCountsSet: Record<string, Set<string>> = {};
-    const studentsByMedShort: Record<string, any[]> = {};
-
-    students.forEach((st: any) => {
+    const totalStudentsByMedium = {};
+    const divisionCountsSet = {};
+    const studentsByMedShort = {};
+    students.forEach((st) => {
       const medObj = getStudentMedium(st);
       if (!medObj) return;
       const shortName = medObj.shortName;
       if (!totalStudentsByMedium[shortName]) totalStudentsByMedium[shortName] = 0;
-      if (!divisionCountsSet[shortName]) divisionCountsSet[shortName] = new Set();
+      if (!divisionCountsSet[shortName]) divisionCountsSet[shortName] = /* @__PURE__ */ new Set();
       if (!studentsByMedShort[shortName]) studentsByMedShort[shortName] = [];
-
       totalStudentsByMedium[shortName]++;
       studentsByMedShort[shortName].push(st);
       if (st.division) divisionCountsSet[shortName].add(st.division);
     });
-
-    const divisionCounts: Record<string, number> = {};
+    const divisionCounts = {};
     for (const k in divisionCountsSet) {
       divisionCounts[k] = divisionCountsSet[k].size;
     }
-
-    // Filter active mediums (0-student mediums will be hidden in UI per Step 2)
-    const activeSchoolMediums = allMediumDocs
-      .filter((m: any) => (totalStudentsByMedium[m.shortName] || 0) > 0)
-      .map((m: any) => m.shortName);
-
-    // Step 3 & 4: CALCULATE SUBJECT USAGE & GROUP SUBJECTS BY MEDIUM
-    const subjectsByMedium: Record<string, { p01: any[]; p02: any[]; p03: any[]; p04: any[]; core: any[] }> = {};
-    const commonSubjects = { p03: [] as any[], p04: [] as any[], core: [] as any[] };
-    const subjectIdCounts: Record<string, Record<string, number>> = {};
-    const validationReport: string[] = [];
-
-    // Map all active subjects by id for fast lookup
-    const subjectById: Record<string, any> = {};
-    allSubjects.forEach((s: any) => {
-      const sid = (s._id || s.id || '').toString();
+    const activeSchoolMediums = allMediumDocs.filter((m) => (totalStudentsByMedium[m.shortName] || 0) > 0).map((m) => m.shortName);
+    const subjectsByMedium = {};
+    const commonSubjects = { p03: [], p04: [], core: [] };
+    const subjectIdCounts = {};
+    const validationReport = [];
+    const subjectById = {};
+    allSubjects.forEach((s) => {
+      const sid = (s._id || s.id || "").toString();
       if (sid) subjectById[sid] = s;
     });
-
-    // Extract P-code (P01..P10)
-    const getPCode = (sub: any): string => {
+    const getPCode = (sub) => {
       const fields = [sub.paperType, sub.code, sub.shortName, sub.name];
       for (const f of fields) {
         if (!f) continue;
         const m = String(f).toUpperCase().match(/\b(P\d{2})\b/);
         if (m) return m[1];
       }
-      const upperName = (sub.name || '').toUpperCase();
-      if (upperName.includes('PAPER II') || upperName.includes(' BT') || upperName.includes('SPECIAL ENGLISH') || upperName.includes(' (O)')) return 'P02';
-      if (upperName.includes('PAPER I') || upperName.includes(' AT') || upperName.includes('ADDL. ENGLISH') || upperName.includes(' (A)')) return 'P01';
-      if (sub.category === 'SECOND_LANGUAGE' || sub.paperType === 'SECOND_LANGUAGE') return 'P03';
-      if (sub.category === 'THIRD_LANGUAGE' || sub.paperType === 'THIRD_LANGUAGE') return 'P04';
-      if (sub.category === 'FIRST_LANGUAGE' || sub.paperType === 'FIRST_LANGUAGE') return 'P01';
-      return '';
+      const upperName = (sub.name || "").toUpperCase();
+      if (upperName.includes("PAPER II") || upperName.includes(" BT") || upperName.includes("SPECIAL ENGLISH") || upperName.includes(" (O)")) return "P02";
+      if (upperName.includes("PAPER I") || upperName.includes(" AT") || upperName.includes("ADDL. ENGLISH") || upperName.includes(" (A)")) return "P01";
+      if (sub.category === "SECOND_LANGUAGE" || sub.paperType === "SECOND_LANGUAGE") return "P03";
+      if (sub.category === "THIRD_LANGUAGE" || sub.paperType === "THIRD_LANGUAGE") return "P04";
+      if (sub.category === "FIRST_LANGUAGE" || sub.paperType === "FIRST_LANGUAGE") return "P01";
+      return "";
     };
-
-    allMediumDocs.forEach((m: any) => {
+    allMediumDocs.forEach((m) => {
       const medShort = m.shortName;
       subjectsByMedium[medShort] = { p01: [], p02: [], p03: [], p04: [], core: [] };
       subjectIdCounts[medShort] = {};
     });
-
-    // Step 11: VALIDATION CHECK
-    const seenCodeByMed: Record<string, Set<string>> = {};
-    allSubjects.forEach((sub: any) => {
-      const sid = (sub._id || sub.id || '').toString();
+    const seenCodeByMed = {};
+    allSubjects.forEach((sub) => {
+      const sid = (sub._id || sub.id || "").toString();
       if (!sid) {
         validationReport.push(`Subject "${sub.name}" has missing ID.`);
         return;
@@ -9226,81 +7989,72 @@ app.get("/api/school/exam-config/:examId/dynamic-data", authenticateToken, async
       if (sub.mediumId && !mediumById[sub.mediumId.toString()]) {
         validationReport.push(`Subject "${sub.name}" references non-existent mediumId: ${sub.mediumId}.`);
       }
-      const medKey = sub.mediumId || sub.medium || 'COMMON';
-      if (!seenCodeByMed[medKey]) seenCodeByMed[medKey] = new Set();
-      const codeKey = (sub.code || sub.shortName || '').toUpperCase().trim();
+      const medKey = sub.mediumId || sub.medium || "COMMON";
+      if (!seenCodeByMed[medKey]) seenCodeByMed[medKey] = /* @__PURE__ */ new Set();
+      const codeKey = (sub.code || sub.shortName || "").toUpperCase().trim();
       if (codeKey && seenCodeByMed[medKey].has(codeKey)) {
         validationReport.push(`Duplicate subject code "${codeKey}" detected in medium ${medKey}.`);
       } else if (codeKey) {
         seenCodeByMed[medKey].add(codeKey);
       }
     });
-
-    // Validate student subject mappings
     let missingSubMappings = 0;
-    students.forEach((st: any) => {
+    students.forEach((st) => {
       if (!getStudentMedium(st)) {
-        validationReport.push(`Student "${st.name}" (${st.regNo || 'N/A'}) has an invalid or unassigned medium.`);
+        validationReport.push(`Student "${st.name}" (${st.regNo || "N/A"}) has an invalid or unassigned medium.`);
       }
-      const checkSub = (id: any, label: string) => {
+      const checkSub = (id, label) => {
         if (id && !subjectById[id.toString()]) {
           missingSubMappings++;
         }
       };
-      checkSub(st.firstLangPaper1SubjectId || st.firstLangPaper1Id, 'First Language Paper 1');
-      checkSub(st.firstLangPaper2SubjectId || st.firstLangPaper2Id, 'First Language Paper 2');
-      checkSub(st.secondLanguageSubjectId || st.secondLangId, 'Second Language');
-      checkSub(st.thirdLanguageSubjectId || st.thirdLangId, 'Third Language');
+      checkSub(st.firstLangPaper1SubjectId || st.firstLangPaper1Id, "First Language Paper 1");
+      checkSub(st.firstLangPaper2SubjectId || st.firstLangPaper2Id, "First Language Paper 2");
+      checkSub(st.secondLanguageSubjectId || st.secondLangId, "Second Language");
+      checkSub(st.thirdLanguageSubjectId || st.thirdLangId, "Third Language");
     });
     if (missingSubMappings > 0) {
       validationReport.push(`${missingSubMappings} student language mapping(s) reference non-existent or deleted Subject IDs.`);
     }
-
-    // Assign subjects and calculate exact usage count per medium
-    allMediumDocs.forEach((medDoc: any) => {
+    allMediumDocs.forEach((medDoc) => {
       const medShort = medDoc.shortName;
-      const medId = (medDoc.id || medDoc._id || '').toString();
+      const medId = (medDoc.id || medDoc._id || "").toString();
       const medStudents = studentsByMedShort[medShort] || [];
       const medTotalCount = medStudents.length;
-
-      allSubjects.forEach((sub: any) => {
-        const sid = (sub._id || sub.id || '').toString();
-        const subMedId = (sub.mediumId || '').toString();
+      allSubjects.forEach((sub) => {
+        const sid = (sub._id || sub.id || "").toString();
+        const subMedId = (sub.mediumId || "").toString();
         const pCode = getPCode(sub);
         const groups = markGroupMap[sid] || [];
         const subjectData = { ...sub, id: sid, _id: sid, groups, pCode };
-
-        // Determine usage count strictly from Student Management database assignments
         let usageCount = 0;
-        let bucket = 'core';
-
-        if (pCode === 'P02' || (sub.name && (sub.name.toUpperCase().includes('PAPER II') || sub.name.toUpperCase().includes(' BT') || sub.name.toUpperCase().includes('SPECIAL ENGLISH') || sub.name.toUpperCase().includes(' (O)')))) {
-          bucket = 'p02';
-          usageCount = medStudents.filter(st => {
-            const id = (st.firstLangPaper2SubjectId || st.firstLangPaper2Id || '').toString();
+        let bucket = "core";
+        if (pCode === "P02" || sub.name && (sub.name.toUpperCase().includes("PAPER II") || sub.name.toUpperCase().includes(" BT") || sub.name.toUpperCase().includes("SPECIAL ENGLISH") || sub.name.toUpperCase().includes(" (O)"))) {
+          bucket = "p02";
+          usageCount = medStudents.filter((st) => {
+            const id = (st.firstLangPaper2SubjectId || st.firstLangPaper2Id || "").toString();
             return id === sid;
           }).length;
-        } else if (pCode === 'P01' || sub.category === 'FIRST_LANGUAGE' || sub.paperType === 'FIRST_LANGUAGE') {
-          bucket = 'p01';
-          usageCount = medStudents.filter(st => {
-            const id = (st.firstLangPaper1SubjectId || st.firstLangPaper1Id || '').toString();
+        } else if (pCode === "P01" || sub.category === "FIRST_LANGUAGE" || sub.paperType === "FIRST_LANGUAGE") {
+          bucket = "p01";
+          usageCount = medStudents.filter((st) => {
+            const id = (st.firstLangPaper1SubjectId || st.firstLangPaper1Id || "").toString();
             return id === sid;
           }).length;
-        } else if (pCode === 'P03' || sub.category === 'SECOND_LANGUAGE' || sub.paperType === 'SECOND_LANGUAGE') {
-          bucket = 'p03';
-          usageCount = medStudents.filter(st => {
-            const id = (st.secondLanguageSubjectId || st.secondLangId || '').toString();
+        } else if (pCode === "P03" || sub.category === "SECOND_LANGUAGE" || sub.paperType === "SECOND_LANGUAGE") {
+          bucket = "p03";
+          usageCount = medStudents.filter((st) => {
+            const id = (st.secondLanguageSubjectId || st.secondLangId || "").toString();
             return id === sid;
           }).length;
-        } else if (pCode === 'P04' || sub.category === 'THIRD_LANGUAGE' || sub.paperType === 'THIRD_LANGUAGE') {
-          bucket = 'p04';
-          usageCount = medStudents.filter(st => {
-            const id = (st.thirdLanguageSubjectId || st.thirdLangId || '').toString();
+        } else if (pCode === "P04" || sub.category === "THIRD_LANGUAGE" || sub.paperType === "THIRD_LANGUAGE") {
+          bucket = "p04";
+          usageCount = medStudents.filter((st) => {
+            const id = (st.thirdLanguageSubjectId || st.thirdLangId || "").toString();
             return id === sid;
           }).length;
         } else {
-          // Core Subject (P05 - P10)
-          bucket = 'core';
+          bucket = "core";
           if (subMedId && subMedId === medId) {
             usageCount = medTotalCount;
           } else if (!subMedId && (sub.medium === medDoc.code || sub.medium === medDoc.shortName || sub.medium === medDoc.name)) {
@@ -9309,33 +8063,27 @@ app.get("/api/school/exam-config/:examId/dynamic-data", authenticateToken, async
             usageCount = 0;
           }
         }
-
         subjectIdCounts[medShort][sid] = usageCount;
-
-        const isMatchingMedium = (subMedId && subMedId === medId) || (!subMedId && sub.medium && (sub.medium.toUpperCase() === (medDoc.code || '').toUpperCase() || sub.medium.toLowerCase() === (medDoc.shortName || '').toLowerCase() || sub.medium.toLowerCase() === (medDoc.name || '').toLowerCase() || (medDoc.shortName === 'Tamil' && sub.medium === 'TM') || (medDoc.shortName === 'Malayalam' && sub.medium === 'MM') || (medDoc.shortName === 'English' && sub.medium === 'EM')));
-        const isMismatchedMedium = !isMatchingMedium && ((subMedId && subMedId !== medId) || (sub.medium && ['TM', 'EM', 'MM', 'KM', 'UR', 'AR', 'TAMIL', 'MALAYALAM', 'ENGLISH'].includes(sub.medium.toUpperCase())));
-
+        const isMatchingMedium = subMedId && subMedId === medId || !subMedId && sub.medium && (sub.medium.toUpperCase() === (medDoc.code || "").toUpperCase() || sub.medium.toLowerCase() === (medDoc.shortName || "").toLowerCase() || sub.medium.toLowerCase() === (medDoc.name || "").toLowerCase() || medDoc.shortName === "Tamil" && sub.medium === "TM" || medDoc.shortName === "Malayalam" && sub.medium === "MM" || medDoc.shortName === "English" && sub.medium === "EM");
+        const isMismatchedMedium = !isMatchingMedium && (subMedId && subMedId !== medId || sub.medium && ["TM", "EM", "MM", "KM", "UR", "AR", "TAMIL", "MALAYALAM", "ENGLISH"].includes(sub.medium.toUpperCase()));
         if (!isMismatchedMedium) {
-          const existingList = (subjectsByMedium[medShort] as any)[bucket];
-          if (existingList && !existingList.some((s: any) => (s._id || s.id || '').toString() === sid)) {
+          const existingList = subjectsByMedium[medShort][bucket];
+          if (existingList && !existingList.some((s) => (s._id || s.id || "").toString() === sid)) {
             existingList.push(subjectData);
           }
         }
       });
     });
-
-    // Step 7: SORTING (strictly by displayOrder, then Subject Code P01..P10)
-    const sortSubjectsEngine = (a: any, b: any) => {
-      const orderA = a.displayOrder !== undefined ? Number(a.displayOrder) : 0;
-      const orderB = b.displayOrder !== undefined ? Number(b.displayOrder) : 0;
+    const sortSubjectsEngine = (a, b) => {
+      const orderA = a.displayOrder !== void 0 ? Number(a.displayOrder) : 0;
+      const orderB = b.displayOrder !== void 0 ? Number(b.displayOrder) : 0;
       if (orderA !== orderB) return orderA - orderB;
-      const getPNum = (item: any) => {
-        const match = String(item.pCode || item.code || item.shortName || item.paperType || '').toUpperCase().match(/P(\d+)/);
+      const getPNum = (item) => {
+        const match = String(item.pCode || item.code || item.shortName || item.paperType || "").toUpperCase().match(/P(\d+)/);
         return match ? parseInt(match[1], 10) : 999;
       };
       return getPNum(a) - getPNum(b);
     };
-
     for (const med in subjectsByMedium) {
       subjectsByMedium[med].p01.sort(sortSubjectsEngine);
       subjectsByMedium[med].p02.sort(sortSubjectsEngine);
@@ -9343,18 +8091,16 @@ app.get("/api/school/exam-config/:examId/dynamic-data", authenticateToken, async
       subjectsByMedium[med].p04.sort(sortSubjectsEngine);
       subjectsByMedium[med].core.sort(sortSubjectsEngine);
     }
-
-    const adminMaxMarks: Record<string, any> = {};
+    const adminMaxMarks = {};
     if (exam && exam.maxMarks) {
-      if (typeof exam.maxMarks.forEach === 'function') {
-        exam.maxMarks.forEach((val: any, key: any) => {
+      if (typeof exam.maxMarks.forEach === "function") {
+        exam.maxMarks.forEach((val, key) => {
           adminMaxMarks[key] = val;
         });
       } else {
         Object.assign(adminMaxMarks, exam.maxMarks);
       }
     }
-
     res.json({
       exam,
       adminMaxMarks,
@@ -9369,44 +8115,37 @@ app.get("/api/school/exam-config/:examId/dynamic-data", authenticateToken, async
       markGroupMap,
       validationReport
     });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/school/exam-config", requireRole('SCHOOL'), async (req: any, res) => {
+app.post("/api/school/exam-config", requireRole("SCHOOL"), async (req, res) => {
   try {
     const { examId, subjects } = req.body;
     const schoolId = req.user.schoolId || req.user.id;
-
     if (!examId) return res.status(400).json({ message: "Exam ID is required" });
-
-    const updateData: any = {
+    const updateData = {
       subjects,
       firstLanguages: [],
       papers: []
     };
-
     const config = await SchoolExamConfig.findOneAndUpdate(
       { schoolId, examId },
       updateData,
-      { returnDocument: 'after', upsert: true }
+      { returnDocument: "after", upsert: true }
     );
     res.json({ message: "Exam configuration saved", config });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/school/exam-config/mark-groups", requireRole('SCHOOL'), async (req: any, res) => {
+app.post("/api/school/exam-config/mark-groups", requireRole("SCHOOL"), async (req, res) => {
   try {
     const { examId, subjectId, groups } = req.body;
     const schoolId = req.user.schoolId || req.user.id;
-
     if (!examId || !subjectId) {
       return res.status(400).json({ message: "examId and subjectId are required" });
     }
-
     let config = await SchoolExamConfig.findOne({ schoolId, examId });
     if (!config) {
       config = new SchoolExamConfig({
@@ -9415,7 +8154,7 @@ app.post("/api/school/exam-config/mark-groups", requireRole('SCHOOL'), async (re
         subjects: [{ subjectId, groups }]
       });
     } else {
-      const subIdx = config.subjects.findIndex((s: any) => s.subjectId === subjectId);
+      const subIdx = config.subjects.findIndex((s) => s.subjectId === subjectId);
       if (subIdx > -1) {
         config.subjects[subIdx].groups = groups;
       } else {
@@ -9424,99 +8163,75 @@ app.post("/api/school/exam-config/mark-groups", requireRole('SCHOOL'), async (re
     }
     await config.save();
     res.json({ message: "Mark group saved successfully", groups });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/school/exam-config/:examId/mark-groups", authenticateToken, async (req: any, res) => {
+app.get("/api/school/exam-config/:examId/mark-groups", authenticateToken, async (req, res) => {
   try {
     const schoolId = req.query.schoolId || req.user?.schoolId || req.user?.id;
     const config = await SchoolExamConfig.findOne({ schoolId, examId: req.params.examId }).lean();
-    const markGroupMap: Record<string, any[]> = {};
+    const markGroupMap = {};
     if (config && config.subjects) {
-      config.subjects.forEach((sub: any) => {
+      config.subjects.forEach((sub) => {
         if (sub.groups && sub.groups.length > 0) {
           markGroupMap[sub.subjectId] = sub.groups;
         }
       });
     }
     res.json(markGroupMap);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/school/configured-exams", authenticateToken, async (req: any, res) => {
+app.get("/api/school/configured-exams", authenticateToken, async (req, res) => {
   try {
     const schoolId = req.user.schoolId || req.user.id;
     const configs = await SchoolExamConfig.find({ schoolId }).lean();
-    const configuredExamIds = configs.map(c => c.examId);
+    const configuredExamIds = configs.map((c) => c.examId);
     res.json(configuredExamIds);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// ─── MARKS ENTRY 2 (DYNAMIC) ROUTES ─────────────────────────────────────────
-
 app.get("/api/marks/batch", authenticateToken, async (req, res) => {
   try {
     const { examId, subjectId, schoolId, className, division } = req.query;
-    const effectiveSchoolId = (req.user?.role === 'SCHOOL' || req.user?.role === 'TEACHER')
-      ? (req.user.schoolId || req.user.id || (schoolId as string))
-      : ((schoolId as string) || req.user?.schoolId || req.user?.id);
-
+    const effectiveSchoolId = req.user?.role === "SCHOOL" || req.user?.role === "TEACHER" ? req.user.schoolId || req.user.id || schoolId : schoolId || req.user?.schoolId || req.user?.id;
     if (!examId || !effectiveSchoolId || !subjectId) {
       return res.status(400).json({ message: "Missing required params" });
     }
-
-    // Build the query to find students matching the criteria
-    const query: any = { schoolId: effectiveSchoolId, className: className || '10' };
+    const query = { schoolId: effectiveSchoolId, className: className || "10" };
     if (division) {
-      // Allow case-insensitive or exact match
-      query.division = new RegExp(`^${escapeRegex(division)}$`, 'i');
+      query.division = new RegExp(`^${escapeRegex(division)}$`, "i");
     }
-
     const students = await Student.find(query).lean();
-    const studentIds = students.map(s => s.id);
-
-    // Fetch marks for these students for the given exam
+    const studentIds = students.map((s) => s.id);
     const marksList = await Mark.find({
       examId: String(examId),
       studentId: { $in: studentIds }
     }).lean();
-
-    // Auto-heal: If school is NOT in exam's confirmedSchools but marks are finalLocked, unlock them
     const exam = await Exam.findOne({ id: String(examId) });
     const isSchoolConfirmed = exam?.confirmedSchools?.includes(String(effectiveSchoolId));
-    if (!isSchoolConfirmed && marksList.some(m => m.finalLocked)) {
+    if (!isSchoolConfirmed && marksList.some((m) => m.finalLocked)) {
       await Mark.updateMany(
         { examId: String(examId), schoolId: String(effectiveSchoolId) },
         { $set: { finalLocked: false } }
       );
-      // Update in-memory list for this request
-      marksList.forEach(m => {
+      marksList.forEach((m) => {
         m.finalLocked = false;
       });
     }
-
-    // Group to check if all subjects are LOCKED for each student
-    const subjectCounts: Record<string, number> = {};
-    marksList.forEach(m => {
+    const subjectCounts = {};
+    marksList.forEach((m) => {
       if (!subjectCounts[m.studentId]) subjectCounts[m.studentId] = 0;
       if (m.locked) subjectCounts[m.studentId]++;
     });
-
     const schoolConfig = await SchoolExamConfig.findOne({ schoolId: String(effectiveSchoolId), examId: String(examId) });
     const configuredSubjectCount = schoolConfig?.subjects?.length || 9;
-    const allCompleted = studentIds.length > 0 && studentIds.every(id => (subjectCounts[id] || 0) >= configuredSubjectCount);
-
-    // Filter marks for the requested subject only
-    const subjectMarks = marksList.filter(m => m.subjectId === subjectId);
-
-    // Format for frontend with offline recovery timestamps and versioning
-    const responseData = subjectMarks.map(m => {
+    const allCompleted = studentIds.length > 0 && studentIds.every((id) => (subjectCounts[id] || 0) >= configuredSubjectCount);
+    const subjectMarks = marksList.filter((m) => m.subjectId === subjectId);
+    const responseData = subjectMarks.map((m) => {
       return {
         studentId: m.studentId,
         subjectId: m.subjectId,
@@ -9524,42 +8239,36 @@ app.get("/api/marks/batch", authenticateToken, async (req, res) => {
         grade: m.grade,
         mark: m.mark ?? m.totalObtained ?? m.rawScore ?? null,
         totalObtained: m.totalObtained ?? m.mark ?? m.rawScore ?? null,
-        isAbsent: m.isAbsent || m.status === 'Absent' || m.grade === 'Ab' || m.grade === 'AB',
+        isAbsent: m.isAbsent || m.status === "Absent" || m.grade === "Ab" || m.grade === "AB",
         locked: m.locked,
         finalLocked: m.finalLocked,
-        workflowStatus: m.workflowStatus || 'NOT_STARTED',
+        workflowStatus: m.workflowStatus || "NOT_STARTED",
         teacherConfirmedAt: m.teacherConfirmedAt,
         teacherConfirmedBy: m.teacherConfirmedBy,
         schoolReviewedAt: m.schoolReviewedAt,
         schoolReviewedBy: m.schoolReviewedBy,
-        updatedAt: m.updatedAt || m.createdAt || new Date(0),
-        createdAt: m.createdAt || new Date(0),
-        version: (m as any).__v || 1,
-        lastEditedBy: m.lastEditedBy || m.enteredBy || 'unknown'
+        updatedAt: m.updatedAt || m.createdAt || /* @__PURE__ */ new Date(0),
+        createdAt: m.createdAt || /* @__PURE__ */ new Date(0),
+        version: m.__v || 1,
+        lastEditedBy: m.lastEditedBy || m.enteredBy || "unknown"
       };
     });
-
-    // Compute overall subject workflow status from marks
-    const workflowStatuses = responseData.map((m: any) => m.workflowStatus).filter(Boolean);
-    let subjectWorkflowStatus = 'NOT_STARTED';
+    const workflowStatuses = responseData.map((m) => m.workflowStatus).filter(Boolean);
+    let subjectWorkflowStatus = "NOT_STARTED";
     if (workflowStatuses.length > 0) {
-      if (workflowStatuses.every((s: string) => s === 'COMPLETED')) subjectWorkflowStatus = 'COMPLETED';
-      else if (workflowStatuses.every((s: string) => s === 'TEACHER_CONFIRMED' || s === 'COMPLETED')) subjectWorkflowStatus = 'TEACHER_CONFIRMED';
-      else if (workflowStatuses.some((s: string) => s !== 'NOT_STARTED')) subjectWorkflowStatus = 'IN_PROGRESS';
+      if (workflowStatuses.every((s) => s === "COMPLETED")) subjectWorkflowStatus = "COMPLETED";
+      else if (workflowStatuses.every((s) => s === "TEACHER_CONFIRMED" || s === "COMPLETED")) subjectWorkflowStatus = "TEACHER_CONFIRMED";
+      else if (workflowStatuses.some((s) => s !== "NOT_STARTED")) subjectWorkflowStatus = "IN_PROGRESS";
     }
-
     res.json({
       marks: responseData,
       allCompleted,
-      subjectWorkflowStatus,
+      subjectWorkflowStatus
     });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// ─── OFFLINE DRAFT CONFLICT VERSION CHECK ───────────────────────────────────
-
 app.get("/api/marks/check-version", authenticateToken, async (req, res) => {
   try {
     const { examId, subjectId, schoolId } = req.query;
@@ -9571,235 +8280,180 @@ app.get("/api/marks/check-version", authenticateToken, async (req, res) => {
       subjectId: String(subjectId),
       schoolId: String(schoolId)
     }, { studentId: 1, updatedAt: 1, __v: 1, grade: 1, mark: 1, totalObtained: 1, isAbsent: 1, lastEditedBy: 1, enteredBy: 1 }).lean();
-
-    const formatted = marks.map(m => ({
+    const formatted = marks.map((m) => ({
       studentId: m.studentId,
-      updatedAt: m.updatedAt || new Date(0),
-      version: (m as any).__v || 1,
+      updatedAt: m.updatedAt || /* @__PURE__ */ new Date(0),
+      version: m.__v || 1,
       grade: m.grade,
       mark: m.mark ?? m.totalObtained ?? null,
       isAbsent: !!m.isAbsent,
-      lastEditedBy: m.lastEditedBy || m.enteredBy || 'Another User'
+      lastEditedBy: m.lastEditedBy || m.enteredBy || "Another User"
     }));
-
     res.json({ marks: formatted });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/marks/entry-status", authenticateToken, async (req: any, res) => {
+app.get("/api/marks/entry-status", authenticateToken, async (req, res) => {
   try {
     const { examId, schoolId } = req.query;
     const user = req.user;
-    const effectiveSchoolId = (user?.role === 'SUPER_ADMIN' || user?.role === 'STATE_OFFICER' || user?.role === 'DISTRICT_OFFICER' || user?.role === 'RESOURCE_PERSON')
-      ? schoolId
-      : user.schoolId;
-
+    const effectiveSchoolId = user?.role === "SUPER_ADMIN" || user?.role === "STATE_OFFICER" || user?.role === "DISTRICT_OFFICER" || user?.role === "RESOURCE_PERSON" ? schoolId : user.schoolId;
     if (!examId || !effectiveSchoolId) {
       return res.status(400).json({ message: "Missing examId or schoolId" });
     }
-
     const schoolConfig = await SchoolExamConfig.findOne({ schoolId: effectiveSchoolId, examId });
     if (!schoolConfig || !schoolConfig.subjects || schoolConfig.subjects.length === 0) {
-      return res.json({ subjects: [], overall: { totalStudents: 0, totalMarksEntered: 0, percentage: 0, status: 'Not Yet Started' } });
+      return res.json({ subjects: [], overall: { totalStudents: 0, totalMarksEntered: 0, percentage: 0, status: "Not Yet Started" } });
     }
-    const configuredSubjects = schoolConfig.subjects.filter((s: any) => s.groups && s.groups.length > 0);
+    const configuredSubjects = schoolConfig.subjects.filter((s) => s.groups && s.groups.length > 0);
     if (configuredSubjects.length === 0) {
-      return res.json({ subjects: [], overall: { totalStudents: 0, totalMarksEntered: 0, percentage: 0, status: 'Not Yet Started' } });
+      return res.json({ subjects: [], overall: { totalStudents: 0, totalMarksEntered: 0, percentage: 0, status: "Not Yet Started" } });
     }
-
     const exam = await Exam.findOne({ id: examId });
-    const examStandard = exam?.standard || '10';
+    const examStandard = exam?.standard || "10";
     const allStudents = await Student.find({ schoolId: effectiveSchoolId, className: examStandard, active: { $ne: false } }).lean();
     const totalStudents = allStudents.length;
-
-    // Fetch all marks for this school and exam
     const allMarks = await Mark.find({ schoolId: effectiveSchoolId, examId }).lean();
-
-    // Fetch all teachers for this school to match subjects
     const teachers = await User.find({
-      role: { $in: ['TEACHER', 'RESOURCE_PERSON'] },
-      schoolId: effectiveSchoolId,
-    }).select('name penNumber designation phone email teachingSubjects mediums').lean();
-
-    // Pre-fetch all subject documents referenced in this exam config
-    const allSubjectIds = configuredSubjects.map((s: any) => s.subjectId);
-    const subjectDocs = await Subject.find({ _id: { $in: allSubjectIds } }).lean() as any[];
-    const subjectDocMap: Record<string, any> = {};
+      role: { $in: ["TEACHER", "RESOURCE_PERSON"] },
+      schoolId: effectiveSchoolId
+    }).select("name penNumber designation phone email teachingSubjects mediums").lean();
+    const allSubjectIds = configuredSubjects.map((s) => s.subjectId);
+    const subjectDocs = await Subject.find({ _id: { $in: allSubjectIds } }).lean();
+    const subjectDocMap = {};
     for (const sd of subjectDocs) {
       subjectDocMap[sd._id.toString()] = sd;
     }
-
-    // Normalize helper for fuzzy matching teachingSubjects against subject names
-
-
-    const isApplicable = (st: any, subjectName: string) => {
-      const stMedium = (st.medium || '').toUpperCase();
-      let suffix = '';
-      if (stMedium === 'TAMIL') suffix = ' TM';
-      if (stMedium === 'ENGLISH') suffix = ' EM';
-      if (stMedium === 'MALAYALAM') suffix = ' MM';
-      const subName = (subjectName || '').trim().toUpperCase();
-      
+    const isApplicable = (st, subjectName) => {
+      const stMedium = (st.medium || "").toUpperCase();
+      let suffix = "";
+      if (stMedium === "TAMIL") suffix = " TM";
+      if (stMedium === "ENGLISH") suffix = " EM";
+      if (stMedium === "MALAYALAM") suffix = " MM";
+      const subName = (subjectName || "").trim().toUpperCase();
       const stSubjects = new Set(
-        (st.subjects || []).map((s: string) => s.trim().toUpperCase())
+        (st.subjects || []).map((s) => s.trim().toUpperCase())
       );
       if (st.firstLangPaper1) stSubjects.add(st.firstLangPaper1.trim().toUpperCase());
       if (st.firstLangPaper2) stSubjects.add(st.firstLangPaper2.trim().toUpperCase());
       if (st.secondLang) stSubjects.add(st.secondLang.trim().toUpperCase());
       if (st.thirdLang) stSubjects.add(st.thirdLang.trim().toUpperCase());
-      
       if (stSubjects.has(subName)) return true;
-      
       if (suffix && subName.endsWith(suffix)) {
-        if (subName.includes('MATHEMATICS') || subName.includes('SCIENCE') || subName.includes('SOCIAL')) {
+        if (subName.includes("MATHEMATICS") || subName.includes("SCIENCE") || subName.includes("SOCIAL")) {
           return true;
         }
       }
-      
-      if (stMedium === 'MALAYALAM' && subName.includes('(EM)')) return false;
-      if (stMedium === 'MALAYALAM' && subName.includes('(TM)')) return false;
-      if (stMedium === 'ENGLISH' && subName.includes('(MM)')) return false;
-      if (stMedium === 'ENGLISH' && subName.includes('(TM)')) return false;
-      if (stMedium === 'TAMIL' && subName.includes('(MM)')) return false;
-      if (stMedium === 'TAMIL' && subName.includes('(EM)')) return false;
-      
+      if (stMedium === "MALAYALAM" && subName.includes("(EM)")) return false;
+      if (stMedium === "MALAYALAM" && subName.includes("(TM)")) return false;
+      if (stMedium === "ENGLISH" && subName.includes("(MM)")) return false;
+      if (stMedium === "ENGLISH" && subName.includes("(TM)")) return false;
+      if (stMedium === "TAMIL" && subName.includes("(MM)")) return false;
+      if (stMedium === "TAMIL" && subName.includes("(EM)")) return false;
       return true;
     };
-
-
-
-
-
-
-
-
-
-
-    const normalize = (v: string) => v.replace(/\s*-\s*P\d+/gi, '').replace(/\s+(TM|EM|MM|KM|UR|AR|HI)$/i, '').replace(/\s+/g, ' ').trim().toUpperCase();
-
-    const subjectResults: any[] = [];
+    const normalize = (v) => v.replace(/\s*-\s*P\d+/gi, "").replace(/\s+(TM|EM|MM|KM|UR|AR|HI)$/i, "").replace(/\s+/g, " ").trim().toUpperCase();
+    const subjectResults = [];
     let totalMarksEnteredAcrossAll = 0;
     let totalApplicableAcrossAll = 0;
-
-    const getSubjectSortNumber = (doc: any, subName?: string): number => {
+    const getSubjectSortNumber = (doc, subName) => {
       if (!doc && !subName) return 999;
       const fields = [doc?.pCode, doc?.code, doc?.paperType, doc?.shortName, doc?.name, subName];
       for (const f of fields) {
         if (!f) continue;
         const m = String(f).toUpperCase().match(/\bP(0?[1-9]|10)\b/) || String(f).toUpperCase().match(/P(0?[1-9]|10)/);
         if (m && m[1]) {
-          const num = parseInt(m[1].replace('P', ''), 10);
+          const num = parseInt(m[1].replace("P", ""), 10);
           if (num >= 1 && num <= 10) return num;
         }
       }
-      const upper = (doc?.name || subName || '').toUpperCase().trim();
-      const cat = (doc?.category || '').toUpperCase();
-      if (upper.includes('PAPER I') || upper.includes(' AT') || upper.includes('LAN I') || upper.includes('FIRST LANG') || upper === 'TAMIL AT' || upper === 'MALAYALAM AT' || upper.includes('ARABIC (A)') || upper.includes('SANSKRIT (A)') || cat === 'FIRST_LANGUAGE') return 1;
-      if (upper.includes('PAPER II') || upper.includes(' BT') || upper.includes('LAN II') || upper.includes('SPECIAL ENGLISH') || upper.includes('SPECIAL HINDI') || upper.includes('ARABIC (O)') || upper.includes('SANSKRIT (O)') || upper.includes('OPTIONAL')) return 2;
-      if (upper === 'ENGLISH' || upper.includes('SECOND LANG') || upper === 'ENG' || cat === 'SECOND_LANGUAGE') return 3;
-      if (upper === 'HINDI' || upper.includes('THIRD LANG') || upper === 'HIN' || upper.includes('GENERAL KNOWLEDGE') || upper === 'GK' || cat === 'THIRD_LANGUAGE') return 4;
-      if (upper.includes('SOCIAL') || upper === 'SS' || upper === 'SOC') return 5;
-      if (upper.includes('PHYSIC') || upper === 'PHY') return 6;
-      if (upper.includes('CHEMIS') || upper === 'CHE') return 7;
-      if (upper.includes('BIOLOG') || upper === 'BIO' || upper.includes('NATURAL')) return 8;
-      if (upper.includes('MATH') || upper === 'MAT' || upper.includes('GANITHAM')) return 9;
-      if (upper.includes('INFO') || upper === 'ICT' || upper === 'IT' || upper.includes('COMPUTER')) return 10;
-      if (doc?.displayOrder !== undefined && doc?.displayOrder !== null && doc.displayOrder > 0) return Number(doc.displayOrder);
+      const upper = (doc?.name || subName || "").toUpperCase().trim();
+      const cat = (doc?.category || "").toUpperCase();
+      if (upper.includes("PAPER I") || upper.includes(" AT") || upper.includes("LAN I") || upper.includes("FIRST LANG") || upper === "TAMIL AT" || upper === "MALAYALAM AT" || upper.includes("ARABIC (A)") || upper.includes("SANSKRIT (A)") || cat === "FIRST_LANGUAGE") return 1;
+      if (upper.includes("PAPER II") || upper.includes(" BT") || upper.includes("LAN II") || upper.includes("SPECIAL ENGLISH") || upper.includes("SPECIAL HINDI") || upper.includes("ARABIC (O)") || upper.includes("SANSKRIT (O)") || upper.includes("OPTIONAL")) return 2;
+      if (upper === "ENGLISH" || upper.includes("SECOND LANG") || upper === "ENG" || cat === "SECOND_LANGUAGE") return 3;
+      if (upper === "HINDI" || upper.includes("THIRD LANG") || upper === "HIN" || upper.includes("GENERAL KNOWLEDGE") || upper === "GK" || cat === "THIRD_LANGUAGE") return 4;
+      if (upper.includes("SOCIAL") || upper === "SS" || upper === "SOC") return 5;
+      if (upper.includes("PHYSIC") || upper === "PHY") return 6;
+      if (upper.includes("CHEMIS") || upper === "CHE") return 7;
+      if (upper.includes("BIOLOG") || upper === "BIO" || upper.includes("NATURAL")) return 8;
+      if (upper.includes("MATH") || upper === "MAT" || upper.includes("GANITHAM")) return 9;
+      if (upper.includes("INFO") || upper === "ICT" || upper === "IT" || upper.includes("COMPUTER")) return 10;
+      if (doc?.displayOrder !== void 0 && doc?.displayOrder !== null && doc.displayOrder > 0) return Number(doc.displayOrder);
       return 999;
     };
-
-    const sortedSubjects = [...configuredSubjects].sort((a: any, b: any) => {
+    const sortedSubjects = [...configuredSubjects].sort((a, b) => {
       const docA = subjectDocMap[a.subjectId?.toString()];
       const docB = subjectDocMap[b.subjectId?.toString()];
       const numA = getSubjectSortNumber(docA);
       const numB = getSubjectSortNumber(docB);
       if (numA !== numB) return numA - numB;
-      return (docA?.name || '').localeCompare(docB?.name || '');
+      return (docA?.name || "").localeCompare(docB?.name || "");
     });
-
-    // Build sorted subjects with their resolved codes
-    const processedSubjects = sortedSubjects.map((sub: any) => {
+    const processedSubjects = sortedSubjects.map((sub) => {
       const subjectId = sub.subjectId;
       const subjectDoc = subjectDocMap[subjectId?.toString()];
       const subjectName = subjectDoc?.name || subjectId;
       const shortName = subjectDoc?.shortName || subjectId;
       const sortIndex = getSubjectSortNumber(subjectDoc, subjectName);
-      
       let pcodeMatch = shortName.match(/^P(\d+)$/i);
-      let resolvedCode = pcodeMatch ? shortName : ((sortIndex >= 1 && sortIndex <= 10) ? (sortIndex <= 9 ? `P0${sortIndex}` : `P${sortIndex}`) : (subjectDoc?.code || subjectDoc?.paperType || ''));
-      
+      let resolvedCode = pcodeMatch ? shortName : sortIndex >= 1 && sortIndex <= 10 ? sortIndex <= 9 ? `P0${sortIndex}` : `P${sortIndex}` : subjectDoc?.code || subjectDoc?.paperType || "";
       return { sub, subjectId, subjectDoc, subjectName, shortName, sortIndex, resolvedCode };
     });
-
     for (const item of processedSubjects) {
       const { sub, subjectId, subjectDoc, subjectName, shortName, sortIndex, resolvedCode } = item;
-
       let subjectTotalStudents = 0;
       let subjectEffectiveEntered = 0;
-
       for (const st of allStudents) {
         if (!isApplicable(st, subjectName)) continue;
-        
-        const stMarks = allMarks.filter((m: any) => m.studentId?.toString() === st._id.toString());
-        const hasMarkForS = stMarks.some((m: any) => m.subjectId?.toString() === subjectId.toString());
-        
+        const stMarks = allMarks.filter((m) => m.studentId?.toString() === st._id.toString());
+        const hasMarkForS = stMarks.some((m) => m.subjectId?.toString() === subjectId.toString());
         if (hasMarkForS) {
           subjectTotalStudents++;
           subjectEffectiveEntered++;
           continue;
         }
-        
-        // Check if student has mark for another subject with SAME resolvedCode
-        const hasMarkForOtherSamePCode = stMarks.some((m: any) => {
+        const hasMarkForOtherSamePCode = stMarks.some((m) => {
           if (m.subjectId?.toString() === subjectId.toString()) return false;
-          const otherItem = processedSubjects.find(ps => ps.subjectId.toString() === m.subjectId?.toString());
+          const otherItem = processedSubjects.find((ps) => ps.subjectId.toString() === m.subjectId?.toString());
           return otherItem && otherItem.resolvedCode === resolvedCode;
         });
-        
         if (!hasMarkForOtherSamePCode) {
           subjectTotalStudents++;
         }
       }
-
-      const percentage = subjectTotalStudents > 0 ? Math.round((subjectEffectiveEntered / subjectTotalStudents) * 100) : 0;
+      const percentage = subjectTotalStudents > 0 ? Math.round(subjectEffectiveEntered / subjectTotalStudents * 100) : 0;
       const isSubjectConfirmed = sub.isSubjectConfirmed === true;
-      const workflowStatus = sub.workflowStatus || 'NOT_STARTED';
-
-      let status = 'Not Yet Started';
+      const workflowStatus = sub.workflowStatus || "NOT_STARTED";
+      let status = "Not Yet Started";
       if (subjectEffectiveEntered === 0) {
-        status = 'Not Yet Started';
+        status = "Not Yet Started";
       } else if (subjectEffectiveEntered >= subjectTotalStudents && isSubjectConfirmed) {
-        status = 'Completed';
+        status = "Completed";
       } else {
-        status = 'Pending';
+        status = "Pending";
       }
-
-      // Find teachers assigned to this subject using fuzzy name matching
       const normSubjectName = normalize(subjectName);
-      const assignedTeachers = teachers
-        .filter((t: any) => {
-          const tSubs: string[] = t.teachingSubjects || [];
-          return tSubs.some((ts: string) => {
-            const normTs = normalize(ts);
-            if (normTs.includes(normSubjectName) || normSubjectName.includes(normTs)) return true;
-            if (shortName && normTs.includes(shortName.toUpperCase())) return true;
-            if (ts.toUpperCase().includes(subjectName.toUpperCase())) return true;
-            if (subjectName.toUpperCase().includes(ts.toUpperCase())) return true;
-            if (normTs.includes('MATH') && normSubjectName.includes('MATH')) return true;
-            if (normTs.includes('HINDI') && normSubjectName.includes('HINDI')) return true;
-            return false;
-          });
-        })
-        .map((t: any) => ({
-          name: t.name || '',
-          penNumber: t.penNumber || '',
-          designation: t.designation || '',
-          phone: t.phone || '',
-          email: t.email || '',
-        }));
-
+      const assignedTeachers = teachers.filter((t) => {
+        const tSubs = t.teachingSubjects || [];
+        return tSubs.some((ts) => {
+          const normTs = normalize(ts);
+          if (normTs.includes(normSubjectName) || normSubjectName.includes(normTs)) return true;
+          if (shortName && normTs.includes(shortName.toUpperCase())) return true;
+          if (ts.toUpperCase().includes(subjectName.toUpperCase())) return true;
+          if (subjectName.toUpperCase().includes(ts.toUpperCase())) return true;
+          if (normTs.includes("MATH") && normSubjectName.includes("MATH")) return true;
+          if (normTs.includes("HINDI") && normSubjectName.includes("HINDI")) return true;
+          return false;
+        });
+      }).map((t) => ({
+        name: t.name || "",
+        penNumber: t.penNumber || "",
+        designation: t.designation || "",
+        phone: t.phone || "",
+        email: t.email || ""
+      }));
       subjectResults.push({
         subjectId,
         subjectName,
@@ -9815,177 +8469,137 @@ app.get("/api/marks/entry-status", authenticateToken, async (req: any, res) => {
         status,
         isSubjectConfirmed,
         workflowStatus,
-        assignedTeachers,
+        assignedTeachers
       });
     }
-
     let overallExpected = 0;
     let overallEntered = 0;
-    
-    // Group subjects by pCode for overall calculation
-    const subjectsByPCode: Record<string, any[]> = {};
+    const subjectsByPCode = {};
     for (const item of processedSubjects) {
-       if (!subjectsByPCode[item.resolvedCode]) subjectsByPCode[item.resolvedCode] = [];
-       subjectsByPCode[item.resolvedCode].push(item);
+      if (!subjectsByPCode[item.resolvedCode]) subjectsByPCode[item.resolvedCode] = [];
+      subjectsByPCode[item.resolvedCode].push(item);
     }
-    
     for (const st of allStudents) {
-       for (const pCode of Object.keys(subjectsByPCode)) {
-          const applicableSubs = subjectsByPCode[pCode].filter(item => isApplicable(st, item.subjectName));
-          if (applicableSubs.length > 0) {
-             overallExpected++;
-             
-             const stMarks = allMarks.filter((m: any) => m.studentId?.toString() === st._id.toString());
-             const hasMark = applicableSubs.some(item => stMarks.some((m: any) => m.subjectId?.toString() === item.subjectId.toString()));
-             if (hasMark) {
-                overallEntered++;
-             }
+      for (const pCode of Object.keys(subjectsByPCode)) {
+        const applicableSubs = subjectsByPCode[pCode].filter((item) => isApplicable(st, item.subjectName));
+        if (applicableSubs.length > 0) {
+          overallExpected++;
+          const stMarks = allMarks.filter((m) => m.studentId?.toString() === st._id.toString());
+          const hasMark = applicableSubs.some((item) => stMarks.some((m) => m.subjectId?.toString() === item.subjectId.toString()));
+          if (hasMark) {
+            overallEntered++;
           }
-       }
+        }
+      }
     }
-
-    const overallPercentage = overallExpected > 0 ? Math.round((overallEntered / overallExpected) * 100) : 0;
-
-    let overallStatus = 'Not Yet Started';
-    const allCompleted = subjectResults.every(s => s.status === 'Completed');
-    const anyStarted = subjectResults.some(s => s.status !== 'Not Yet Started');
+    const overallPercentage = overallExpected > 0 ? Math.round(overallEntered / overallExpected * 100) : 0;
+    let overallStatus = "Not Yet Started";
+    const allCompleted = subjectResults.every((s) => s.status === "Completed");
+    const anyStarted = subjectResults.some((s) => s.status !== "Not Yet Started");
     if (allCompleted) {
-      overallStatus = 'Completed';
+      overallStatus = "Completed";
     } else if (anyStarted) {
-      overallStatus = 'Pending';
+      overallStatus = "Pending";
     }
-
     res.json({
       subjects: subjectResults,
       overall: {
         totalStudents,
         totalMarksEntered: overallEntered,
         totalSubjects: subjectResults.length,
-        confirmedSubjects: subjectResults.filter(s => s.isSubjectConfirmed).length,
+        confirmedSubjects: subjectResults.filter((s) => s.isSubjectConfirmed).length,
         percentage: overallPercentage,
-        status: overallStatus,
+        status: overallStatus
       }
     });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/marks/entry2", authenticateToken, async (req: any, res) => {
+app.post("/api/marks/entry2", authenticateToken, async (req, res) => {
   try {
     const { schoolId, examId, subjectId, marksData, confirm, finalConfirm, reset, subjectMaxMarks } = req.body;
-    // marksData: array of { studentId, className, markGroups: [{ name, maxMarks, marksObtained }] }
-
     let enteredBy = req.user.id;
-    const effectiveSchoolId = (req.user.role === 'SCHOOL' || req.user.role === 'TEACHER')
-      ? (req.user.schoolId || req.user.id || schoolId)
-      : (schoolId || req.user.schoolId || req.user.id);
-
+    const effectiveSchoolId = req.user.role === "SCHOOL" || req.user.role === "TEACHER" ? req.user.schoolId || req.user.id || schoolId : schoolId || req.user.schoolId || req.user.id;
     if (!effectiveSchoolId || !examId || !subjectId) {
       return res.status(400).json({ message: "Missing required fields" });
     }
-
     const exam = await Exam.findOne({ id: examId });
     if (!exam) return res.status(404).json({ message: "Exam not found" });
-
-    // Enforce School-level final confirmation lock
     let schoolConfig = await SchoolExamConfig.findOne({ schoolId: effectiveSchoolId, examId });
     if (schoolConfig?.isSchoolConfirmed) {
       return res.status(403).json({ message: "School has finally confirmed marks. No further changes allowed." });
     }
-
-    // Enforce per-subject teacher confirmation: SCHOOL users cannot save marks for unconfirmed subjects
-    if (req.user.role === 'SCHOOL' && !reset && !confirm) {
+    if (req.user.role === "SCHOOL" && !reset && !confirm) {
       if (schoolConfig) {
-        const subConfig = schoolConfig.subjects?.find((s: any) => s.subjectId === subjectId);
+        const subConfig = schoolConfig.subjects?.find((s) => s.subjectId === subjectId);
         if (subConfig && !subConfig.isSubjectConfirmed) {
           return res.status(403).json({ message: "This subject has not yet been confirmed by the assigned teacher. Mark entry is not allowed until the teacher confirms." });
         }
       }
     }
-
-    // Enforce 4-stage workflow: TEACHER_CONFIRMED subjects cannot be edited by teacher
-    if (req.user.role === 'TEACHER' && !reset && !confirm) {
+    if (req.user.role === "TEACHER" && !reset && !confirm) {
       const existingMarks = await Mark.find({ examId, subjectId, schoolId: effectiveSchoolId }).lean();
-      const allTeacherConfirmed = existingMarks.length > 0 && existingMarks.every((m: any) => m.workflowStatus === 'TEACHER_CONFIRMED');
+      const allTeacherConfirmed = existingMarks.length > 0 && existingMarks.every((m) => m.workflowStatus === "TEACHER_CONFIRMED");
       if (allTeacherConfirmed) {
         return res.status(403).json({ message: "This subject has been confirmed by the teacher and is awaiting school review. No further teacher edits allowed." });
       }
     }
-
-    // Fetch global grade configuration for calculating grades dynamically
-    const gradeDoc = await Grade.findOne({ key: 'global' }) as any;
+    const gradeDoc = await Grade.findOne({ key: "global" });
     const std8Config = gradeDoc?.std8 || [];
     const std9_10Config = gradeDoc?.std9_10 || [];
-
     const { idToCode } = await getSubjectMapping();
     const shortCode = idToCode[subjectId];
-
-    // First check if exam defines it
     let maxMark = getResolvedMaxMark(exam, subjectId, shortCode, -1);
     if (maxMark === -1) {
-      // Fallback to what frontend calculated, or 50
       maxMark = subjectMaxMarks > 0 ? subjectMaxMarks : 50;
     }
-
-    // Handle Final Confirm (Deprecated, handled by /api/marks/school-confirm now)
     if (finalConfirm) {
       return res.status(400).json({ message: "Please use the /api/marks/school-confirm endpoint for final confirmation." });
     }
-
-    // Handle Reset / Unlock (Subject-wise, blocked if finalLocked)
     if (reset) {
-      const existingMarks = await Mark.find({ examId, subjectId, schoolId: effectiveSchoolId, studentId: { $in: marksData.map((d: any) => d.studentId) } });
-      const isAnyFinalLocked = existingMarks.some(m => m.finalLocked);
+      const existingMarks = await Mark.find({ examId, subjectId, schoolId: effectiveSchoolId, studentId: { $in: marksData.map((d) => d.studentId) } });
+      const isAnyFinalLocked = existingMarks.some((m) => m.finalLocked);
       if (isAnyFinalLocked) {
         return res.status(403).json({ message: "Cannot reset. Marks are finally locked. Contact Admin." });
       }
-
-      // Reset workflow status back to NOT_STARTED
       await Mark.updateMany(
-        { examId, subjectId, schoolId: effectiveSchoolId, studentId: { $in: marksData.map((d: any) => d.studentId) } },
-        { $set: { locked: false, workflowStatus: 'NOT_STARTED', teacherConfirmedAt: null, teacherConfirmedBy: null, schoolReviewedAt: null, schoolReviewedBy: null } }
+        { examId, subjectId, schoolId: effectiveSchoolId, studentId: { $in: marksData.map((d) => d.studentId) } },
+        { $set: { locked: false, workflowStatus: "NOT_STARTED", teacherConfirmedAt: null, teacherConfirmedBy: null, schoolReviewedAt: null, schoolReviewedBy: null } }
       );
-
-      // Remove from confirmedSubjects in Exam
       if (exam.confirmedSubjects) {
         const currentConfirmed = exam.confirmedSubjects[effectiveSchoolId] || [];
-        const updated = currentConfirmed.filter((sid: string) => sid !== subjectId);
+        const updated = currentConfirmed.filter((sid) => sid !== subjectId);
         exam.confirmedSubjects[effectiveSchoolId] = updated;
-        exam.markModified('confirmedSubjects');
+        exam.markModified("confirmedSubjects");
         await exam.save();
       }
-
-      // Update SchoolExamConfig
       schoolConfig = await SchoolExamConfig.findOne({ schoolId: effectiveSchoolId, examId });
       if (schoolConfig) {
-        const subIndex = schoolConfig.subjects.findIndex((s: any) => s.subjectId === subjectId);
+        const subIndex = schoolConfig.subjects.findIndex((s) => s.subjectId === subjectId);
         if (subIndex > -1) {
           schoolConfig.subjects[subIndex].isSubjectConfirmed = false;
-          schoolConfig.subjects[subIndex].subjectConfirmedAt = undefined;
-          schoolConfig.subjects[subIndex].subjectConfirmedBy = undefined;
-          schoolConfig.subjects[subIndex].workflowStatus = 'NOT_STARTED';
-          schoolConfig.subjects[subIndex].teacherConfirmedAt = undefined;
-          schoolConfig.subjects[subIndex].teacherConfirmedBy = undefined;
-          schoolConfig.subjects[subIndex].schoolReviewedAt = undefined;
-          schoolConfig.subjects[subIndex].schoolReviewedBy = undefined;
-          schoolConfig.markModified('subjects');
+          schoolConfig.subjects[subIndex].subjectConfirmedAt = void 0;
+          schoolConfig.subjects[subIndex].subjectConfirmedBy = void 0;
+          schoolConfig.subjects[subIndex].workflowStatus = "NOT_STARTED";
+          schoolConfig.subjects[subIndex].teacherConfirmedAt = void 0;
+          schoolConfig.subjects[subIndex].teacherConfirmedBy = void 0;
+          schoolConfig.subjects[subIndex].schoolReviewedAt = void 0;
+          schoolConfig.subjects[subIndex].schoolReviewedBy = void 0;
+          schoolConfig.markModified("subjects");
           await schoolConfig.save();
         }
       }
-
       await AuditLog.create({
-        action: 'Subject Unlocked',
-        entityType: 'Mark',
+        action: "Subject Unlocked",
+        entityType: "Mark",
         entityId: examId,
         performedBy: enteredBy,
         details: { schoolId: effectiveSchoolId, subjectId, teacherId: enteredBy }
       });
-
       enqueueSchoolSummaryRebuild(effectiveSchoolId, examId, "10");
       return res.json({ message: "Marks unlocked successfully" });
     }
-
     for (const data of marksData) {
       if (data.isEmpty) {
         if (confirm) {
@@ -9994,35 +8608,28 @@ app.post("/api/marks/entry2", authenticateToken, async (req: any, res) => {
         await Mark.deleteOne({ studentId: data.studentId, examId, subjectId });
         continue;
       }
-
       const totalObtained = data.totalObtained || 0;
-
       const rawScore = totalObtained;
       const rawMaximum = maxMark;
-      const normalizedScore = maxMark > 0 ? (totalObtained / maxMark) * 100 : 0;
+      const normalizedScore = maxMark > 0 ? totalObtained / maxMark * 100 : 0;
       const percentage = normalizedScore;
-
       let grade = data.grade;
       let isAbsent = false;
-
-      if (!grade || grade.trim() === '') {
+      if (!grade || grade.trim() === "") {
         if (data.isAbsent) {
-          grade = 'AB';
+          grade = "AB";
           isAbsent = true;
         } else {
-          // Calculate grade based on percentage using the correct config
-          const isStd8 = ['8', 'VII', 'VIII'].includes(data.className);
+          const isStd8 = ["8", "VII", "VIII"].includes(data.className);
           const gradeConfigArray = isStd8 ? std8Config : std9_10Config;
-
-          const sortedConfig = [...gradeConfigArray].sort((a: any, b: any) => {
-            const getMin = (g: any) => g.min !== undefined ? g.min : (g.minScore !== undefined ? g.minScore : g.minPercentage);
+          const sortedConfig = [...gradeConfigArray].sort((a, b) => {
+            const getMin = (g) => g.min !== void 0 ? g.min : g.minScore !== void 0 ? g.minScore : g.minPercentage;
             return getMin(b) - getMin(a);
           });
-
-          let foundGrade = 'E';
+          let foundGrade = "E";
           const pct = Math.round(percentage);
           for (const g of sortedConfig) {
-            const min = g.min !== undefined ? g.min : (g.minScore !== undefined ? g.minScore : g.minPercentage);
+            const min = g.min !== void 0 ? g.min : g.minScore !== void 0 ? g.minScore : g.minPercentage;
             if (pct >= min) {
               foundGrade = g.grade;
               break;
@@ -10031,21 +8638,18 @@ app.post("/api/marks/entry2", authenticateToken, async (req: any, res) => {
           grade = foundGrade;
         }
       } else {
-        isAbsent = ['AB', 'ABSENT', 'ABS'].includes(grade.toUpperCase()) || data.isAbsent;
+        isAbsent = ["AB", "ABSENT", "ABS"].includes(grade.toUpperCase()) || data.isAbsent;
       }
-
-      const subjectDoc = await Subject.findById(subjectId).lean() as any;
-      const resolvedPCode = (shortCode && /^P\d{2}$/i.test(shortCode)) ? shortCode : (subjectDoc?.code || shortCode || 'P01');
-
+      const subjectDoc = await Subject.findById(subjectId).lean();
+      const resolvedPCode = shortCode && /^P\d{2}$/i.test(shortCode) ? shortCode : subjectDoc?.code || shortCode || "P01";
       await Mark.findOneAndUpdate(
         { studentId: data.studentId, examId, subjectId },
         {
           schoolId: effectiveSchoolId,
           subjectCode: resolvedPCode,
-          className: data.className || '10',
-
+          className: data.className || "10",
           // New Marks Entry 2.0 fields
-          status: isAbsent ? 'Absent' : 'Present',
+          status: isAbsent ? "Absent" : "Present",
           rawScore,
           rawMaximum,
           normalizedScore,
@@ -10053,141 +8657,113 @@ app.post("/api/marks/entry2", authenticateToken, async (req: any, res) => {
           isAbsent,
           isPresent: !isAbsent,
           isEvaluated: true,
-
           // Legacy fields mapping for backward compatibility
           mark: totalObtained,
           total: maxMark,
-
           markGroups: data.markGroups,
           grade,
           enteredBy,
-          ...(confirm !== undefined && { locked: confirm }),
+          ...confirm !== void 0 && { locked: confirm },
           // 4-stage workflow: set status based on role and action
-          workflowStatus: confirm
-            ? (req.user.role === 'TEACHER' ? 'TEACHER_CONFIRMED' : 'COMPLETED')
-            : (req.user.role === 'TEACHER' ? 'IN_PROGRESS' : 'IN_PROGRESS'),
-          ...(confirm && req.user.role === 'TEACHER' && { teacherConfirmedAt: new Date(), teacherConfirmedBy: enteredBy }),
-          ...(confirm && req.user.role !== 'TEACHER' && { schoolReviewedAt: new Date(), schoolReviewedBy: enteredBy }),
+          workflowStatus: confirm ? req.user.role === "TEACHER" ? "TEACHER_CONFIRMED" : "COMPLETED" : req.user.role === "TEACHER" ? "IN_PROGRESS" : "IN_PROGRESS",
+          ...confirm && req.user.role === "TEACHER" && { teacherConfirmedAt: /* @__PURE__ */ new Date(), teacherConfirmedBy: enteredBy },
+          ...confirm && req.user.role !== "TEACHER" && { schoolReviewedAt: /* @__PURE__ */ new Date(), schoolReviewedBy: enteredBy }
         },
-        { returnDocument: 'after', upsert: true }
+        { returnDocument: "after", upsert: true }
       );
     }
-
-    const studentIds = marksData.map((d: any) => d.studentId);
+    const studentIds = marksData.map((d) => d.studentId);
     const updatedMarksList = await Mark.find({ examId, studentId: { $in: studentIds } });
-    const subjectCounts: Record<string, number> = {};
-    updatedMarksList.forEach(m => {
+    const subjectCounts = {};
+    updatedMarksList.forEach((m) => {
       if (!subjectCounts[m.studentId]) subjectCounts[m.studentId] = 0;
       if (m.locked) subjectCounts[m.studentId]++;
     });
-
     schoolConfig = await SchoolExamConfig.findOne({ schoolId: effectiveSchoolId, examId });
     const configuredSubjectCount = schoolConfig?.subjects?.length || 9;
-    const allCompleted = studentIds.length > 0 && studentIds.every(id => (subjectCounts[id] || 0) >= configuredSubjectCount);
-
+    const allCompleted = studentIds.length > 0 && studentIds.every((id) => (subjectCounts[id] || 0) >= configuredSubjectCount);
     if (confirm) {
-      // Validate all students in the school for core subjects
-      const subjectDoc = await Subject.findOne({ _id: subjectId }).lean() as any;
-      const subjectCategory = subjectDoc?.category || '';
-      const isCoreSubject = subjectCategory === 'CORE' || subjectCategory === 'FIRST_LANGUAGE' || subjectCategory === 'SECOND_LANGUAGE' || subjectCategory === 'THIRD_LANGUAGE';
-
+      const subjectDoc = await Subject.findOne({ _id: subjectId }).lean();
+      const subjectCategory = subjectDoc?.category || "";
+      const isCoreSubject = subjectCategory === "CORE" || subjectCategory === "FIRST_LANGUAGE" || subjectCategory === "SECOND_LANGUAGE" || subjectCategory === "THIRD_LANGUAGE";
       if (isCoreSubject) {
-        const studentsInClass = await Student.find({ schoolId: effectiveSchoolId, className: exam.standard || '10', active: { $ne: false } }).lean();
-        
-        // Define isApplicable logic
-        const isApplicable = (st: any, subjectName: string) => {
-          const stMedium = (st.medium || '').toUpperCase();
-          let suffix = '';
-          if (stMedium === 'TAMIL') suffix = ' TM';
-          if (stMedium === 'ENGLISH') suffix = ' EM';
-          if (stMedium === 'MALAYALAM') suffix = ' MM';
-          const subName = (subjectName || '').trim().toUpperCase();
-          
+        const studentsInClass = await Student.find({ schoolId: effectiveSchoolId, className: exam.standard || "10", active: { $ne: false } }).lean();
+        const isApplicable = (st, subjectName) => {
+          const stMedium = (st.medium || "").toUpperCase();
+          let suffix = "";
+          if (stMedium === "TAMIL") suffix = " TM";
+          if (stMedium === "ENGLISH") suffix = " EM";
+          if (stMedium === "MALAYALAM") suffix = " MM";
+          const subName = (subjectName || "").trim().toUpperCase();
           const stSubjects = new Set(
-            (st.subjects || []).map((s: string) => s.trim().toUpperCase())
+            (st.subjects || []).map((s) => s.trim().toUpperCase())
           );
           if (st.firstLangPaper1) stSubjects.add(st.firstLangPaper1.trim().toUpperCase());
           if (st.firstLangPaper2) stSubjects.add(st.firstLangPaper2.trim().toUpperCase());
           if (st.secondLang) stSubjects.add(st.secondLang.trim().toUpperCase());
           if (st.thirdLang) stSubjects.add(st.thirdLang.trim().toUpperCase());
-          
           if (stSubjects.has(subName)) return true;
-          
           if (suffix && subName.endsWith(suffix)) {
-            if (subName.includes('MATHEMATICS') || subName.includes('SCIENCE') || subName.includes('SOCIAL')) {
+            if (subName.includes("MATHEMATICS") || subName.includes("SCIENCE") || subName.includes("SOCIAL")) {
               return true;
             }
           }
-          
-          if (stMedium === 'MALAYALAM' && subName.includes('(EM)')) return false;
-          if (stMedium === 'MALAYALAM' && subName.includes('(TM)')) return false;
-          if (stMedium === 'ENGLISH' && subName.includes('(MM)')) return false;
-          if (stMedium === 'ENGLISH' && subName.includes('(TM)')) return false;
-          if (stMedium === 'TAMIL' && subName.includes('(MM)')) return false;
-          if (stMedium === 'TAMIL' && subName.includes('(EM)')) return false;
-          
+          if (stMedium === "MALAYALAM" && subName.includes("(EM)")) return false;
+          if (stMedium === "MALAYALAM" && subName.includes("(TM)")) return false;
+          if (stMedium === "ENGLISH" && subName.includes("(MM)")) return false;
+          if (stMedium === "ENGLISH" && subName.includes("(TM)")) return false;
+          if (stMedium === "TAMIL" && subName.includes("(MM)")) return false;
+          if (stMedium === "TAMIL" && subName.includes("(EM)")) return false;
           return true;
         };
-
         const allSubjects = await Subject.find({ active: { $ne: false } }).lean();
         const allMarks = await Mark.find({ schoolId: effectiveSchoolId, examId }).lean();
-        
         const currentSubDoc = subjectDoc;
-        const getPCode = (sub: any): string => {
-          if (!sub) return '';
-          const str = String(sub.pCode || sub.code || sub.shortCode || sub.paperType || sub.shortName || sub.name || sub.subjectName || '').toUpperCase();
+        const getPCode = (sub) => {
+          if (!sub) return "";
+          const str = String(sub.pCode || sub.code || sub.shortCode || sub.paperType || sub.shortName || sub.name || sub.subjectName || "").toUpperCase();
           const match = str.match(/\bP(0?[1-9]|10)\b/) || str.match(/P(0?[1-9]|10)/);
           if (match && match[1]) {
             const num = parseInt(match[1], 10);
             if (num >= 1 && num <= 10) return num <= 9 ? `P0${num}` : `P${num}`;
           }
-          const nameStr = String(sub.name || sub.subjectName || sub.shortName || '').toUpperCase().trim();
-          const cat = String(sub.category || '').toUpperCase();
-          if (nameStr.includes('PAPER I') || nameStr.includes(' AT') || nameStr.includes('LAN I') || nameStr.includes('FIRST LANG') || nameStr === 'TAMIL AT' || nameStr === 'MALAYALAM AT' || nameStr.includes('ARABIC (A)') || nameStr.includes('SANSKRIT (A)') || cat === 'FIRST_LANGUAGE') return 'P01';
-          if (nameStr.includes('PAPER II') || nameStr.includes(' BT') || nameStr.includes('LAN II') || nameStr.includes('SPECIAL ENGLISH') || nameStr.includes('SPECIAL HINDI') || nameStr.includes('ARABIC (O)') || nameStr.includes('SANSKRIT (O)') || nameStr.includes('OPTIONAL')) return 'P02';
-          if (nameStr === 'ENGLISH' || nameStr.includes('SECOND LANG') || nameStr === 'ENG' || cat === 'SECOND_LANGUAGE') return 'P03';
-          if (nameStr === 'HINDI' || nameStr.includes('THIRD LANG') || nameStr === 'HIN' || nameStr.includes('GENERAL KNOWLEDGE') || nameStr === 'GK' || cat === 'THIRD_LANGUAGE') return 'P04';
+          const nameStr = String(sub.name || sub.subjectName || sub.shortName || "").toUpperCase().trim();
+          const cat = String(sub.category || "").toUpperCase();
+          if (nameStr.includes("PAPER I") || nameStr.includes(" AT") || nameStr.includes("LAN I") || nameStr.includes("FIRST LANG") || nameStr === "TAMIL AT" || nameStr === "MALAYALAM AT" || nameStr.includes("ARABIC (A)") || nameStr.includes("SANSKRIT (A)") || cat === "FIRST_LANGUAGE") return "P01";
+          if (nameStr.includes("PAPER II") || nameStr.includes(" BT") || nameStr.includes("LAN II") || nameStr.includes("SPECIAL ENGLISH") || nameStr.includes("SPECIAL HINDI") || nameStr.includes("ARABIC (O)") || nameStr.includes("SANSKRIT (O)") || nameStr.includes("OPTIONAL")) return "P02";
+          if (nameStr === "ENGLISH" || nameStr.includes("SECOND LANG") || nameStr === "ENG" || cat === "SECOND_LANGUAGE") return "P03";
+          if (nameStr === "HINDI" || nameStr.includes("THIRD LANG") || nameStr === "HIN" || nameStr.includes("GENERAL KNOWLEDGE") || nameStr === "GK" || cat === "THIRD_LANGUAGE") return "P04";
           return nameStr;
         };
         const currentPCode = getPCode(currentSubDoc);
-        
-        const sameCodeSubjects = allSubjects.filter(s => getPCode(s) === currentPCode && String(s._id) !== String(currentSubDoc._id));
-        
+        const sameCodeSubjects = allSubjects.filter((s) => getPCode(s) === currentPCode && String(s._id) !== String(currentSubDoc._id));
         let applicableCount = 0;
-        
         for (const st of studentsInClass) {
           if (!isApplicable(st, currentSubDoc.name)) continue;
-          
-          const hasOtherMark = sameCodeSubjects.some(otherSub => {
-             return allMarks.some(m => String(m.studentId) === String(st._id) && String(m.subjectId) === String(otherSub._id));
+          const hasOtherMark = sameCodeSubjects.some((otherSub) => {
+            return allMarks.some((m) => String(m.studentId) === String(st._id) && String(m.subjectId) === String(otherSub._id));
           });
-          const hasThisMark = allMarks.some(m => String(m.studentId) === String(st._id) && String(m.subjectId) === String(currentSubDoc._id));
-          
+          const hasThisMark = allMarks.some((m) => String(m.studentId) === String(st._id) && String(m.subjectId) === String(currentSubDoc._id));
           if (hasOtherMark && !hasThisMark) {
-            continue; // Mutually excluded
+            continue;
           }
-          
           applicableCount++;
         }
-
         const enteredMarks = await Mark.countDocuments({ schoolId: effectiveSchoolId, examId, subjectId });
-
         if (enteredMarks < applicableCount) {
           return res.status(400).json({
             message: `Validation Failed: Marks must be entered for all divisions. Only ${enteredMarks} out of ${applicableCount} students have marks for this subject.`
           });
         }
       }
-
       if (!exam.confirmedSubjects) exam.confirmedSubjects = {};
       const currentConfirmed = exam.confirmedSubjects[effectiveSchoolId] || [];
       if (!currentConfirmed.includes(subjectId)) {
         currentConfirmed.push(subjectId);
         exam.confirmedSubjects[effectiveSchoolId] = currentConfirmed;
-        exam.markModified('confirmedSubjects');
+        exam.markModified("confirmedSubjects");
         await exam.save();
       }
-
       if (!schoolConfig) {
         schoolConfig = new SchoolExamConfig({
           schoolId: effectiveSchoolId,
@@ -10195,323 +8771,264 @@ app.post("/api/marks/entry2", authenticateToken, async (req: any, res) => {
           subjects: []
         });
       }
-      let subIndex = schoolConfig.subjects.findIndex((s: any) => s.subjectId === subjectId);
+      let subIndex = schoolConfig.subjects.findIndex((s) => s.subjectId === subjectId);
       if (subIndex === -1) {
         schoolConfig.subjects.push({
           subjectId,
           isSubjectConfirmed: true,
-          subjectConfirmedAt: new Date(),
+          subjectConfirmedAt: /* @__PURE__ */ new Date(),
           subjectConfirmedBy: enteredBy,
-          workflowStatus: req.user.role === 'TEACHER' ? 'TEACHER_CONFIRMED' : 'COMPLETED',
-          ...(req.user.role === 'TEACHER' ? { teacherConfirmedAt: new Date(), teacherConfirmedBy: enteredBy } : { schoolReviewedAt: new Date(), schoolReviewedBy: enteredBy })
+          workflowStatus: req.user.role === "TEACHER" ? "TEACHER_CONFIRMED" : "COMPLETED",
+          ...req.user.role === "TEACHER" ? { teacherConfirmedAt: /* @__PURE__ */ new Date(), teacherConfirmedBy: enteredBy } : { schoolReviewedAt: /* @__PURE__ */ new Date(), schoolReviewedBy: enteredBy }
         });
       } else {
         schoolConfig.subjects[subIndex].isSubjectConfirmed = true;
-        schoolConfig.subjects[subIndex].subjectConfirmedAt = new Date();
+        schoolConfig.subjects[subIndex].subjectConfirmedAt = /* @__PURE__ */ new Date();
         schoolConfig.subjects[subIndex].subjectConfirmedBy = enteredBy;
-        schoolConfig.subjects[subIndex].workflowStatus = req.user.role === 'TEACHER' ? 'TEACHER_CONFIRMED' : 'COMPLETED';
-        if (req.user.role === 'TEACHER') {
-          schoolConfig.subjects[subIndex].teacherConfirmedAt = new Date();
+        schoolConfig.subjects[subIndex].workflowStatus = req.user.role === "TEACHER" ? "TEACHER_CONFIRMED" : "COMPLETED";
+        if (req.user.role === "TEACHER") {
+          schoolConfig.subjects[subIndex].teacherConfirmedAt = /* @__PURE__ */ new Date();
           schoolConfig.subjects[subIndex].teacherConfirmedBy = enteredBy;
         } else {
-          schoolConfig.subjects[subIndex].schoolReviewedAt = new Date();
+          schoolConfig.subjects[subIndex].schoolReviewedAt = /* @__PURE__ */ new Date();
           schoolConfig.subjects[subIndex].schoolReviewedBy = enteredBy;
         }
       }
-      schoolConfig.markModified('subjects');
+      schoolConfig.markModified("subjects");
       await schoolConfig.save();
-
       await AuditLog.create({
-        action: 'Teacher Subject Confirmed',
-        entityType: 'Mark',
+        action: "Teacher Subject Confirmed",
+        entityType: "Mark",
         entityId: examId,
         performedBy: enteredBy,
         details: { schoolId: effectiveSchoolId, subjectId, teacherId: enteredBy }
       });
     } else {
       await AuditLog.create({
-        action: 'Teacher Marks Saved',
-        entityType: 'Mark',
+        action: "Teacher Marks Saved",
+        entityType: "Mark",
         entityId: examId,
         performedBy: enteredBy,
         details: { schoolId: effectiveSchoolId, subjectId, teacherId: enteredBy }
       });
     }
-
     enqueueSchoolSummaryRebuild(effectiveSchoolId, examId, "10");
     res.json({ message: "Marks saved successfully", allCompleted });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Marks Entry 2 Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/marks/school-confirm", authenticateToken, async (req: any, res) => {
+app.post("/api/marks/school-confirm", authenticateToken, async (req, res) => {
   try {
     const { schoolId, examId } = req.body;
-
-    if (req.user.role !== 'SCHOOL' && req.user.role !== 'ADMIN') {
+    if (req.user.role !== "SCHOOL" && req.user.role !== "ADMIN") {
       return res.status(403).json({ message: "Only School Users can perform final confirmation." });
     }
-
-    const effectiveSchoolId = req.user.role === 'SCHOOL' ? (req.user.schoolId || req.user.id) : schoolId;
-
+    const effectiveSchoolId = req.user.role === "SCHOOL" ? req.user.schoolId || req.user.id : schoolId;
     if (!effectiveSchoolId || !examId) {
       return res.status(400).json({ message: "Missing required fields" });
     }
-
     const exam = await Exam.findOne({ id: examId });
     if (!exam) return res.status(404).json({ message: "Exam not found" });
-
     const schoolConfig = await SchoolExamConfig.findOne({ schoolId: effectiveSchoolId, examId });
     if (!schoolConfig) {
       return res.status(400).json({ message: "Exam configuration not found for this school" });
     }
-
     const currentConfirmed = exam.confirmedSubjects?.[effectiveSchoolId] || [];
     const configuredSubjects = schoolConfig.subjects || [];
-
-    // Verify all subjects are confirmed
-    const unconfirmedSubjects = configuredSubjects.filter((sub: any) => !currentConfirmed.includes(sub.subjectId));
-
+    const unconfirmedSubjects = configuredSubjects.filter((sub) => !currentConfirmed.includes(sub.subjectId));
     if (unconfirmedSubjects.length > 0) {
       return res.status(400).json({ message: `Cannot confirm. ${unconfirmedSubjects.length} subjects are pending.` });
     }
-
-    // Lock all marks
     await Mark.updateMany(
       { examId, schoolId: effectiveSchoolId },
       { $set: { finalLocked: true, locked: true } }
     );
-
-    // Update Exam Collection
     if (!exam.confirmedSchools.includes(effectiveSchoolId)) {
       exam.confirmedSchools.push(effectiveSchoolId);
     }
     if (!exam.confirmations) exam.confirmations = {};
-    exam.confirmations[effectiveSchoolId] = `${new Date().toISOString()}|${req.user.username || req.user.id}`;
+    exam.confirmations[effectiveSchoolId] = `${(/* @__PURE__ */ new Date()).toISOString()}|${req.user.username || req.user.id}`;
     await exam.save();
-
-    // Update SchoolExamConfig Collection
     schoolConfig.isSchoolConfirmed = true;
-    schoolConfig.schoolConfirmedAt = new Date();
+    schoolConfig.schoolConfirmedAt = /* @__PURE__ */ new Date();
     schoolConfig.schoolConfirmedBy = req.user.id;
-    schoolConfig.status = 'FINAL_CONFIRMED';
+    schoolConfig.status = "FINAL_CONFIRMED";
     await schoolConfig.save();
-
     await AuditLog.create({
-      action: 'Headmaster Final Confirmed',
-      entityType: 'Mark',
+      action: "Headmaster Final Confirmed",
+      entityType: "Mark",
       entityId: examId,
       performedBy: req.user.id,
       details: { schoolId: effectiveSchoolId, headmasterId: req.user.id }
     });
-
     enqueueSchoolSummaryRebuild(effectiveSchoolId, examId, "10");
     return res.json({ message: "All subjects confirmed and locked finally" });
-
-  } catch (err: any) {
+  } catch (err) {
     console.error("School Confirm Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/marks/reset-subjects", authenticateToken, async (req: any, res) => {
+app.post("/api/marks/reset-subjects", authenticateToken, async (req, res) => {
   try {
     const { examId, subjectIds, schoolId } = req.body;
-    const effectiveSchoolId = req.user.role === 'SCHOOL' ? (req.user.schoolId || req.user.id) : schoolId;
-
+    const effectiveSchoolId = req.user.role === "SCHOOL" ? req.user.schoolId || req.user.id : schoolId;
     if (!examId || !Array.isArray(subjectIds) || subjectIds.length === 0) {
       return res.status(400).json({ message: "Missing required fields or subjectIds is empty" });
     }
-
     const exam = await Exam.findOne({ id: examId });
     if (!exam) return res.status(404).json({ message: "Exam not found" });
-
-    // Block if overall confirmation is locked
     const isSchoolConfirmed = exam.confirmedSchools?.includes(effectiveSchoolId);
     if (isSchoolConfirmed) {
       return res.status(403).json({ message: "Cannot reset. Marks are finally locked. Contact Admin." });
     }
-
-    // Unlock marks for selected subjects and reset workflow
     await Mark.updateMany(
       { examId, schoolId: effectiveSchoolId, subjectId: { $in: subjectIds } },
-      { $set: { locked: false, workflowStatus: 'NOT_STARTED', teacherConfirmedAt: null, teacherConfirmedBy: null, schoolReviewedAt: null, schoolReviewedBy: null } }
+      { $set: { locked: false, workflowStatus: "NOT_STARTED", teacherConfirmedAt: null, teacherConfirmedBy: null, schoolReviewedAt: null, schoolReviewedBy: null } }
     );
-
-    // Update confirmedSubjects in Exam
     if (exam.confirmedSubjects) {
       const currentConfirmed = exam.confirmedSubjects[effectiveSchoolId] || [];
-      const updated = currentConfirmed.filter((sid: string) => !subjectIds.includes(sid));
+      const updated = currentConfirmed.filter((sid) => !subjectIds.includes(sid));
       exam.confirmedSubjects[effectiveSchoolId] = updated;
-      exam.markModified('confirmedSubjects');
+      exam.markModified("confirmedSubjects");
       await exam.save();
     }
-
-    // Update SchoolExamConfig
     const schoolConfig = await SchoolExamConfig.findOne({ schoolId: effectiveSchoolId, examId });
     if (schoolConfig) {
       let modified = false;
-      schoolConfig.subjects.forEach((s: any) => {
+      schoolConfig.subjects.forEach((s) => {
         if (subjectIds.includes(s.subjectId)) {
           s.isSubjectConfirmed = false;
-          s.subjectConfirmedAt = undefined;
-          s.subjectConfirmedBy = undefined;
-          s.workflowStatus = 'NOT_STARTED';
-          s.teacherConfirmedAt = undefined;
-          s.teacherConfirmedBy = undefined;
-          s.schoolReviewedAt = undefined;
-          s.schoolReviewedBy = undefined;
+          s.subjectConfirmedAt = void 0;
+          s.subjectConfirmedBy = void 0;
+          s.workflowStatus = "NOT_STARTED";
+          s.teacherConfirmedAt = void 0;
+          s.teacherConfirmedBy = void 0;
+          s.schoolReviewedAt = void 0;
+          s.schoolReviewedBy = void 0;
           modified = true;
         }
       });
       if (modified) {
-        schoolConfig.markModified('subjects');
+        schoolConfig.markModified("subjects");
         await schoolConfig.save();
       }
     }
-
     enqueueSchoolSummaryRebuild(effectiveSchoolId, examId, "10");
     res.json({ message: "Selected subjects unlocked successfully", exam });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Reset Subjects Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/marks/delete-student-marks", authenticateToken, async (req: any, res) => {
+app.post("/api/marks/delete-student-marks", authenticateToken, async (req, res) => {
   try {
     const { studentId, examId } = req.body;
     if (!studentId || !examId) {
       return res.status(400).json({ message: "Missing required fields: studentId and examId" });
     }
-
-    const allowedRoles = ['TEACHER', 'SCHOOL', 'WEBMASTER', 'DEO', 'DIET'];
+    const allowedRoles = ["TEACHER", "SCHOOL", "WEBMASTER", "DEO", "DIET"];
     if (!allowedRoles.includes(req.user.role)) {
       return res.status(403).json({ message: "Unauthorized role for deleting student marks." });
     }
-
     let schoolId = req.user.schoolId || req.user.id;
-    if (req.user.role === 'TEACHER') {
-      const teacherUser = await User.findById(req.user.id).select('schoolId').lean();
+    if (req.user.role === "TEACHER") {
+      const teacherUser = await User.findById(req.user.id).select("schoolId").lean();
       if (teacherUser?.schoolId) schoolId = teacherUser.schoolId;
     }
-
     const exam = await Exam.findOne({ id: examId });
     if (!exam) return res.status(404).json({ message: "Exam not found" });
-
     const isSchoolConfirmed = exam.confirmedSchools?.includes(schoolId);
     if (isSchoolConfirmed) {
       return res.status(403).json({ message: "Cannot delete marks. Final exam confirmation is locked." });
     }
-
     const result = await Mark.deleteMany({ studentId, examId });
-
     if (schoolId) {
       enqueueSchoolSummaryRebuild(schoolId, examId, "10");
     }
-
     return res.json({
       message: "All subject marks deleted for student successfully",
       deletedCount: result.deletedCount
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Delete Student Marks Error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-
-// ─── Task Assignment APIs ────────────────────────────────────────────────────────
-
-app.get("/api/subject-expert/teachers", requireRole('SUBJECT_EXPERT'), async (req: any, res: any) => {
+app.get("/api/subject-expert/teachers", requireRole("SUBJECT_EXPERT"), async (req, res) => {
   try {
     const user = await User.findById(req.user.id).lean();
     if (!user) return res.status(404).json({ message: "User not found" });
-
     const teachingSubjects = user.teachingSubjects || [];
     const resolvedSubjects = await resolveExpertSubjects(teachingSubjects);
-    const resolvedIds = resolvedSubjects.map(s => s._id.toString());
-    const resolvedShortNames = resolvedSubjects.map(s => (s.shortName || '').toUpperCase());
-    const resolvedNames = resolvedSubjects.map(s => (s.name || '').toUpperCase());
-
+    const resolvedIds = resolvedSubjects.map((s) => s._id.toString());
+    const resolvedShortNames = resolvedSubjects.map((s) => (s.shortName || "").toUpperCase());
+    const resolvedNames = resolvedSubjects.map((s) => (s.name || "").toUpperCase());
     const expertMediums = user.mediums || [];
     const allTeachers = await User.find({
-      role: { $in: ['TEACHER', 'RESOURCE_PERSON'] }
-    }).select('name username schoolCode teachingSubjects assignedSubjects mediums').lean();
-
-    const relevantTeachers = allTeachers.filter(t => {
+      role: { $in: ["TEACHER", "RESOURCE_PERSON"] }
+    }).select("name username schoolCode teachingSubjects assignedSubjects mediums").lean();
+    const relevantTeachers = allTeachers.filter((t) => {
       const tMediums = t.mediums || [];
-      const hasMatchingMedium = expertMediums.length === 0 || expertMediums.some((m: string) => tMediums.includes(m));
+      const hasMatchingMedium = expertMediums.length === 0 || expertMediums.some((m) => tMediums.includes(m));
       if (!hasMatchingMedium) return false;
-
-      const tSubjects = [...(t.teachingSubjects || []), ...(t.assignedSubjects || [])];
-      return tSubjects.some(s => {
+      const tSubjects = [...t.teachingSubjects || [], ...t.assignedSubjects || []];
+      return tSubjects.some((s) => {
         if (!s) return false;
         const sStr = String(s).toUpperCase();
-        return resolvedIds.includes(s) ||
-          resolvedShortNames.includes(sStr) ||
-          resolvedNames.some(rn => rn.includes(sStr) || sStr.includes(rn));
+        return resolvedIds.includes(s) || resolvedShortNames.includes(sStr) || resolvedNames.some((rn) => rn.includes(sStr) || sStr.includes(rn));
       });
     });
-
     res.json(relevantTeachers);
-  } catch (error: any) {
+  } catch (error) {
     console.error("Fetch relevant teachers error:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-async function enrichTaskWithProgress(tasks: any[]) {
+async function enrichTaskWithProgress(tasks) {
   for (const t of tasks) {
     const teacher = await User.findById(t.teacherId).lean();
     const teacherUsername = teacher ? teacher.username : t.teacherId;
-
     const questionsCreated = await Question.aggregate([
       {
         $match: {
           createdBy: teacherUsername,
           subjectId: t.subjectId,
           chapter: t.unit,
-          status: { $nin: ['Draft', 'Deleted'] }
+          status: { $nin: ["Draft", "Deleted"] }
         }
       },
       { $group: { _id: "$marks", count: { $sum: 1 } } }
     ]);
-
-    const progressMap = questionsCreated.reduce((acc: any, curr: any) => {
+    const progressMap = questionsCreated.reduce((acc, curr) => {
       acc[curr._id] = curr.count;
       return acc;
     }, {});
-
-    t.progress = (t.markDistribution || []).map((md: any) => ({
+    t.progress = (t.markDistribution || []).map((md) => ({
       mark: md.mark,
       target: md.count,
       current: progressMap[md.mark] || 0
     }));
-
     let isCompleted = false;
     if (t.markDistribution && t.markDistribution.length > 0) {
-      isCompleted = t.progress.every((p: any) => p.current >= p.target);
+      isCompleted = t.progress.every((p) => p.current >= p.target);
     } else {
-      const totalCreated = questionsCreated.reduce((acc: number, curr: any) => acc + curr.count, 0);
+      const totalCreated = questionsCreated.reduce((acc, curr) => acc + curr.count, 0);
       isCompleted = totalCreated >= (t.questionsCount || 0);
-      t.progress = [{ mark: 'Total', target: t.questionsCount, current: totalCreated }];
+      t.progress = [{ mark: "Total", target: t.questionsCount, current: totalCreated }];
     }
-
-    if (isCompleted && t.status !== 'Completed') {
-      t.status = 'Completed';
-      await QuestionTask.updateOne({ _id: t._id }, { status: 'Completed' }).exec();
-    } else if (!isCompleted && t.status === 'Completed') {
-      t.status = 'Pending';
-      await QuestionTask.updateOne({ _id: t._id }, { status: 'Pending' }).exec();
+    if (isCompleted && t.status !== "Completed") {
+      t.status = "Completed";
+      await QuestionTask.updateOne({ _id: t._id }, { status: "Completed" }).exec();
+    } else if (!isCompleted && t.status === "Completed") {
+      t.status = "Pending";
+      await QuestionTask.updateOne({ _id: t._id }, { status: "Pending" }).exec();
     }
   }
   return tasks;
 }
-
-// Blueprint APIs
-app.get("/api/blueprint-templates", authenticateToken, async (req: any, res: any) => {
+app.get("/api/blueprint-templates", authenticateToken, async (req, res) => {
   try {
     const { subjectId, className } = req.query;
     const template = await BlueprintTemplate.findOne({
@@ -10524,8 +9041,7 @@ app.get("/api/blueprint-templates", authenticateToken, async (req: any, res: any
     res.status(500).json({ message: "Server error" });
   }
 });
-
-app.post("/api/blueprint-templates", authenticateToken, async (req: any, res: any) => {
+app.post("/api/blueprint-templates", authenticateToken, async (req, res) => {
   try {
     const { subjectId, className, sections } = req.body;
     let template = await BlueprintTemplate.findOne({
@@ -10533,7 +9049,6 @@ app.post("/api/blueprint-templates", authenticateToken, async (req: any, res: an
       subjectId,
       className
     });
-
     if (template) {
       template.sections = sections;
       await template.save();
@@ -10551,9 +9066,7 @@ app.post("/api/blueprint-templates", authenticateToken, async (req: any, res: an
     res.status(500).json({ message: "Server error" });
   }
 });
-
-// Generated Question Papers APIs
-app.get("/api/question-papers", authenticateToken, async (req: any, res: any) => {
+app.get("/api/question-papers", authenticateToken, async (req, res) => {
   try {
     const papers = await QuestionPaperBlueprint.find({ createdBy: req.user.username }).sort({ createdAt: -1 });
     res.json(papers);
@@ -10561,8 +9074,7 @@ app.get("/api/question-papers", authenticateToken, async (req: any, res: any) =>
     res.status(500).json({ message: "Server error" });
   }
 });
-
-app.get("/api/question-papers/:id", authenticateToken, async (req: any, res: any) => {
+app.get("/api/question-papers/:id", authenticateToken, async (req, res) => {
   try {
     const paper = await QuestionPaperBlueprint.findOne({ id: req.params.id, createdBy: req.user.username });
     if (!paper) return res.status(404).json({ message: "Paper not found" });
@@ -10571,14 +9083,12 @@ app.get("/api/question-papers/:id", authenticateToken, async (req: any, res: any
     res.status(500).json({ message: "Server error" });
   }
 });
-
-app.post("/api/question-papers", authenticateToken, async (req: any, res: any) => {
+app.post("/api/question-papers", authenticateToken, async (req, res) => {
   try {
     const { name, className, subjectId, medium, totalMarks, config, questionIds } = req.body;
-
     const newPaper = new QuestionPaperBlueprint({
-      id: `QP${Date.now()}${Math.floor(Math.random() * 1000)}`,
-      name: name || 'Untitled Paper',
+      id: `QP${Date.now()}${Math.floor(Math.random() * 1e3)}`,
+      name: name || "Untitled Paper",
       className,
       subjectId,
       medium,
@@ -10587,7 +9097,6 @@ app.post("/api/question-papers", authenticateToken, async (req: any, res: any) =
       config,
       questionIds: questionIds || []
     });
-
     await newPaper.save();
     res.json({ message: "Question paper saved successfully", paper: newPaper });
   } catch (error) {
@@ -10595,8 +9104,7 @@ app.post("/api/question-papers", authenticateToken, async (req: any, res: any) =
     res.status(500).json({ message: "Server error" });
   }
 });
-
-app.delete("/api/question-papers/:id", authenticateToken, async (req: any, res: any) => {
+app.delete("/api/question-papers/:id", authenticateToken, async (req, res) => {
   try {
     const paper = await QuestionPaperBlueprint.findOneAndDelete({ id: req.params.id, createdBy: req.user.username });
     if (!paper) return res.status(404).json({ message: "Paper not found" });
@@ -10605,21 +9113,17 @@ app.delete("/api/question-papers/:id", authenticateToken, async (req: any, res: 
     res.status(500).json({ message: "Server error" });
   }
 });
-
-app.post("/api/subject-expert/tasks", requireRole('SUBJECT_EXPERT'), async (req: any, res: any) => {
+app.post("/api/subject-expert/tasks", requireRole("SUBJECT_EXPERT"), async (req, res) => {
   try {
     const { subjectId, teacherIds, unit, questionsCount, markDistribution } = req.body;
-
     let computedCount = questionsCount;
     if (markDistribution && Array.isArray(markDistribution)) {
-      computedCount = markDistribution.reduce((sum: number, item: any) => sum + (item.count || 0), 0);
+      computedCount = markDistribution.reduce((sum, item) => sum + (item.count || 0), 0);
     }
-
     if (!subjectId || !teacherIds || !unit || computedCount == null) {
       return res.status(400).json({ message: "Missing required fields" });
     }
-
-    const tasks = teacherIds.map((tid: string) => ({
+    const tasks = teacherIds.map((tid) => ({
       subjectExpertId: req.user.id,
       teacherId: tid,
       subjectId,
@@ -10627,187 +9131,150 @@ app.post("/api/subject-expert/tasks", requireRole('SUBJECT_EXPERT'), async (req:
       questionsCount: computedCount,
       markDistribution: markDistribution || []
     }));
-
     await QuestionTask.insertMany(tasks);
     res.json({ message: "Tasks assigned successfully" });
-  } catch (error: any) {
-    console.error('Error assigning tasks:', error);
+  } catch (error) {
+    console.error("Error assigning tasks:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.get("/api/subject-expert/tasks", requireRole('SUBJECT_EXPERT'), async (req: any, res: any) => {
+app.get("/api/subject-expert/tasks", requireRole("SUBJECT_EXPERT"), async (req, res) => {
   try {
-    const tasks = await QuestionTask.find({ subjectExpertId: req.user.id })
-      .sort({ createdAt: -1 })
-      .lean();
-
-    // Enrich with teacher and subject names
-    const teacherIds = [...new Set(tasks.map(t => t.teacherId))];
-    const subjectIds = [...new Set(tasks.map(t => t.subjectId))];
-
+    const tasks = await QuestionTask.find({ subjectExpertId: req.user.id }).sort({ createdAt: -1 }).lean();
+    const teacherIds = [...new Set(tasks.map((t) => t.teacherId))];
+    const subjectIds = [...new Set(tasks.map((t) => t.subjectId))];
     const teachers = await User.find({ _id: { $in: teacherIds } }).lean();
     const subjects = await Subject.find({ _id: { $in: subjectIds } }).lean();
-
-    const teacherMap = teachers.reduce((acc, t) => { acc[t._id.toString()] = t.name; return acc; }, {} as any);
-    const subjectMap = subjects.reduce((acc, s) => { acc[s._id.toString()] = s.name; return acc; }, {} as any);
-
-    const enrichedTasks = tasks.map(t => ({
+    const teacherMap = teachers.reduce((acc, t) => {
+      acc[t._id.toString()] = t.name;
+      return acc;
+    }, {});
+    const subjectMap = subjects.reduce((acc, s) => {
+      acc[s._id.toString()] = s.name;
+      return acc;
+    }, {});
+    const enrichedTasks = tasks.map((t) => ({
       ...t,
-      teacherName: teacherMap[t.teacherId] || 'Unknown',
-      subjectName: subjectMap[t.subjectId] || 'Unknown'
+      teacherName: teacherMap[t.teacherId] || "Unknown",
+      subjectName: subjectMap[t.subjectId] || "Unknown"
     }));
-
     const finalTasks = await enrichTaskWithProgress(enrichedTasks);
     res.json(finalTasks);
-  } catch (error: any) {
+  } catch (error) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-app.get("/api/teacher/tasks", requireRole('TEACHER', 'RESOURCE_PERSON'), async (req: any, res: any) => {
+app.get("/api/teacher/tasks", requireRole("TEACHER", "RESOURCE_PERSON"), async (req, res) => {
   try {
-    const tasks = await QuestionTask.find({ teacherId: req.user.id })
-      .sort({ createdAt: -1 })
-      .lean();
-
-    const subjectIds = [...new Set(tasks.map(t => t.subjectId))];
+    const tasks = await QuestionTask.find({ teacherId: req.user.id }).sort({ createdAt: -1 }).lean();
+    const subjectIds = [...new Set(tasks.map((t) => t.subjectId))];
     const subjects = await Subject.find({ _id: { $in: subjectIds } }).lean();
-    const subjectMap = subjects.reduce((acc, s) => { acc[s._id.toString()] = s.name; return acc; }, {} as any);
-
-    const enrichedTasks = tasks.map(t => ({
+    const subjectMap = subjects.reduce((acc, s) => {
+      acc[s._id.toString()] = s.name;
+      return acc;
+    }, {});
+    const enrichedTasks = tasks.map((t) => ({
       ...t,
-      subjectName: subjectMap[t.subjectId] || 'Unknown'
+      subjectName: subjectMap[t.subjectId] || "Unknown"
     }));
-
     const finalTasks = await enrichTaskWithProgress(enrichedTasks);
     res.json(finalTasks);
-  } catch (error: any) {
+  } catch (error) {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-// ─── END Task Assignment APIs ──────────────────────────────────────────────────
-
-// 1. Duplicate Detection Engine
-app.post("/api/questions/detect-duplicate", requireRole('WEBMASTER', 'SUBJECT_EXPERT', 'RESOURCE_PERSON', 'TEACHER', 'SCHOOL'), async (req: any, res: any) => {
+app.post("/api/questions/detect-duplicate", requireRole("WEBMASTER", "SUBJECT_EXPERT", "RESOURCE_PERSON", "TEACHER", "SCHOOL"), async (req, res) => {
   try {
     const { content, subjectId, className, unit, medium, questionType, excludeId } = req.body;
     if (!content) return res.json({ similarity: 0, duplicates: [] });
-
-    // 11-Layer Logic (Simplified for Performance, focusing on exact & ngram)
-    const baseText = content.replace(/<[^>]*>?/gm, '').toLowerCase().trim();
-
-    const existing = await Question.find({ subjectId, className, status: { $ne: 'Deleted' } }).lean();
-
+    const baseText = content.replace(/<[^>]*>?/gm, "").toLowerCase().trim();
+    const existing = await Question.find({ subjectId, className, status: { $ne: "Deleted" } }).lean();
     let highestSim = 0;
     const matches = [];
-
     for (const q of existing) {
       if (excludeId && String(q.id) === String(excludeId)) continue;
-
-      const qText = (q as any).content.replace(/<[^>]*>?/gm, '').toLowerCase().trim();
-
+      const qText = q.content.replace(/<[^>]*>?/gm, "").toLowerCase().trim();
       let sim = 0;
       if (qText === baseText) {
         sim = 100;
       } else {
         const wordsA = new Set(baseText.split(/\s+/));
         const wordsB = new Set(qText.split(/\s+/));
-        const intersection = new Set([...wordsA].filter((x: string) => wordsB.has(x)));
-        const union = new Set([...wordsA, ...wordsB]);
-        sim = Math.round((intersection.size / (union.size || 1)) * 100);
-
-        // Metadata boosts
+        const intersection = new Set([...wordsA].filter((x) => wordsB.has(x)));
+        const union = /* @__PURE__ */ new Set([...wordsA, ...wordsB]);
+        sim = Math.round(intersection.size / (union.size || 1) * 100);
         if (q.unit === unit) sim = Math.min(100, sim + 10);
         if (q.medium === medium) sim = Math.min(100, sim + 5);
         if (q.questionType === questionType) sim = Math.min(100, sim + 5);
       }
-
       if (sim > 70) {
         matches.push({ question: q, similarity: sim });
         if (sim > highestSim) highestSim = sim;
       }
     }
-
     matches.sort((a, b) => b.similarity - a.similarity);
     res.json({ similarity: highestSim, duplicates: matches.slice(0, 5) });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// 2. Create Question
-app.post("/api/questions", requireRole('TEACHER', 'RESOURCE_PERSON', 'SUBJECT_EXPERT'), async (req: any, res: any) => {
+app.post("/api/questions", requireRole("TEACHER", "RESOURCE_PERSON", "SUBJECT_EXPERT"), async (req, res) => {
   try {
     const qData = req.body;
-
-    // Validate SUBJECT_EXPERT permissions
-    if (req.user.role === 'SUBJECT_EXPERT') {
+    if (req.user.role === "SUBJECT_EXPERT") {
       if (req.user.mediums && req.user.mediums.length > 0 && !req.user.mediums.includes(qData.medium)) {
         return res.status(403).json({ message: "You are not assigned to this medium." });
       }
       if (req.user.teachingSubjects && req.user.teachingSubjects.length > 0) {
         const allowedSubjects = await resolveExpertSubjects(req.user.teachingSubjects);
-        const allowedIds = allowedSubjects.map(s => s._id.toString());
+        const allowedIds = allowedSubjects.map((s) => s._id.toString());
         if (!allowedIds.includes(qData.subjectId)) {
           return res.status(403).json({ message: "You are not assigned to this subject." });
         }
       }
     }
-
-    qData.id = "Q" + Date.now() + Math.floor(Math.random() * 1000);
+    qData.id = "Q" + Date.now() + Math.floor(Math.random() * 1e3);
     qData.createdBy = req.user.username;
     qData.schoolId = req.user.schoolId || req.user.id;
-
     const newQ = new Question(qData);
     await newQ.save();
-
     await QuestionVersion.create({
       questionId: newQ.id,
       version: 1,
       contentSnapshot: qData,
       modifiedBy: req.user.username,
-      modifyReason: 'Initial Creation'
+      modifyReason: "Initial Creation"
     });
-
     res.json({ message: "Question created successfully", question: newQ });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// 3. Get Questions (List with filters)
-app.get("/api/questions", requireRole('WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT', 'TEACHER', 'RESOURCE_PERSON', 'SCHOOL'), async (req: any, res: any) => {
+app.get("/api/questions", requireRole("WEBMASTER", "DEO", "DIET", "SUBJECT_EXPERT", "TEACHER", "RESOURCE_PERSON", "SCHOOL"), async (req, res) => {
   try {
-    const query: any = { status: { $ne: 'Deleted' } };
+    const query = { status: { $ne: "Deleted" } };
     if (req.query.subjectId) query.subjectId = req.query.subjectId;
     if (req.query.className) query.className = req.query.className;
     if (req.query.status) query.status = req.query.status;
     if (req.query.createdBy) query.createdBy = req.query.createdBy;
     if (req.query.marks) query.marks = Number(req.query.marks);
     if (req.query.medium) query.medium = req.query.medium;
-
-    if (req.user.role === 'TEACHER' || req.user.role === 'RESOURCE_PERSON') {
+    if (req.user.role === "TEACHER" || req.user.role === "RESOURCE_PERSON") {
       query.createdBy = req.user.username;
-    } else if (req.user.role === 'SCHOOL') {
-      query.schoolId = req.user.id; // Filter to this school's teachers
-    } else if (req.user.role === 'SUBJECT_EXPERT') {
-      // Exclude Draft questions for Subject Experts so they only see submitted ones
+    } else if (req.user.role === "SCHOOL") {
+      query.schoolId = req.user.id;
+    } else if (req.user.role === "SUBJECT_EXPERT") {
       if (!req.query.status) {
-        query.status = { $nin: ['Deleted', 'Draft'] };
-      } else if (req.query.status === 'Draft') {
+        query.status = { $nin: ["Deleted", "Draft"] };
+      } else if (req.query.status === "Draft") {
         return res.json([]);
       }
-
-      // Enforce assigned subjects and mediums
       if (req.user.mediums && req.user.mediums.length > 0) {
         query.medium = { $in: req.user.mediums };
       }
       if (req.user.teachingSubjects && req.user.teachingSubjects.length > 0) {
         const allowedSubjects = await resolveExpertSubjects(req.user.teachingSubjects);
-        const allowedIds = allowedSubjects.map(s => s._id.toString());
-
+        const allowedIds = allowedSubjects.map((s) => s._id.toString());
         if (req.query.subjectId) {
           if (!allowedIds.includes(req.query.subjectId.toString())) {
             return res.json([]);
@@ -10817,236 +9284,193 @@ app.get("/api/questions", requireRole('WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPER
         }
       }
     }
-
     const questions = await Question.find(query).sort({ createdAt: -1 }).lean();
     res.json(questions);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// 4. Update Question Status (Approve/Reject/Modify)
-app.patch("/api/questions/:id/status", requireRole('SUBJECT_EXPERT', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
+app.patch("/api/questions/:id/status", requireRole("SUBJECT_EXPERT", "WEBMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const { status, remarks } = req.body;
     const q = await Question.findOne({ id: req.params.id });
     if (!q) return res.status(404).json({ message: "Question not found" });
-
-    // Validate SUBJECT_EXPERT permissions
     if (req.user.mediums && req.user.mediums.length > 0 && !req.user.mediums.includes(q.medium)) {
       return res.status(403).json({ message: "You are not authorized to modify questions for this medium." });
     }
     if (req.user.teachingSubjects && req.user.teachingSubjects.length > 0) {
       const allowedSubjects = await resolveExpertSubjects(req.user.teachingSubjects);
-      const allowedIds = allowedSubjects.map(s => s._id.toString());
+      const allowedIds = allowedSubjects.map((s) => s._id.toString());
       if (!allowedIds.includes(q.subjectId)) {
         return res.status(403).json({ message: "You are not authorized to modify questions for this subject." });
       }
     }
-
     q.status = status;
     if (remarks) q.remarks = remarks;
-    if (status === 'Approved') {
+    if (status === "Approved") {
       q.approvedBy = req.user.username;
-      q.approvalDate = new Date();
+      q.approvalDate = /* @__PURE__ */ new Date();
     }
     await q.save();
     res.json({ message: `Question ${status}`, question: q });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// 5. Update Question (Edit)
-app.put("/api/questions/:id", requireRole('SUBJECT_EXPERT', 'TEACHER', 'RESOURCE_PERSON', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
+app.put("/api/questions/:id", requireRole("SUBJECT_EXPERT", "TEACHER", "RESOURCE_PERSON", "WEBMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const qData = req.body;
     const q = await Question.findOne({ id: req.params.id });
     if (!q) return res.status(404).json({ message: "Question not found" });
-
-    // Enforce editing rules
-    if ((req.user.role === 'TEACHER' || req.user.role === 'RESOURCE_PERSON') && q.createdBy !== req.user.username) {
+    if ((req.user.role === "TEACHER" || req.user.role === "RESOURCE_PERSON") && q.createdBy !== req.user.username) {
       return res.status(403).json({ message: "You can only edit your own questions." });
     }
-    if ((req.user.role === 'TEACHER' || req.user.role === 'RESOURCE_PERSON') && !['Draft', 'Returned for Modification', 'Submitted'].includes(q.status)) {
+    if ((req.user.role === "TEACHER" || req.user.role === "RESOURCE_PERSON") && !["Draft", "Returned for Modification", "Submitted"].includes(q.status)) {
       return res.status(403).json({ message: "You can only edit questions in Draft, Submitted, or Returned status." });
     }
-
     Object.assign(q, qData);
-    if (req.user.role === 'TEACHER' || req.user.role === 'RESOURCE_PERSON') {
-      q.status = (qData.status === 'Submitted') ? 'Submitted' : 'Draft';
+    if (req.user.role === "TEACHER" || req.user.role === "RESOURCE_PERSON") {
+      q.status = qData.status === "Submitted" ? "Submitted" : "Draft";
     }
     await q.save();
-
     await QuestionVersion.create({
       questionId: q.id,
       version: (q.version || 1) + 1,
       contentSnapshot: qData,
       modifiedBy: req.user.username,
-      modifyReason: req.body.modifyReason || 'Edited'
+      modifyReason: req.body.modifyReason || "Edited"
     });
-
     res.json({ message: "Question updated successfully", question: q });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.delete("/api/questions/:id", requireRole('SUBJECT_EXPERT', 'TEACHER', 'RESOURCE_PERSON', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
+app.delete("/api/questions/:id", requireRole("SUBJECT_EXPERT", "TEACHER", "RESOURCE_PERSON", "WEBMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const q = await Question.findOne({ id: req.params.id });
     if (!q) return res.status(404).json({ message: "Question not found" });
-
-    // Enforce deletion rules
-    if ((req.user.role === 'TEACHER' || req.user.role === 'RESOURCE_PERSON') && q.createdBy !== req.user.username) {
+    if ((req.user.role === "TEACHER" || req.user.role === "RESOURCE_PERSON") && q.createdBy !== req.user.username) {
       return res.status(403).json({ message: "You can only delete your own questions." });
     }
-    if (q.status === 'Approved') {
+    if (q.status === "Approved") {
       return res.status(403).json({ message: "Cannot delete an approved question. Contact Subject Expert." });
     }
-
     await Question.deleteOne({ id: req.params.id });
     res.json({ message: "Question deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// ─── Chapter Management API ──────────────────────────────────────────────────
-app.get("/api/chapters", requireRole('WEBMASTER', 'SUBJECT_EXPERT', 'TEACHER', 'DEO', 'DIET'), async (req: any, res: any) => {
+app.get("/api/chapters", requireRole("WEBMASTER", "SUBJECT_EXPERT", "TEACHER", "DEO", "DIET"), async (req, res) => {
   try {
-    const query: any = {};
+    const query = {};
     if (req.query.medium) query.medium = req.query.medium;
     if (req.query.className) query.className = req.query.className;
     if (req.query.subjectId) query.subjectId = req.query.subjectId;
     const chapters = await SubjectChapter.find(query).lean();
     res.json(chapters);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/chapters", requireRole('WEBMASTER', 'SUBJECT_EXPERT'), async (req: any, res: any) => {
+app.post("/api/chapters", requireRole("WEBMASTER", "SUBJECT_EXPERT"), async (req, res) => {
   try {
     const { medium, className, subjectId, chapterName, subUnits } = req.body;
-
-    // Check for duplicates
     const existing = await SubjectChapter.findOne({ medium, className, subjectId, chapterName });
     if (existing) {
       return res.status(400).json({ message: "A chapter with this name already exists in this context" });
     }
-
     const chap = new SubjectChapter(req.body);
     await chap.save();
     res.json({ message: "Chapter saved successfully", chapter: chap });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.put("/api/chapters/:id", requireRole('WEBMASTER', 'SUBJECT_EXPERT'), async (req: any, res: any) => {
+app.put("/api/chapters/:id", requireRole("WEBMASTER", "SUBJECT_EXPERT"), async (req, res) => {
   try {
     const chap = await SubjectChapter.findById(req.params.id);
     if (!chap) return res.status(404).json({ message: "Chapter not found" });
-
-    // Ensure no duplicate renaming
     if (req.body.chapterName && req.body.chapterName !== chap.chapterName) {
       const existing = await SubjectChapter.findOne({
-        medium: chap.medium, className: chap.className, subjectId: chap.subjectId, chapterName: req.body.chapterName
+        medium: chap.medium,
+        className: chap.className,
+        subjectId: chap.subjectId,
+        chapterName: req.body.chapterName
       });
       if (existing) {
         return res.status(400).json({ message: "A chapter with this name already exists" });
       }
       chap.chapterName = req.body.chapterName;
     }
-
-    if (req.body.subUnits !== undefined) {
+    if (req.body.subUnits !== void 0) {
       chap.subUnits = req.body.subUnits;
     }
-
     await chap.save();
     res.json({ message: "Chapter updated successfully", chapter: chap });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.delete("/api/chapters/:id", requireRole('WEBMASTER', 'SUBJECT_EXPERT'), async (req: any, res: any) => {
+app.delete("/api/chapters/:id", requireRole("WEBMASTER", "SUBJECT_EXPERT"), async (req, res) => {
   try {
     await SubjectChapter.findByIdAndDelete(req.params.id);
     res.json({ message: "Chapter deleted successfully" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// ─── Teacher Management API ──────────────────────────────────────────────────
-app.get("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: any) => {
+app.get("/api/school/teachers", requireRole("SCHOOL"), async (req, res) => {
   try {
     const teachers = await User.find({
-      role: { $in: ['TEACHER', 'RESOURCE_PERSON'] },
+      role: { $in: ["TEACHER", "RESOURCE_PERSON"] },
       schoolId: req.user.id
     }).lean();
-
     const allMediums = await Medium.find().lean();
-    const mediumMap = new Map(allMediums.map(m => [m.id, m.shortName]));
-
+    const mediumMap = new Map(allMediums.map((m) => [m.id, m.shortName]));
     const allSubjects = await Subject.find().lean();
-    const subjectMap = new Map(allSubjects.map(s => [s._id.toString(), s.name]));
-    // Fallback for custom string ids if any
-    allSubjects.forEach(s => {
-      if ((s as any).id) subjectMap.set((s as any).id, s.name);
+    const subjectMap = new Map(allSubjects.map((s) => [s._id.toString(), s.name]));
+    allSubjects.forEach((s) => {
+      if (s.id) subjectMap.set(s.id, s.name);
     });
-
-    const enrichedTeachers = teachers.map((t: any) => {
-      let meds = new Set<string>();
-      let subs = new Set<string>();
-      let classes = new Set<string>();
-
-      // Extract from teacherAssignments if present
+    const enrichedTeachers = teachers.map((t) => {
+      let meds = /* @__PURE__ */ new Set();
+      let subs = /* @__PURE__ */ new Set();
+      let classes = /* @__PURE__ */ new Set();
       if (t.teacherAssignments && t.teacherAssignments.length > 0) {
-        t.teacherAssignments.forEach((a: any) => {
+        t.teacherAssignments.forEach((a) => {
           if (a.mediumId) meds.add(mediumMap.get(a.mediumId) || a.mediumId);
           if (a.subjectId) subs.add(subjectMap.get(a.subjectId) || a.subjectId);
           if (a.className) classes.add(a.className);
         });
       } else {
-        // Fallback to old arrays
-        if (t.mediumIds) t.mediumIds.forEach((id: string) => meds.add(mediumMap.get(id) || id));
-        if (t.teachingSubjectIds) t.teachingSubjectIds.forEach((id: string) => subs.add(subjectMap.get(id) || id));
-        if (t.assignedSubjects) t.assignedSubjects.forEach((c: string) => classes.add(c));
+        if (t.mediumIds) t.mediumIds.forEach((id) => meds.add(mediumMap.get(id) || id));
+        if (t.teachingSubjectIds) t.teachingSubjectIds.forEach((id) => subs.add(subjectMap.get(id) || id));
+        if (t.assignedSubjects) t.assignedSubjects.forEach((c) => classes.add(c));
       }
-
       t.mediums = Array.from(meds);
       t.teachingSubjects = Array.from(subs);
       t.assignedSubjects = Array.from(classes);
-
       return t;
     });
-
     res.json(enrichedTeachers);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.post("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: any) => {
+app.post("/api/school/teachers", requireRole("SCHOOL"), async (req, res) => {
   try {
     const { name, penNumber, designation, teachingSubjectIds, assignedSubjects, mediumIds, teacherAssignments } = req.body;
-
-    // Sanitize penNumber
-    const sanitizedPenNumber = typeof penNumber === 'string' ? penNumber.trim() : penNumber;
+    const sanitizedPenNumber = typeof penNumber === "string" ? penNumber.trim() : penNumber;
     if (!sanitizedPenNumber) return res.status(400).json({ message: "PEN number is required" });
-
-    // username and password are PEN number
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(sanitizedPenNumber, salt);
-
     const newTeacher = new User({
       username: sanitizedPenNumber,
       password: hashedPassword,
-      passwordChanged: false, // Ensure they must change password on first login
-      role: 'TEACHER',
+      passwordChanged: false,
+      // Ensure they must change password on first login
+      role: "TEACHER",
       name,
       penNumber: sanitizedPenNumber,
       designation,
@@ -11059,129 +9483,111 @@ app.post("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: an
     });
     await newTeacher.save();
     res.json({ message: "Teacher added successfully", teacher: newTeacher });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.put("/api/school/teachers/:id", requireRole('SCHOOL'), async (req: any, res: any) => {
+app.put("/api/school/teachers/:id", requireRole("SCHOOL"), async (req, res) => {
   try {
     const { name, penNumber, designation, teachingSubjectIds, assignedSubjects, mediumIds, teacherAssignments } = req.body;
-    const sanitizedPenNumber = typeof penNumber === 'string' ? penNumber.trim() : penNumber;
-
-    // Force-override: explicitly set ALL teacher fields, replacing old data completely
-    const updateFields: any = {
-      name: name ?? '',
-      penNumber: sanitizedPenNumber ?? '',
-      designation: designation ?? '',
+    const sanitizedPenNumber = typeof penNumber === "string" ? penNumber.trim() : penNumber;
+    const updateFields = {
+      name: name ?? "",
+      penNumber: sanitizedPenNumber ?? "",
+      designation: designation ?? "",
       teachingSubjectIds: teachingSubjectIds ?? [],
-      assignedSubjects: assignedSubjects ?? [], // Actually classes
+      assignedSubjects: assignedSubjects ?? [],
+      // Actually classes
       mediumIds: mediumIds ?? [],
-      teacherAssignments: teacherAssignments ?? [],
+      teacherAssignments: teacherAssignments ?? []
     };
-
     const teacher = await User.findOneAndUpdate(
-      { _id: req.params.id, schoolId: req.user.id, role: { $in: ['TEACHER', 'RESOURCE_PERSON'] } },
+      { _id: req.params.id, schoolId: req.user.id, role: { $in: ["TEACHER", "RESOURCE_PERSON"] } },
       { $set: updateFields },
       { new: true }
     );
     if (!teacher) return res.status(404).json({ message: "Teacher not found" });
     res.json({ message: "Teacher updated", teacher });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.put("/api/school/teachers/:id/reset-password", requireRole('SCHOOL'), async (req: any, res: any) => {
+app.put("/api/school/teachers/:id/reset-password", requireRole("SCHOOL"), async (req, res) => {
   try {
-    const teacher = await User.findOne({ _id: req.params.id, schoolId: req.user.id, role: { $in: ['TEACHER', 'RESOURCE_PERSON'] } });
+    const teacher = await User.findOne({ _id: req.params.id, schoolId: req.user.id, role: { $in: ["TEACHER", "RESOURCE_PERSON"] } });
     if (!teacher) return res.status(404).json({ message: "Teacher not found" });
-
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(teacher.penNumber, salt);
-
     teacher.password = hashedPassword;
     teacher.passwordChanged = false;
     teacher.lockedUntil = null;
     teacher.loginAttempts = 0;
     await teacher.save();
-
     res.json({ message: "Password reset to PEN number successfully" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.delete("/api/school/teachers/:id", requireRole('SCHOOL'), async (req: any, res: any) => {
+app.delete("/api/school/teachers/:id", requireRole("SCHOOL"), async (req, res) => {
   try {
-    await User.findOneAndDelete({ _id: req.params.id, schoolId: req.user.id, role: 'TEACHER' });
+    await User.findOneAndDelete({ _id: req.params.id, schoolId: req.user.id, role: "TEACHER" });
     res.json({ message: "Teacher deleted" });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/school/classes-divisions", requireRole('SCHOOL', 'TEACHER', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
+app.get("/api/school/classes-divisions", requireRole("SCHOOL", "TEACHER", "WEBMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const schoolId = req.query.schoolId || req.user.schoolId || req.user.id.toString();
     const classes = await Student.aggregate([
       { $match: { schoolId: schoolId.toString(), active: { $ne: false } } },
-      { $group: { 
-          _id: { className: "$className", division: "$division" },
-          mediums: { $addToSet: "$medium" }
+      { $group: {
+        _id: { className: "$className", division: "$division" },
+        mediums: { $addToSet: "$medium" }
       } },
       { $sort: { "_id.className": 1, "_id.division": 1 } }
     ]);
-    const formatted = classes.map(c => ({
+    const formatted = classes.map((c) => ({
       className: c._id.className,
       division: c._id.division,
-      mediums: c.mediums.filter((m: any) => m)
+      mediums: c.mediums.filter((m) => m)
     }));
     res.json(formatted);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/school/active-subjects", requireRole('SCHOOL', 'TEACHER', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
+app.get("/api/school/active-subjects", requireRole("SCHOOL", "TEACHER", "WEBMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const schoolId = req.query.schoolId || req.user.schoolId || req.user.id.toString();
-    const students = await Student.find({ schoolId, active: { $ne: false } }, 'subjects').lean();
-    const allSubjects = new Set<string>();
-    students.forEach((s: any) => {
+    const students = await Student.find({ schoolId, active: { $ne: false } }, "subjects").lean();
+    const allSubjects = /* @__PURE__ */ new Set();
+    students.forEach((s) => {
       if (Array.isArray(s.subjects)) {
-        s.subjects.forEach((sub: string) => allSubjects.add(sub));
+        s.subjects.forEach((sub) => allSubjects.add(sub));
       }
     });
     res.json(Array.from(allSubjects).sort());
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/school/class-hierarchy", requireRole('SCHOOL', 'TEACHER', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
+app.get("/api/school/class-hierarchy", requireRole("SCHOOL", "TEACHER", "WEBMASTER", "DEO", "DIET"), async (req, res) => {
   try {
     const schoolId = req.query.schoolId || req.user.schoolId || req.user.id.toString();
-    const students = await Student.find({ schoolId, active: { $ne: false } }, 'className division medium subjects').lean();
-
-    // Group into hierarchy: class -> division -> medium -> subjects
-    const hierarchy: any = {};
-
-    students.forEach((s: any) => {
-      const cls = s.className || 'Unknown';
-      const div = (s.division || '').toUpperCase();
-      const med = s.medium || 'Unknown';
+    const students = await Student.find({ schoolId, active: { $ne: false } }, "className division medium subjects").lean();
+    const hierarchy = {};
+    students.forEach((s) => {
+      const cls = s.className || "Unknown";
+      const div = (s.division || "").toUpperCase();
+      const med = s.medium || "Unknown";
       const subs = Array.isArray(s.subjects) ? s.subjects : [];
-
       if (!hierarchy[cls]) hierarchy[cls] = {};
       if (!hierarchy[cls][div]) hierarchy[cls][div] = {};
-      if (!hierarchy[cls][div][med]) hierarchy[cls][div][med] = new Set<string>();
-
-      subs.forEach((sub: string) => hierarchy[cls][div][med].add(sub));
+      if (!hierarchy[cls][div][med]) hierarchy[cls][div][med] = /* @__PURE__ */ new Set();
+      subs.forEach((sub) => hierarchy[cls][div][med].add(sub));
     });
-
-    // Format for response
-    const formatted: any = {};
+    const formatted = {};
     for (const cls in hierarchy) {
       formatted[cls] = {};
       for (const div in hierarchy[cls]) {
@@ -11191,17 +9597,15 @@ app.get("/api/school/class-hierarchy", requireRole('SCHOOL', 'TEACHER', 'WEBMAST
         }
       }
     }
-
     res.json(formatted);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-app.get("/api/school/teachers/stats", requireRole('SCHOOL', 'WEBMASTER', 'DEO', 'DIET', 'SUBJECT_EXPERT'), async (req: any, res: any) => {
+app.get("/api/school/teachers/stats", requireRole("SCHOOL", "WEBMASTER", "DEO", "DIET", "SUBJECT_EXPERT"), async (req, res) => {
   try {
-    const matchQuery: any = {};
-    if (req.user.role === 'SCHOOL') {
+    const matchQuery = {};
+    if (req.user.role === "SCHOOL") {
       matchQuery.schoolId = req.user.id.toString();
     }
     const stats = await Question.aggregate([
@@ -11216,72 +9620,56 @@ app.get("/api/school/teachers/stats", requireRole('SCHOOL', 'WEBMASTER', 'DEO', 
       }
     ]);
     res.json(stats);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// 5. School Targets API
-app.get("/api/school-targets", requireRole('WEBMASTER', 'SCHOOL', 'SUBJECT_EXPERT'), async (req: any, res: any) => {
+app.get("/api/school-targets", requireRole("WEBMASTER", "SCHOOL", "SUBJECT_EXPERT"), async (req, res) => {
   try {
-    const query: any = {};
-    if (req.user.role === 'SCHOOL') query.schoolId = req.user.id;
+    const query = {};
+    if (req.user.role === "SCHOOL") query.schoolId = req.user.id;
     const targets = await SchoolTarget.find(query).lean();
     res.json(targets);
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// Subject Expert Dashboard API
-app.get("/api/subject-expert/dashboard", requireRole('SUBJECT_EXPERT'), async (req: any, res: any) => {
+app.get("/api/subject-expert/dashboard", requireRole("SUBJECT_EXPERT"), async (req, res) => {
   try {
     const user = await User.findById(req.user.id).lean();
     if (!user) return res.status(404).json({ message: "User not found" });
-
     const teachingSubjects = user.teachingSubjects || [];
     const subjects = await resolveExpertSubjects(teachingSubjects);
-
-    const subjectIds = subjects.map(s => s._id.toString());
-    const subjectNames = subjects.map(s => s.name).join(', ');
-
+    const subjectIds = subjects.map((s) => s._id.toString());
+    const subjectNames = subjects.map((s) => s.name).join(", ");
     const expertMediums = user.mediums || [];
     const allTeachers = await User.find({
-      role: { $in: ['TEACHER', 'RESOURCE_PERSON'] }
+      role: { $in: ["TEACHER", "RESOURCE_PERSON"] }
     }).lean();
-
-    const resolvedIds = subjects.map(s => s._id.toString());
-    const resolvedShortNames = subjects.map(s => (s.shortName || '').toUpperCase());
-    const resolvedNames = subjects.map(s => (s.name || '').toUpperCase());
-
-    const relevantTeachers = allTeachers.filter(t => {
+    const resolvedIds = subjects.map((s) => s._id.toString());
+    const resolvedShortNames = subjects.map((s) => (s.shortName || "").toUpperCase());
+    const resolvedNames = subjects.map((s) => (s.name || "").toUpperCase());
+    const relevantTeachers = allTeachers.filter((t) => {
       const tMediums = t.mediums || [];
-      const hasMatchingMedium = expertMediums.length === 0 || expertMediums.some((m: string) => tMediums.includes(m));
+      const hasMatchingMedium = expertMediums.length === 0 || expertMediums.some((m) => tMediums.includes(m));
       if (!hasMatchingMedium) return false;
-
-      const tSubjects = [...(t.teachingSubjects || []), ...(t.assignedSubjects || [])];
-      return tSubjects.some(s => {
+      const tSubjects = [...t.teachingSubjects || [], ...t.assignedSubjects || []];
+      return tSubjects.some((s) => {
         if (!s) return false;
         const sStr = String(s).toUpperCase();
-        return resolvedIds.includes(s) ||
-          resolvedShortNames.includes(sStr) ||
-          resolvedNames.some(rn => rn.includes(sStr) || sStr.includes(rn));
+        return resolvedIds.includes(s) || resolvedShortNames.includes(sStr) || resolvedNames.some((rn) => rn.includes(sStr) || sStr.includes(rn));
       });
     });
-
     const questions = await Question.find({ subjectId: { $in: subjectIds } }).lean();
-
     const teacherQuestionCounts = questions.reduce((acc, q) => {
       if (q.createdBy) {
         acc[q.createdBy] = (acc[q.createdBy] || 0) + 1;
       }
       return acc;
-    }, {} as Record<string, number>);
-
-    const completedTeachers: any[] = [];
-    const pendingTeachers: any[] = [];
-
-    relevantTeachers.forEach(t => {
+    }, {});
+    const completedTeachers = [];
+    const pendingTeachers = [];
+    relevantTeachers.forEach((t) => {
       const qCount = teacherQuestionCounts[t.username] || 0;
       if (qCount > 0) {
         completedTeachers.push({ id: t._id.toString(), name: t.name, schoolCode: t.schoolCode, count: qCount });
@@ -11289,28 +9677,22 @@ app.get("/api/subject-expert/dashboard", requireRole('SUBJECT_EXPERT'), async (r
         pendingTeachers.push({ id: t._id.toString(), name: t.name, schoolCode: t.schoolCode });
       }
     });
-
     const marksDistribution = questions.reduce((acc, q) => {
       const m = q.marks || 0;
       acc[m] = (acc[m] || 0) + 1;
       return acc;
-    }, {} as Record<number, number>);
-
+    }, {});
     const levelDistribution = {
       Basic: 0,
       Average: 0,
       Profound: 0
     };
-
-    questions.forEach(q => {
-      if (q.difficulty === 'Easy') levelDistribution.Basic++;
-      else if (q.difficulty === 'Medium') levelDistribution.Average++;
-      else if (q.difficulty === 'Hard') levelDistribution.Profound++;
+    questions.forEach((q) => {
+      if (q.difficulty === "Easy") levelDistribution.Basic++;
+      else if (q.difficulty === "Medium") levelDistribution.Average++;
+      else if (q.difficulty === "Hard") levelDistribution.Profound++;
     });
-
-    // Also fetch chapters for export functionality
     const chapters = await SubjectChapter.find({ subjectId: { $in: subjectIds } }).lean();
-
     res.json({
       subjectNames,
       totalTeachers: relevantTeachers.length,
@@ -11322,19 +9704,15 @@ app.get("/api/subject-expert/dashboard", requireRole('SUBJECT_EXPERT'), async (r
       questions,
       chapters
     });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-// Teacher Dashboard API
-app.get("/api/teacher/dashboard", requireRole('TEACHER'), async (req: any, res: any) => {
+app.get("/api/teacher/dashboard", requireRole("TEACHER"), async (req, res) => {
   try {
     const user = await User.findById(req.user.id).lean();
     if (!user) return res.status(404).json({ message: "User not found" });
-
-    // Find students in assigned classes
     const assignedClasses = user.assignedSubjects || [];
-
     const studentsAgg = await Student.aggregate([
       {
         $match: {
@@ -11357,8 +9735,6 @@ app.get("/api/teacher/dashboard", requireRole('TEACHER'), async (req: any, res: 
         }
       }
     ]);
-
-    // Question stats
     const questionStats = await Question.aggregate([
       { $match: { createdBy: user.penNumber || user.username } },
       {
@@ -11370,22 +9746,18 @@ app.get("/api/teacher/dashboard", requireRole('TEACHER'), async (req: any, res: 
         }
       }
     ]);
-
     res.json({
       teachingSubjects: user.teachingSubjects || [],
       assignedClasses: user.assignedSubjects || [],
       classStats: studentsAgg,
       questions: questionStats[0] || { total: 0, approved: 0, draft: 0 }
     });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
-
-// Global Error Handler
-app.use((err: any, req: any, res: any, next: any) => {
+app.use((err, req, res, next) => {
   const status = err.statusCode || err.status || 500;
-
   if (status >= 500) {
     console.error("!!! SERVER ERROR !!!");
     console.error("Method:", req.method);
@@ -11395,51 +9767,44 @@ app.use((err: any, req: any, res: any, next: any) => {
     console.error("Error Message:", err.message);
     console.error("Stack Trace:", err.stack);
   } else {
-    console.log(`[${new Date().toISOString()}] Client Error ${status} - ${err.message} on ${req.method} ${req.path}`);
+    console.log(`[${(/* @__PURE__ */ new Date()).toISOString()}] Client Error ${status} - ${err.message} on ${req.method} ${req.path}`);
   }
-
   res.status(status).json({
     message: err.message || "Internal Server Error",
-    error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    error: true ? err.stack : void 0
   });
 });
-
 async function autoNormalizeStudentLanguages() {
   try {
     const students = await Student.find({
       $or: [
-        { thirdLang: 'Hindi' },
-        { thirdLang: 'HINDI' },
-        { thirdLang: '' },
+        { thirdLang: "Hindi" },
+        { thirdLang: "HINDI" },
+        { thirdLang: "" },
         { thirdLang: null },
         { thirdLang: { $exists: false } },
-        { secondLang: 'English' },
-        { secondLang: 'ENGLISH' },
-        { secondLang: '' },
+        { secondLang: "English" },
+        { secondLang: "ENGLISH" },
+        { secondLang: "" },
         { secondLang: null },
         { secondLang: { $exists: false } }
       ]
     }).lean();
-
     if (students.length > 0) {
       const mediumMapsFix = await getMediumMaps();
-      const bulkOps = students.map((s: any) => {
-        const medium = s.medium || 'Tamil';
-        let paper1 = s.firstLangPaper1 || '';
-        let paper2 = s.firstLangPaper2 || '';
-
+      const bulkOps = students.map((s) => {
+        const medium = s.medium || "Tamil";
+        let paper1 = s.firstLangPaper1 || "";
+        let paper2 = s.firstLangPaper2 || "";
         const medUpper = medium.toUpperCase();
         if (!paper1 || !paper2) {
           paper1 = paper1 || `${medUpper} AT - P01`;
           paper2 = paper2 || `${medUpper} BT - P02`;
         }
-
-        let mediumCode = mediumMapsFix.shortNameToCode[medUpper] || 'EM';
-
+        let mediumCode = mediumMapsFix.shortNameToCode[medUpper] || "EM";
         const secondLang = s.secondLang;
         const thirdLang = s.thirdLang;
-
-        const studentSubjects: string[] = [];
+        const studentSubjects = [];
         if (paper1) studentSubjects.push(paper1.trim());
         if (paper2) studentSubjects.push(paper2.trim());
         if (secondLang) studentSubjects.push(secondLang.trim());
@@ -11450,7 +9815,6 @@ async function autoNormalizeStudentLanguages() {
         studentSubjects.push(`BIOLOGY - P08 ${mediumCode}`);
         studentSubjects.push(`MATHEMATICS - P09 ${mediumCode}`);
         studentSubjects.push(`INFORMATION TECHNOLOGY - P10 ${mediumCode}`);
-
         return {
           updateOne: {
             filter: { _id: s._id },
@@ -11466,45 +9830,35 @@ async function autoNormalizeStudentLanguages() {
           }
         };
       });
-
       await Student.bulkWrite(bulkOps);
     }
   } catch (err) {
     console.error("Auto normalize student languages error:", err);
   }
 }
-
-// Server Initialization
 async function startServer() {
   await connectDB();
   await autoNormalizeStudentLanguages();
-
-  // If in dev mode, we do NOT load the Vite middleware inside server.ts because Vite dev server runs separately!
-  if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
+  if (false) {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   } else if (!process.env.VERCEL) {
-    // Serve a simple status message on root in development
     app.get("/", (req, res) => {
       res.send("VSP Backend API Server is running in development mode on port " + PORT);
     });
   }
-
   if (!process.env.VERCEL) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
   }
 }
-
-// For Vercel Serverless Functions
 if (process.env.VERCEL) {
   connectDB().catch(console.error);
 } else {
   startServer();
 }
-
 export default app;

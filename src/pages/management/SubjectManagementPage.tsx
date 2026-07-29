@@ -6,6 +6,7 @@ import { emitRefresh } from '../../lib/eventBus';
 import toast from 'react-hot-toast';
 import Swal from 'sweetalert2';
 import Modal from '../../components/common/Modal';
+import { getSubjectPCode } from '../../lib/subjectUtils';
 import { Medium, Subject } from '../../types';
 import { resolveMediumId as resolveMediumIdFromStr, getMediumColor, resolveMediumShortName } from '../../lib/mediumUtils';
 import { sortSubjects } from '../../lib/subjectUtils';
@@ -232,8 +233,15 @@ const SubjectManagementPage: React.FC = () => {
       return;
     }
 
+    const inferredCode = editingSubject.code || getSubjectPCode(editingSubject) || 'P01';
+    const subjectToSave = {
+      ...editingSubject,
+      code: inferredCode,
+      paperType: editingSubject.paperType || inferredCode
+    };
+
     try {
-      await apiClient.post('/management/subjects', editingSubject);
+      await apiClient.post('/management/subjects', subjectToSave);
       toast.success(editingSubject._id || editingSubject.id ? 'Subject updated' : 'Subject added');
       setIsModalOpen(false);
       fetchSubjects();

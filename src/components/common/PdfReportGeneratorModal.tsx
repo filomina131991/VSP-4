@@ -21,7 +21,191 @@ import { getStudentResult } from '../../lib/resultClassification';
 import Modal from './Modal';
 import ExamSelect from './ExamSelect';
 import Dropdown from './Dropdown';
+import { School, District, EducationalDistrict, Exam } from '../../types';
 import toast from 'react-hot-toast';
+
+const PCODE_CANONICAL_TITLES_MODAL: Record<string, string> = {
+  P01: 'P01 - First Language Paper I',
+  P02: 'P02 - First Language Paper II',
+  P03: 'P03 - English (Second Language)',
+  P04: 'P04 - Hindi (Third Language)',
+  P05: 'P05 - Social Science',
+  P06: 'P06 - Physics',
+  P07: 'P07 - Chemistry',
+  P08: 'P08 - Biology',
+  P09: 'P09 - Mathematics',
+  P10: 'P10 - Information Technology'
+};
+
+const getSubjectPCodeModal = (sub: any): string => {
+  if (!sub) return '';
+  const str = String(sub.pCode || sub.code || sub.shortCode || sub.paperType || sub.shortName || sub.name || sub.subjectName || sub.subject || '').toUpperCase();
+  const match = str.match(/\bP(0?[1-9]|10)\b/) || str.match(/P(0?[1-9]|10)/);
+  if (match && match[1]) {
+    const num = parseInt(match[1], 10);
+    if (num >= 1 && num <= 10) return num <= 9 ? `P0${num}` : `P${num}`;
+  }
+  return '';
+};
+
+const buildMediumSubjectTablesModal = (rawDataList: any[]) => {
+  const normalizeMedKey = (med: string) => {
+    const lower = (med || '').toLowerCase().trim();
+    if (lower.includes('english') || lower === 'em') return 'EM';
+    if (lower.includes('malayalam') || lower === 'mm') return 'MM';
+    if (lower.includes('tamil') || lower === 'tm') return 'TM';
+    return 'EM';
+  };
+
+  const mediumNames: Record<string, string> = {
+    EM: 'English Medium (EM)',
+    MM: 'Malayalam Medium (MM)',
+    TM: 'Tamil Medium (TM)',
+    OVERALL: 'Overall (All Mediums)'
+  };
+
+  const groupedByMed: Record<string, any[]> = {
+    EM: [],
+    MM: [],
+    TM: []
+  };
+
+  const overallMap = new Map<string, any>();
+
+  rawDataList.forEach((sub: any) => {
+    const medKey = normalizeMedKey(sub.medium);
+    const passed = (sub.aPlus || 0) + (sub.a || 0) + (sub.bPlus || 0) + (sub.b || 0) + (sub.cPlus || 0) + (sub.c || 0) + (sub.dPlus || 0);
+    const appeared = passed + (sub.d || 0) + (sub.e || 0);
+    const rawAbsents = sub.absents || 0;
+
+    // Ensure Total Students = Appeared + Absents with 100% mathematical precision
+    const totalStudents = sub.totalStudents && sub.totalStudents >= (appeared + rawAbsents)
+      ? sub.totalStudents
+      : (appeared + rawAbsents);
+    const absents = Math.max(rawAbsents, totalStudents - appeared);
+    const reconciledTotalStudents = appeared + absents;
+
+    const passPercentage = appeared > 0 ? (passed / appeared) * 100 : 0;
+    const below30 = sub.below30 || 0;
+    const below55 = (sub.pct45 || 0) + (sub.pct55 || 0);
+    const below85 = (sub.pct65 || 0) + (sub.pct75 || 0) + (sub.pct85 || 0);
+    const below100 = sub.pct100 || 0;
+
+    // Resolve canonical pCode
+    let pCode = getSubjectPCodeModal(sub);
+    if (!pCode && sub.shortCode) {
+      const match = sub.shortCode.match(/P(0?[1-9]|10)/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        pCode = num <= 9 ? `P0${num}` : `P${num}`;
+      }
+    }
+
+    const rowItem = {
+      pCode,
+      subjectName: sub.subject || sub.name || '',
+      totalStudents: reconciledTotalStudents,
+      appeared,
+      passed,
+      failed: Math.max(0, appeared - passed),
+      absents,
+      fullAPlus: sub.aPlus || 0,
+      aPlus: sub.aPlus || 0,
+      a: sub.a || 0,
+      bPlus: sub.bPlus || 0,
+      b: sub.b || 0,
+      cPlus: sub.cPlus || 0,
+      c: sub.c || 0,
+      dPlus: sub.dPlus || 0,
+      d: sub.d || 0,
+      e: sub.e || 0,
+      passPercentage
+    };
+
+    groupedByMed[medKey].push(rowItem);
+
+    // Group for OVERALL by P-Code (or by Subject Name if no P-code)
+    const overallKey = pCode || rowItem.subjectName.toUpperCase().trim();
+    const canonicalTitle = PCODE_CANONICAL_TITLES_MODAL[pCode] || (pCode ? `${pCode} - ${rowItem.subjectName}` : rowItem.subjectName);
+
+    if (!overallMap.has(overallKey)) {
+      overallMap.set(overallKey, {
+        pCode,
+        subjectName: canonicalTitle,
+        totalStudents: reconciledTotalStudents,
+        appeared,
+        passed,
+        failed: Math.max(0, appeared - passed),
+        absents,
+        fullAPlus: sub.aPlus || 0,
+        aPlus: sub.aPlus || 0,
+        a: sub.a || 0,
+        bPlus: sub.bPlus || 0,
+        b: sub.b || 0,
+        cPlus: sub.cPlus || 0,
+        c: sub.c || 0,
+        dPlus: sub.dPlus || 0,
+        d: sub.d || 0,
+        e: sub.e || 0,
+        passPercentage
+      });
+    } else {
+      const existing = overallMap.get(overallKey);
+      existing.totalStudents += reconciledTotalStudents;
+      existing.appeared += appeared;
+      existing.passed += passed;
+      existing.failed += Math.max(0, appeared - passed);
+      existing.absents += absents;
+      existing.fullAPlus += (sub.aPlus || 0);
+      existing.aPlus += (sub.aPlus || 0);
+      existing.a += (sub.a || 0);
+      existing.bPlus += (sub.bPlus || 0);
+      existing.b += (sub.b || 0);
+      existing.cPlus += (sub.cPlus || 0);
+      existing.c += (sub.c || 0);
+      existing.dPlus += (sub.dPlus || 0);
+      existing.d += (sub.d || 0);
+      existing.e += (sub.e || 0);
+      existing.passPercentage = existing.appeared > 0 ? (existing.passed / existing.appeared) * 100 : 0;
+    }
+  });
+
+  const mediumOrder = ['EM', 'MM', 'TM', 'OVERALL'];
+  
+  return mediumOrder.map(code => {
+    let subjects = code === 'OVERALL' ? Array.from(overallMap.values()) : (groupedByMed[code] || []);
+    
+    subjects.sort((a, b) => {
+      const numA = parseInt((a.pCode || '').replace(/\D/g, '') || '99', 10);
+      const numB = parseInt((b.pCode || '').replace(/\D/g, '') || '99', 10);
+      if (numA !== numB) return numA - numB;
+      return a.subjectName.localeCompare(b.subjectName);
+    });
+
+    const totalStudents = subjects.reduce((sum, s) => sum + (s.totalStudents || 0), 0);
+    const appeared = subjects.reduce((sum, s) => sum + (s.appeared || 0), 0);
+    const passed = subjects.reduce((sum, s) => sum + (s.passed || 0), 0);
+    const failed = subjects.reduce((sum, s) => sum + (s.failed || 0), 0);
+    const absents = subjects.reduce((sum, s) => sum + (s.absents || 0), 0);
+    const fullAPlus = subjects.reduce((sum, s) => sum + (s.fullAPlus || 0), 0);
+    const passPercentage = appeared > 0 ? (passed / appeared) * 100 : 0;
+
+    return {
+      code,
+      title: mediumNames[code],
+      summary: {
+        totalStudents,
+        appeared,
+        passed,
+        failed,
+        absents,
+        fullAPlus,
+        passPercentage
+      },
+      subjects
+    };
+  });
+};
 import logoUrl from '../../assets/logo.png';
 
 export type ReportLevel = 'DISTRICT' | 'EDUCATIONAL' | 'SCHOOL' | 'SUBJECT';
@@ -240,48 +424,12 @@ const PdfReportGeneratorModal: React.FC<PdfReportGeneratorModalProps> = ({
         if (targetSchoolForSubject) params.append('schoolId', targetSchoolForSubject);
 
         const res = await apiClient.get(`/results/subject-analysis?${params.toString()}`);
-        const subjectsList = (res.data?.data || []).map((sub: any) => {
-          const passed = (sub.aPlus || 0) + (sub.a || 0) + (sub.bPlus || 0) + (sub.b || 0) + (sub.cPlus || 0) + (sub.c || 0) + (sub.dPlus || 0);
-          const appeared = passed + (sub.d || 0) + (sub.e || 0);
-          const passPercentage = appeared > 0 ? (passed / appeared) * 100 : 0;
-          const below30 = sub.below30 || 0;
-          const below55 = (sub.pct45 || 0) + (sub.pct55 || 0);
-          const below85 = (sub.pct65 || 0) + (sub.pct75 || 0) + (sub.pct85 || 0);
-          const below100 = sub.pct100 || 0;
-          return {
-            subjectName: sub.subject,
-            totalStudents: sub.totalStudents || 0,
-            appeared,
-            passed,
-            absents: sub.absents || 0,
-            fullAPlus: sub.aPlus || 0,
-            below30,
-            below55,
-            below85,
-            below100,
-            passPercentage
-          };
-        });
-
-        let maxAppeared = 0;
-        let maxPassed = 0;
-        let maxFullAPlus = 0;
-        subjectsList.forEach((s: any) => {
-          if (s.appeared > maxAppeared) maxAppeared = s.appeared;
-          if (s.passed > maxPassed) maxPassed = s.passed;
-          if (s.fullAPlus > maxFullAPlus) maxFullAPlus = s.fullAPlus;
-        });
+        const rawSubjectData = res.data?.data || [];
+        const mediumTables = buildMediumSubjectTablesModal(rawSubjectData);
 
         setReportData({
           type: 'SUBJECT',
-          subjects: subjectsList,
-          summary: {
-            totalStudents: maxAppeared,
-            totalPassed: maxPassed,
-            totalPass: maxPassed,
-            totalFullAPlus: maxFullAPlus,
-            overallPassPercentage: maxAppeared > 0 ? (maxPassed / maxAppeared) * 100 : 0
-          }
+          mediumTables
         });
       }
     } catch (err) {
@@ -410,16 +558,16 @@ const PdfReportGeneratorModal: React.FC<PdfReportGeneratorModalProps> = ({
       return { totalStudents: appeared, appeared, passed, failed, fullAPlus, passPct, failPct };
     }
     if (reportData.type === 'SUBJECT') {
-      const subjects: any[] = reportData.subjects || [];
-      const summary = reportData.summary || {};
-      const totalStudents = subjects.reduce((acc, s) => acc + (s.totalStudents ?? 0), 0);
-      const appeared = subjects.reduce((acc, s) => acc + (s.appeared ?? 0), 0);
-      const passed = subjects.reduce((acc, s) => acc + (s.passed ?? 0), 0);
-      const fullAPlus = subjects.reduce((acc, s) => acc + (s.fullAPlus ?? 0), 0);
-      const failed = appeared - passed;
-      const passPct = appeared > 0 ? ((passed / appeared) * 100).toFixed(2) : '0.00';
-      const failPct = appeared > 0 ? ((failed / appeared) * 100).toFixed(2) : '0.00';
-      return { totalStudents: totalStudents || appeared, appeared, passed, failed, fullAPlus, passPct, failPct };
+      const overall = reportData.mediumTables?.find((m: any) => m.code === 'OVERALL')?.summary || {};
+      return {
+        totalStudents: overall.totalStudents || 0,
+        appeared: overall.appeared || 0,
+        passed: overall.passed || 0,
+        failed: overall.failed || 0,
+        fullAPlus: overall.fullAPlus || 0,
+        passPct: overall.passPercentage ? overall.passPercentage.toFixed(2) : '0.00',
+        failPct: overall.appeared > 0 ? (((overall.appeared - overall.passed) / overall.appeared) * 100).toFixed(2) : '0.00'
+      };
     }
     return { totalStudents: 0, appeared: 0, passed: 0, failed: 0, fullAPlus: 0, passPct: '0.00', failPct: '0.00' };
   };
@@ -815,51 +963,100 @@ const PdfReportGeneratorModal: React.FC<PdfReportGeneratorModalProps> = ({
                   </div>
                 )}
 
-                {/* LEVEL 4: SUBJECT-WISE DEEP ANALYSIS */}
-                {reportLevel === 'SUBJECT' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                        <span className="text-blue-600 font-bold">📚</span>
-                        Subject-Wise Pass & Grade Distribution Table
-                      </h3>
-                    </div>
-                    <table className="w-full text-left border-collapse text-xs border border-slate-300">
-                      <thead>
-                        <tr className="bg-slate-100 border-b border-slate-300">
-                          <th className="p-2.5 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest w-10 text-center">#</th>
-                          <th className="p-2.5 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest">Subject Name</th>
-                          <th className="p-2.5 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">Total Students</th>
-                          <th className="p-2.5 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">Appeared</th>
-                          <th className="p-2.5 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest text-center text-red-600">Absent</th>
-                          <th className="p-2.5 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">Passed</th>
-                          <th className="p-2.5 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">A+ Count</th>
-                          <th className="p-2.5 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">30&gt;</th>
-                          <th className="p-2.5 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">55&gt;</th>
-                          <th className="p-2.5 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">85&gt;</th>
-                          <th className="p-2.5 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">100&gt;</th>
-                          <th className="p-2.5 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest text-right">Pass %</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-300">
-                        {reportData?.subjects?.map((sub: any, idx: number) => (
-                          <tr key={sub.subjectId || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
-                            <td className="p-2.5 border border-slate-300 text-[10px] font-bold text-slate-400 text-center font-mono">{idx + 1}</td>
-                            <td className="p-2.5 border border-slate-300 font-bold text-slate-900">{sub.subjectName || sub.name}</td>
-                            <td className="p-2.5 border border-slate-300 text-center font-mono font-bold text-slate-800">{sub.totalStudents || 0}</td>
-                            <td className="p-2.5 border border-slate-300 text-center font-mono font-bold text-slate-700">{sub.appeared || sub.totalStudents || 0}</td>
-                            <td className="p-2.5 border border-slate-300 text-center font-mono font-bold text-red-600">{sub.absents || 0}</td>
-                            <td className="p-2.5 border border-slate-300 text-center font-mono font-bold text-emerald-700">{sub.passed || sub.passCount || 0}</td>
-                            <td className="p-2.5 border border-slate-300 text-center font-mono font-bold text-amber-700">{sub.fullAPlus || sub.aPlusCount || 0}</td>
-                            <td className="p-2.5 border border-slate-300 text-center font-mono font-bold text-red-600">{sub.below30 || 0}</td>
-                            <td className="p-2.5 border border-slate-300 text-center font-mono font-bold text-amber-600">{sub.below55 || 0}</td>
-                            <td className="p-2.5 border border-slate-300 text-center font-mono font-bold text-blue-600">{sub.below85 || 0}</td>
-                            <td className="p-2.5 border border-slate-300 text-center font-mono font-bold text-slate-500">{sub.below100 || 0}</td>
-                            <td className="p-2.5 border border-slate-300 text-right font-mono font-black text-blue-700">{Number(sub.passPercentage || sub.victoryPercentage || 0).toFixed(2)}%</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                {/* LEVEL 4: SUBJECT-WISE DEEP ANALYSIS (MEDIUM-WISE 4 TABLES WITH SUMMARY CARDS) */}
+                {reportLevel === 'SUBJECT' && reportData?.mediumTables && (
+                  <div className="space-y-8">
+                    {reportData.mediumTables.map((medTable: any) => (
+                      <div key={medTable.code} className="space-y-3 bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                          <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                            <span className="text-blue-600 font-bold">📚</span>
+                            {medTable.title} - Subject-Wise Pass & Grade Distribution Table
+                          </h3>
+                          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                            {medTable.subjects.length} Subjects
+                          </span>
+                        </div>
+
+                        {/* Single-Row Summary Card Bar */}
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-center divide-x divide-slate-200">
+                            <div className="px-2">
+                              <div className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider">Total Students</div>
+                              <div className="text-xs font-black text-slate-900 mt-0.5">{(medTable.summary.totalStudents || 0).toLocaleString()}</div>
+                            </div>
+                            <div className="px-2">
+                              <div className="text-[9px] font-extrabold text-blue-600 uppercase tracking-wider">Appeared</div>
+                              <div className="text-xs font-black text-blue-700 mt-0.5">{(medTable.summary.appeared || 0).toLocaleString()}</div>
+                            </div>
+                            <div className="px-2">
+                              <div className="text-[9px] font-extrabold text-emerald-600 uppercase tracking-wider">Passed</div>
+                              <div className="text-xs font-black text-emerald-700 mt-0.5">{(medTable.summary.passed || 0).toLocaleString()}</div>
+                            </div>
+                            <div className="px-2">
+                              <div className="text-[9px] font-extrabold text-rose-600 uppercase tracking-wider">Failed</div>
+                              <div className="text-xs font-black text-rose-700 mt-0.5">{(medTable.summary.failed || 0).toLocaleString()}</div>
+                            </div>
+                            <div className="px-2">
+                              <div className="text-[9px] font-extrabold text-amber-600 uppercase tracking-wider">Absent</div>
+                              <div className="text-xs font-black text-amber-700 mt-0.5">{(medTable.summary.absents || 0).toLocaleString()}</div>
+                            </div>
+                            <div className="px-2">
+                              <div className="text-[9px] font-extrabold text-purple-600 uppercase tracking-wider">Full A+</div>
+                              <div className="text-xs font-black text-purple-700 mt-0.5">{(medTable.summary.fullAPlus || 0).toLocaleString()}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Medium Table */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse text-xs border border-slate-300">
+                            <thead>
+                              <tr className="bg-slate-100 border-b border-slate-300">
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest w-8 text-center">#</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest">Subject Name</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">Total</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-slate-600 uppercase tracking-widest text-center">Appeared</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-red-600 uppercase tracking-widest text-center">Absent</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-emerald-600 uppercase tracking-widest text-center">Passed</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-purple-600 uppercase tracking-widest text-center">A+</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-indigo-600 uppercase tracking-widest text-center">A</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-blue-600 uppercase tracking-widest text-center">B+</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-cyan-600 uppercase tracking-widest text-center">B</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-teal-600 uppercase tracking-widest text-center">C+</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-emerald-600 uppercase tracking-widest text-center">C</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-amber-600 uppercase tracking-widest text-center">D+</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-orange-600 uppercase tracking-widest text-center">D</th>
+                                <th className="p-2 border border-slate-300 text-[9px] font-black text-rose-600 uppercase tracking-widest text-center">E</th>
+                                <th className="p-2 border border-slate-300 text-right font-mono font-black text-blue-700">Pass %</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-300">
+                              {medTable.subjects?.map((sub: any, idx: number) => (
+                                <tr key={sub.subjectId || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                                  <td className="p-2 border border-slate-300 text-[10px] font-bold text-slate-400 text-center font-mono">{idx + 1}</td>
+                                  <td className="p-2 border border-slate-300 font-bold text-slate-900">{sub.subjectName || sub.name}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-slate-800">{sub.totalStudents || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-slate-700">{sub.appeared || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-red-600">{sub.absents || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-emerald-700">{sub.passed || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-purple-700">{sub.aPlus || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-indigo-700">{sub.a || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-blue-700">{sub.bPlus || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-cyan-700">{sub.b || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-teal-700">{sub.cPlus || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-emerald-700">{sub.c || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-amber-700">{sub.dPlus || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-orange-700">{sub.d || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-center font-mono font-bold text-rose-700">{sub.e || 0}</td>
+                                  <td className="p-2 border border-slate-300 text-right font-mono font-black text-blue-700">{Number(sub.passPercentage || 0).toFixed(2)}%</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 
