@@ -1,79 +1,147 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, ChevronRight, Bookmark, CheckCircle, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Bookmark, X, CheckCircle, ExternalLink } from 'lucide-react';
 import { ErrorRecord } from '../types';
 import { useHelpCenter } from '../context/HelpCenterContext';
 
 export const ErrorCard: React.FC<{ error: ErrorRecord }> = ({ error }) => {
   const { isBookmarked, handleToggleBookmark } = useHelpCenter();
+  const [showSteps, setShowSteps] = useState(false);
   const bookmarked = isBookmarked(error.id);
 
-  const severityBadges = {
-    HIGH: 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800',
-    MEDIUM: 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800',
-    LOW: 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800'
-  };
-
   return (
-    <div className="group bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border border-gray-200 dark:border-slate-800 shadow-sm hover:shadow-xl hover:border-blue-300 dark:hover:border-blue-700 transition-all flex flex-col justify-between relative overflow-hidden">
-      <div>
-        {/* Header row: Severity badge & bookmark */}
-        <div className="flex items-center justify-between mb-3 gap-2">
-          <div className="flex items-center gap-2">
-            <span className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border ${severityBadges[error.severity]}`}>
-              {error.severity} SEVERITY
-            </span>
-            <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
-              {error.category.replace(/_/g, ' ')}
-            </span>
+    <>
+      <div className="group bg-white dark:bg-slate-900 rounded-2xl p-4 border border-gray-200 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all cursor-pointer active-tap" onClick={() => setShowSteps(true)}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
+                error.severity === 'HIGH' 
+                  ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                  : error.severity === 'MEDIUM'
+                  ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                  : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+              }`}>
+                {error.severity}
+              </span>
+            </div>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
+              {error.title}
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">
+              {error.symptoms[0]}
+            </p>
+            <div className="flex items-center gap-1.5 mt-2">
+              <span className="text-[9px] font-medium text-gray-400 dark:text-gray-500">
+                {error.category.replace(/_/g, ' ')}
+              </span>
+              <span className="text-[9px] text-gray-300 dark:text-gray-600">•</span>
+              <span className="text-[9px] text-gray-400 dark:text-gray-500">
+                {error.solution.length} steps
+              </span>
+            </div>
           </div>
-
-          <button
-            onClick={() => handleToggleBookmark(error.id, 'error')}
-            className={`p-1.5 rounded-xl transition-colors ${
-              bookmarked 
-                ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/60' 
-                : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-800'
-            }`}
-            title={bookmarked ? 'Saved in Bookmarks' : 'Bookmark this error'}
-          >
-            <Bookmark className={`w-4 h-4 ${bookmarked ? 'fill-current' : ''}`} />
-          </button>
-        </div>
-
-        {/* Title */}
-        <h3 className="text-base font-extrabold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors leading-snug">
-          {error.title}
-        </h3>
-
-        {/* Symptoms preview */}
-        <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 line-clamp-2 leading-relaxed">
-          {error.symptoms[0]}
-        </p>
-
-        {/* Roles tags */}
-        <div className="flex flex-wrap gap-1 mt-3">
-          {error.roles.map(r => (
-            <span key={r} className="text-[10px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-md">
-              Role: {r}
-            </span>
-          ))}
+          <div className="flex flex-col items-center gap-1 flex-shrink-0">
+            <button
+              onClick={(e) => { e.stopPropagation(); handleToggleBookmark(error.id, 'error'); }}
+              className={`p-1.5 rounded-lg transition-colors ${
+                bookmarked ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/60' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Bookmark className={`w-3.5 h-3.5 ${bookmarked ? 'fill-current' : ''}`} />
+            </button>
+            <ChevronRight className="w-4 h-4 text-gray-400" />
+          </div>
         </div>
       </div>
 
-      {/* Footer link button */}
-      <div className="mt-5 pt-3 border-t border-gray-100 dark:border-slate-800/80 flex items-center justify-between">
-        <span className="text-[11px] font-semibold text-gray-400">
-          ID: {error.id}
-        </span>
-        <Link
-          to={`/help/errors/${error.id}`}
-          className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 dark:text-blue-400 group-hover:translate-x-1 transition-transform"
-        >
-          <span>View How to Fix</span>
-          <ChevronRight className="w-4 h-4" />
-        </Link>
-      </div>
-    </div>
+      {showSteps && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150" onClick={() => setShowSteps(false)}>
+          <div className="relative w-full sm:max-w-lg max-h-[85vh] bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl border border-gray-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-200" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 px-5 py-4 flex items-center justify-between z-10">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+                <h3 className="text-sm font-bold text-gray-900 dark:text-white truncate">{error.title}</h3>
+              </div>
+              <button
+                onClick={() => setShowSteps(false)}
+                className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors flex-shrink-0 ml-2"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto p-5 max-h-[calc(85vh-130px)]">
+              <div className="flex items-center gap-2 mb-4">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                  error.severity === 'HIGH' 
+                    ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                    : error.severity === 'MEDIUM'
+                    ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                    : 'bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                }`}>
+                  {error.severity} SEVERITY
+                </span>
+                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+                  {error.category.replace(/_/g, ' ')}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                    Step-by-Step Resolution
+                  </span>
+                </div>
+                <ol className="space-y-2">
+                  {error.solution.map((step, idx) => (
+                    <li key={idx} className="flex items-start gap-2.5 p-3 rounded-xl bg-gray-50 dark:bg-slate-800/80 border border-gray-100 dark:border-slate-700">
+                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0 mt-0.5">
+                        {idx + 1}
+                      </span>
+                      <span className="text-xs text-gray-800 dark:text-gray-200 leading-relaxed">{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+
+              {error.malayalamSolution && (
+                <div className="mt-4 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/60">
+                  <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase">മലയാളം</span>
+                  <ul className="mt-1.5 space-y-1">
+                    {error.malayalamSolution.map((ml, idx) => (
+                      <li key={idx} className="flex items-start gap-1.5 text-[11px] text-blue-900 dark:text-blue-200">
+                        <span className="text-blue-600 font-bold">•</span>
+                        <span>{ml}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="mt-4 flex items-center gap-2">
+                <Link
+                  to={`/help/errors/${error.id}`}
+                  onClick={() => setShowSteps(false)}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Full Error Page</span>
+                </Link>
+                <Link
+                  to="/help/tickets"
+                  onClick={() => setShowSteps(false)}
+                  className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-xl transition-colors"
+                >
+                  <span>Still Problem?</span>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };

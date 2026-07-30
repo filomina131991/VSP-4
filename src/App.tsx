@@ -56,6 +56,7 @@ const WorkflowPage = React.lazy(() => import('./help-center/pages/WorkflowPage')
 const SupportTicketPage = React.lazy(() => import('./help-center/pages/SupportTicketPage').then(m => ({ default: m.SupportTicketPage })));
 const AboutPage = React.lazy(() => import('./help-center/pages/AboutPage').then(m => ({ default: m.AboutPage })));
 const BookmarksPage = React.lazy(() => import('./help-center/pages/BookmarksPage').then(m => ({ default: m.BookmarksPage })));
+const AdminHelpPage = React.lazy(() => import('./help-center/pages/AdminHelpPage').then(m => ({ default: m.AdminHelpPage })));
 
 const queryClient = new QueryClient();
 
@@ -106,6 +107,7 @@ export default function App() {
                 <Route path="tickets" element={<SupportTicketPage />} />
                 <Route path="about" element={<AboutPage />} />
                 <Route path="bookmarks" element={<BookmarksPage />} />
+                <Route path="admin" element={<AdminHelpPage />} />
               </Route>
 
               {/* Protected Dashboard Routes with Strict Role Guards */}

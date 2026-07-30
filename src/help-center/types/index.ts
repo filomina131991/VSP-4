@@ -106,3 +106,98 @@ export interface AppSetting {
   autoOfflineSync: boolean;
   fontSize: 'small' | 'medium' | 'large';
 }
+
+export interface QnAItem {
+  id: string;
+  question: string;
+  answer: string;
+  keywords: string[];
+  intent: string;
+  category: ErrorCategory | string;
+  steps: string[];
+  screenshots?: string[];
+  adminNotes?: string;
+  lastUpdated: string;
+  translations?: {
+    ta?: { question: string; answer: string; steps: string[] };
+    ml?: { question: string; answer: string; steps: string[] };
+  };
+}
+
+export interface ChatMessage {
+  id: string;
+  sender: 'user' | 'bot' | 'gemini';
+  text: string;
+  steps?: string[];
+  matchedQnA?: QnAItem;
+  matchedError?: ErrorRecord;
+  timestamp: string;
+  suggestions?: { label: string; link?: string; action?: string }[];
+}
+
+export interface GeminiConfig {
+  apiKey: string;
+  enabled: boolean;
+  model: string;
+  temperature: number;
+}
+
+export interface ErrorAnalyticsEntry {
+  id: string;
+  schoolCode: string;
+  schoolName: string;
+  errorName: string;
+  errorId: string;
+  userQuery: string;
+  resolved: boolean;
+  timestamp: string;
+  user: string;
+  category: string;
+  resolvedAt?: string;
+  timeTaken?: number;
+}
+
+export interface SearchAnalyticsEntry {
+  id: string;
+  query: string;
+  matchedErrorId?: string;
+  schoolCode?: string;
+  schoolName?: string;
+  user?: string;
+  timestamp: string;
+  resolved: boolean;
+}
+
+export interface TicketComment {
+  id: string;
+  text: string;
+  author: string;
+  role: string;
+  timestamp: string;
+  attachments?: string[];
+}
+
+export interface EnhancedTicket extends SupportTicket {
+  schoolCode?: string;
+  category?: ErrorCategory | string;
+  errorName?: string;
+  comments?: TicketComment[];
+  browser?: string;
+  device?: string;
+  appVersion?: string;
+  currentPage?: string;
+  assignedTo?: string;
+  resolutionSteps?: string[];
+}
+
+export interface SuggestionItem {
+  id: string;
+  text: string;
+  schoolCode?: string;
+  schoolName?: string;
+  user?: string;
+  timestamp: string;
+  status: 'NEW' | 'REVIEWED' | 'ARCHIVED';
+  adminReply?: string;
+  translated?: boolean;
+}

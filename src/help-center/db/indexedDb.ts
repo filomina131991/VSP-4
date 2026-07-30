@@ -7,7 +7,7 @@ import { ROLE_GUIDES } from '../data/guidesData';
 import { SupportTicket, AppSetting } from '../types';
 
 const DB_NAME = 'VijayasreeHelpCenterDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export class HelpCenterDB {
   private db: IDBDatabase | null = null;
@@ -34,7 +34,11 @@ export class HelpCenterDB {
           'bookmarks',
           'recentSearches',
           'supportTickets',
-          'ratings'
+          'ratings',
+          'analytics',
+          'searchAnalytics',
+          'suggestions',
+          'qna'
         ];
 
         stores.forEach(storeName => {

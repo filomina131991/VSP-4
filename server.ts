@@ -4564,8 +4564,8 @@ async function computeSchoolAnalysis(schoolId: string, examId: string, exam: any
     return 'E';
   };
 
-  const getResolvedMaxMark = (subjectId: string, shortCode: string): number => {
-    return (getResolvedMaxMark as any)(exam, subjectId, shortCode, 50);
+  const resolveMaxMark = (subjectId: string, shortCode: string): number => {
+    return getResolvedMaxMark(exam, subjectId, shortCode, 50);
   };
 
   const mediumStats: Record<string, { total: number; male: number; female: number; scribe: number }> = {};
@@ -4630,7 +4630,7 @@ async function computeSchoolAnalysis(schoolId: string, examId: string, exam: any
       }
 
       hasAnyMark = true;
-      const maxMark = getResolvedMaxMark(m.subjectId, shortCode);
+      const maxMark = resolveMaxMark(m.subjectId, shortCode);
       let numericMark = m.mark ?? m.rawScore ?? null;
       let grade = m.grade || '';
       if (numericMark !== null && numericMark !== undefined && numericMark !== '') {
@@ -4779,7 +4779,7 @@ async function computeSchoolAnalysis(schoolId: string, examId: string, exam: any
       let allPass = true, allAPlus = true;
       exMks.forEach(m => {
         const sc = idToCode[m.subjectId] || '';
-        const mm = getResolvedMaxMark(m.subjectId, sc);
+        const mm = resolveMaxMark(m.subjectId, sc);
         const nm = m.mark ?? m.rawScore;
         const g = m.grade || (nm !== null && nm !== undefined ? getGradeFromMark(nm, mm) : '');
         const ug = String(g).trim().toUpperCase();
