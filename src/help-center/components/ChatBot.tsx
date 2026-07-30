@@ -210,16 +210,6 @@ export const ChatBot: React.FC = () => {
                   ))}
                 </div>
 
-                <div className="mt-3 px-1">
-                  <Link
-                    to="/help/errors"
-                    onClick={() => setIsOpen(false)}
-                    className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
-                  >
-                    <span>View All Error Library →</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </Link>
-                </div>
               </div>
             ) : (
               <>

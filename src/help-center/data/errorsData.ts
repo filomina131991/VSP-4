@@ -123,13 +123,13 @@ export const ERRORS_DATABASE: ErrorRecord[] = [
       "Verify the active Exam is selected from the top header dropdown (e.g. Vijayasree SSLC Pre-Board 2026).",
       "Check internet connection banner at the top of the app.",
       "Fill marks or grades for all active students (use 'Ab' for absent students).",
-      "Click 'Draft Save' first to store temporary data in local storage.",
-      "Click 'Submit Final Subject Marks'."
+      "Click 'Save Progress' button.",
+      "If it does not work even after these steps, contact admin at 7904838296."
     ],
     malayalamSolution: [
       "മുകളിലെ ഡ്രോപ്പ്‌ഡൗണിൽ നിന്ന് ശരിയായ പരീക്ഷ (Vijayasree SSLC Pre-Board) തിരഞ്ഞെടുത്തിട്ടുണ്ടോ എന്ന് പരിശോധിക്കുക.",
       "ഗൈഡ് അനുസരിച്ച് എബ്സെന്റായ കുട്ടികൾക്ക് 'Ab' എന്നും മറ്റുള്ളവർക്ക് ഗ്രേഡും നൽകുക.",
-      "ആദ്യം 'Draft Save' നൽകുക, തുടർന്ന് 'Submit Final Subject Marks' നൽകുക."
+      "'Save Progress' ബട്ടൺ ക്ലിക്ക് ചെയ്യുക."
     ],
     relatedErrorIds: ["exam-config-missing", "pending-subject-confirmation"]
   },
@@ -193,7 +193,7 @@ export const ERRORS_DATABASE: ErrorRecord[] = [
     id: "exam-config-missing",
     title: "Exam Configuration Missing",
     category: "EXAM_CONFIG",
-    roles: ["SCHOOL", "DISTRICT"],
+    roles: ["SCHOOL", "TEACHER"],
     severity: "HIGH",
     keywords: ["exam config", "exam configuration", "missing exam", "pre-board", "മോഡൽ പരീക്ഷ", "മാർക്ക് രീതി"],
     symptoms: [
@@ -201,19 +201,20 @@ export const ERRORS_DATABASE: ErrorRecord[] = [
       "Marks Entry 2 page displays warning banner: 'Exam parameters undefined'"
     ],
     causes: [
-      "DEO / School admin has not created or enabled exam parameters for the academic year",
-      "Maximum marks structure for core subjects missing"
+      "School HM has not configured exam subjects for the selected exam",
+      "Subjects are not yet assigned with CE/TE mark groups"
     ],
     solution: [
-      "Log in as School Administrator / DEO.",
-      "Navigate to Exam Management.",
-      "Select current exam (e.g. SSLC Model Exam 2026) and click 'Enable for School'.",
-      "Set Maximum CE & TE marks for 10 subjects.",
-      "Click 'Save Exam Config'."
+      "Log in as School HM.",
+      "Go to Marks Entry 2.0 and select the exam.",
+      "Click 'Exam Config' button to open configuration modal.",
+      "Verify auto-selected subjects per medium tab.",
+      "Click 'Save Configuration'."
     ],
     malayalamSolution: [
-      "School Administrator ആയി ലോഗിൻ ചെയ്ത് Exam Management-ൽ പോവുക.",
-      "നടപ്പുവർഷത്തെ പരീക്ഷ തിരഞ്ഞെടുത്ത് 'Enable for School' നൽകി മാർക്ക് ഘടന ക്രമീകരിക്കുക."
+      "School HM ആയി ലോഗിൻ ചെയ്ത് Marks Entry 2.0-ൽ പോവുക.",
+      "പരീക്ഷ സെലക്ട് ചെയ്ത് 'Exam Config' ബട്ടൺ ക്ലിക്ക് ചെയ്യുക.",
+      "ഓരോ മീഡിയം ടാബിലും വിഷയങ്ങൾ പരിശോധിച്ച് 'Save Configuration' ക്ലിക്ക് ചെയ്യുക."
     ],
     relatedErrorIds: ["marks-entry-empty", "ict-option-missing"]
   },

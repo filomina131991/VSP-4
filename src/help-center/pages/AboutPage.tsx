@@ -19,10 +19,10 @@ export const AboutPage: React.FC = () => {
               System Specification
             </span>
             <h1 className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white">
-              Vijayasree Palakkad Help Center PWA
+              Vijayasree Palakkad Help Center
             </h1>
             <span className="text-xs font-bold text-gray-400">
-              Version 2.4.0 (Offline Certified PWA)
+              Version 2.4.0 (Offline Certified)
             </span>
           </div>
         </div>

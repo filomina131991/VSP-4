@@ -31,12 +31,12 @@ import {
   Moon,
   X,
   DatabaseBackup,
-  HelpCircle
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { apiClient } from '../../lib/apiClient';
 import PageTransition from '../common/PageTransition';
 import FirstTimePasswordModal from '../common/FirstTimePasswordModal';
+import FloatingHelpButton from '../common/FloatingHelpButton';
 
 const stripHtml = (html: string) => {
   if (!html) return '';
@@ -142,7 +142,6 @@ const DashboardLayout: React.FC = () => {
       { label: 'Broadcast Alerts', path: '/dashboard/alerts', icon: Megaphone },
       { label: 'QP Repo Dashboard', path: '/dashboard/qp-repo', icon: BarChart2 },
       { label: 'Backup & Restore', path: '/dashboard/backup', icon: DatabaseBackup },
-      { label: 'Help Center PWA', path: '/help', icon: HelpCircle },
     ],
     DEO: [
       { label: 'Analysis Dashboard', path: '/dashboard', icon: LayoutDashboard },
@@ -155,7 +154,6 @@ const DashboardLayout: React.FC = () => {
       { label: 'Exams Config', path: '/dashboard/exams', icon: ClipboardList },
       { label: 'Question Repository', path: '/dashboard/repository', icon: BookOpen },
       { label: 'Broadcast Alerts', path: '/dashboard/alerts', icon: Megaphone },
-      { label: 'Help Center PWA', path: '/help', icon: HelpCircle },
     ],
     DIET: [
       { label: 'Analysis Dashboard', path: '/dashboard', icon: LayoutDashboard },
@@ -168,7 +166,6 @@ const DashboardLayout: React.FC = () => {
       { label: 'Exams Config', path: '/dashboard/exams', icon: ClipboardList },
       { label: 'Question Repository', path: '/dashboard/repository', icon: BookOpen },
       { label: 'Broadcast Alerts', path: '/dashboard/alerts', icon: Megaphone },
-      { label: 'Help Center PWA', path: '/help', icon: HelpCircle },
     ],
     SCHOOL: [
       { label: 'Analysis Dashboard', path: '/dashboard', icon: LayoutDashboard },
@@ -178,7 +175,6 @@ const DashboardLayout: React.FC = () => {
       { label: 'Reports', path: '/dashboard/reports', icon: FileBarChart },
       { label: 'Notifications', path: '/dashboard/notifications', icon: Bell },
       { label: 'Resources Hub', path: '/dashboard/resources', icon: FolderOpen },
-      { label: 'Help Center PWA', path: '/help', icon: HelpCircle },
     ],
     SUBJECT_EXPERT: [
       { label: 'Analysis Dashboard', path: '/dashboard', icon: LayoutDashboard },
@@ -187,19 +183,16 @@ const DashboardLayout: React.FC = () => {
       { label: 'Assign Tasks', path: '/dashboard/assign-tasks', icon: FileEdit },
       { label: 'Question Repository', path: '/dashboard/repository', icon: BookOpen },
       { label: 'Paper Generator', path: '/dashboard/paper-generator', icon: Printer },
-      { label: 'Help Center PWA', path: '/help', icon: HelpCircle },
     ],
     RESOURCE_PERSON: [
       { label: 'Analysis Dashboard', path: '/dashboard', icon: LayoutDashboard },
       { label: 'Resources Hub', path: '/dashboard/resources', icon: FolderOpen },
       { label: 'Question Repository', path: '/dashboard/repository', icon: BookOpen },
-      { label: 'Help Center PWA', path: '/help', icon: HelpCircle },
     ],
     TEACHER: [
       { label: 'Analysis Dashboard', path: '/dashboard', icon: LayoutDashboard },
       { label: 'Marks Entry', path: '/dashboard/marks', icon: FileEdit },
       { label: 'Question Repository', path: '/dashboard/repository', icon: BookOpen },
-      { label: 'Help Center PWA', path: '/help', icon: HelpCircle },
     ]
   };
 
@@ -571,6 +564,7 @@ const DashboardLayout: React.FC = () => {
       </main>
 
       <FirstTimePasswordModal isOpen={user?.passwordChanged === false} />
+      <FloatingHelpButton />
     </div>
   );
 };

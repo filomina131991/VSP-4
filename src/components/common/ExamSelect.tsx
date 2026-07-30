@@ -1,14 +1,11 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { FileText, ChevronDown, Search, Check } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { ChevronDown, Search, Check, AlertCircle } from 'lucide-react';
 
 interface Exam {
   id: string;
   name: string;
   academicYear?: string;
   standard?: string;
-  confirmedSchools?: string[];
-  status?: string;
 }
 
 interface ExamSelectProps {
@@ -16,7 +13,6 @@ interface ExamSelectProps {
   selectedExamId: string;
   onSelect: (examId: string) => void;
   placeholder?: string;
-  schoolId?: string;
   className?: string;
   configuredIds?: string[];
 }
@@ -26,11 +22,9 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
   selectedExamId,
   onSelect,
   placeholder = 'Select Exam',
-  schoolId,
   className = '',
   configuredIds = [],
 }) => {
-  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedIdx, setHighlightedIdx] = useState(-1);
@@ -40,13 +34,13 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
   const filteredExams = useMemo(() => {
     if (!searchQuery) return exams;
     const q = searchQuery.toLowerCase();
-    return exams.filter((ex: any) =>
+    return exams.filter(ex =>
       ex.name.toLowerCase().includes(q) ||
       (ex.academicYear || '').toLowerCase().includes(q)
     );
   }, [exams, searchQuery]);
 
-  const selectedExam = exams.find((e: any) => e.id === selectedExamId);
+  const selectedExam = exams.find(e => e.id === selectedExamId);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -75,7 +69,7 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
       setHighlightedIdx(prev => Math.max(prev - 1, 0));
     } else if (e.key === 'Enter' && highlightedIdx >= 0 && items[highlightedIdx]) {
       e.preventDefault();
-      onSelect((items[highlightedIdx] as any).id);
+      onSelect(items[highlightedIdx].id);
       setIsOpen(false);
       setSearchQuery('');
       setHighlightedIdx(-1);
@@ -86,72 +80,32 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
     }
   }, [isOpen, filteredExams, highlightedIdx, onSelect]);
 
-  const isConfigured = selectedExamId ? configuredIds.includes(selectedExamId) : false;
-  const isSchoolView = user?.role === 'SCHOOL';
-
-  const renderStatusBadge = (exam: any, isSelected: boolean) => {
-    if (isSchoolView) {
-      const configured = configuredIds.includes(exam.id);
-      return (
-        <span className={`inline-block text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${configured ? 'bg-emerald-600 text-white shadow-xs' : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400'}`}>
-          {configured ? '✓ Configured' : 'Configure Required'}
-        </span>
-      );
-    }
-
-    // For Admin users, show the actual exam status
-    let statusText = exam.status || 'ACTIVE';
-    let statusColor = 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400';
-    const s = (exam.status || '').toUpperCase();
-    if (s === 'PUBLISHED') statusColor = 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400';
-    else if (s === 'ACTIVE') statusColor = 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400';
-    else if (s === 'DRAFT') statusColor = 'bg-gray-100 dark:bg-gray-900/40 text-gray-700 dark:text-gray-400';
-    else if (s === 'COMPLETED' || s === 'ARCHIVED') statusColor = 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400';
-
-    return (
-      <span className={`inline-block text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${statusColor}`}>
-        {statusText}
-      </span>
-    );
-  };
-
-  const getBorderClasses = (exam: any) => {
-    if (!isSchoolView) return 'bg-white dark:bg-[#161b22] border-gray-200 dark:border-[#30363d] hover:border-gray-300 dark:hover:border-gray-600';
-    const configured = configuredIds.includes(exam.id);
-    return configured 
-      ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-400 dark:border-emerald-600/80 hover:border-emerald-500 shadow-emerald-500/10'
-      : 'bg-white dark:bg-[#161b22] border-gray-200 dark:border-[#30363d] hover:border-gray-300 dark:hover:border-gray-600';
-  };
-
   return (
     <div ref={dropdownRef} className={`relative ${className}`}>
       <button
         type="button"
         onClick={() => { setIsOpen(prev => !prev); setSearchQuery(''); setHighlightedIdx(-1); }}
         onKeyDown={(e) => { if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); setIsOpen(true); } }}
-        className={`w-full text-left px-3.5 py-2.5 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer border ${selectedExam ? getBorderClasses(selectedExam) : 'bg-white dark:bg-[#161b22] border-gray-200 dark:border-[#30363d] hover:border-gray-300 dark:hover:border-gray-600'}`}
+        className={`w-full text-left px-4 py-3 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer border-2 ${
+          selectedExam
+            ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-400 dark:border-emerald-600/80 hover:border-emerald-500'
+            : 'bg-white dark:bg-[#161b22] border-gray-200 dark:border-[#30363d] hover:border-gray-300 dark:hover:border-gray-500'
+        }`}
       >
-        <div className="flex items-start gap-2">
-          <FileText size={15} className={`${isConfigured ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-500 dark:text-indigo-400'} shrink-0 mt-0.5`} />
+        <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
-            <div className={`text-[11px] sm:text-xs font-black uppercase leading-tight break-words ${isConfigured ? 'text-emerald-950 dark:text-emerald-200' : 'text-black dark:text-white'}`} title={selectedExam?.name || placeholder}>
+            <div className="text-sm sm:text-base font-black text-gray-900 dark:text-white leading-tight whitespace-nowrap">
               {selectedExam?.name || placeholder}
             </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0 mt-1">
             {selectedExam && (
-              <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                {renderStatusBadge(selectedExam, true)}
-                {selectedExam.academicYear && (
-                  <span className="text-[9px] font-bold text-gray-400 dark:text-gray-500">{selectedExam.academicYear}</span>
-                )}
-                {selectedExam.standard && (
-                  <span className="text-[9px] font-bold text-gray-400 dark:text-gray-500">Class {selectedExam.standard}</span>
-                )}
+              <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
+                <Check size={12} className="text-white" strokeWidth={3} />
               </div>
             )}
-          </div>
-          <div className="flex items-center gap-1 shrink-0 mt-0.5">
-            {selectedExamId && <Check size={14} className={isConfigured ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-500"} />}
-            <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
           </div>
         </div>
       </button>
@@ -162,8 +116,9 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
           tabIndex={-1}
           onKeyDown={handleKeyDown}
           className="absolute top-full mt-1.5 left-0 right-0 z-50 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top"
+          style={{ minWidth: '320px' }}
         >
-          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-[#30363d] bg-gray-50/50 dark:bg-gray-900/30">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-[#30363d] bg-gray-50/50 dark:bg-gray-900/30">
             <Search size={14} className="text-gray-400 shrink-0" />
             <input
               ref={searchInputRef}
@@ -175,13 +130,14 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
               autoFocus
             />
           </div>
-          <div className="max-h-64 overflow-y-auto overscroll-contain divide-y divide-gray-50 dark:divide-gray-800">
+
+          <div className="max-h-80 overflow-y-auto overscroll-contain divide-y divide-gray-50 dark:divide-gray-800">
             {filteredExams.length === 0 ? (
-              <div className="px-4 py-6 text-center text-xs font-bold text-gray-400">No exams match your search</div>
-            ) : (filteredExams as any[]).map((ex, idx) => {
+              <div className="px-4 py-8 text-center text-xs font-bold text-gray-400">No exams match your search</div>
+            ) : filteredExams.map((ex, idx) => {
               const isSelected = ex.id === selectedExamId;
-              const isConfirmed = schoolId ? ex.confirmedSchools?.includes(schoolId) : false;
-              const exConfigured = configuredIds.includes(ex.id);
+              const isConfigured = configuredIds.includes(ex.id);
+
               return (
                 <div
                   key={ex.id}
@@ -189,34 +145,37 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
                   aria-selected={isSelected}
                   onClick={() => { onSelect(ex.id); setIsOpen(false); setSearchQuery(''); setHighlightedIdx(-1); }}
                   onMouseEnter={() => setHighlightedIdx(idx)}
-                  className={`flex items-start gap-3 px-3.5 py-3 cursor-pointer transition-all ${
-                    idx === highlightedIdx ? (exConfigured ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : 'bg-indigo-50 dark:bg-indigo-950/30') : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                  } ${isSelected ? (exConfigured ? 'bg-emerald-50 dark:bg-emerald-950/30 border-l-4 border-l-emerald-500' : 'bg-indigo-50/80 dark:bg-indigo-950/20 border-l-4 border-l-indigo-500') : 'border-l-4 border-l-transparent'}`}
+                  className={`px-4 py-3.5 cursor-pointer transition-all ${
+                    idx === highlightedIdx
+                      ? 'bg-gray-50 dark:bg-gray-800/60'
+                      : isSelected
+                      ? 'bg-emerald-50/80 dark:bg-emerald-950/20'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-800/40'
+                  } ${isConfigured ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-transparent'}`}
                 >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${exConfigured ? 'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400' : (isSelected ? 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600' : 'bg-gray-100 dark:bg-gray-800 text-gray-500')}`}>
-                    <FileText size={14} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className={`text-sm font-black uppercase leading-tight break-words ${exConfigured ? 'text-emerald-900 dark:text-emerald-300' : (isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-800 dark:text-gray-200')}`}>
-                      {ex.name}
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-sm font-black leading-tight whitespace-nowrap ${isSelected ? 'text-emerald-900 dark:text-emerald-200' : 'text-gray-900 dark:text-white'}`}>
+                        {ex.name}
+                      </div>
+
+                      <div className="flex items-center gap-3 mt-1.5">
+                        <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                          Academic Year : {ex.academicYear || 'N/A'}
+                        </span>
+                        <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                          Class : {ex.standard || '10'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 mt-1">
-                      <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">
-                        Academic Year: {ex.academicYear || 'N/A'}
-                      </span>
-                      <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 hidden sm:inline">
-                        Class {ex.standard || '10'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="shrink-0 mt-0.5">
-                    <span className={`inline-block text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
-                      exConfigured
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400'
-                    }`}>
-                      {exConfigured ? '✓ Configured' : 'Configure Required'}
-                    </span>
+
+                    {isConfigured ? (
+                      <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center shrink-0 mt-1">
+                        <Check size={11} className="text-white" strokeWidth={3} />
+                      </div>
+                    ) : (
+                      <AlertCircle size={16} className="text-amber-500 shrink-0 mt-1" />
+                    )}
                   </div>
                 </div>
               );

@@ -158,9 +158,8 @@ export const QNA_DATABASE: QnAItem[] = [
       'Check internet connection at the top of the app',
       'Fill marks or grades for all active students',
       'Type "Ab" for absent students (do not leave blank)',
-      'Click "Draft Save" first to store temporary data',
-      'Then click "Submit Final Subject Marks"',
-      'Wait for green confirmation message'
+      'Click "Save Progress" button',
+      'If it does not work even after these steps, contact admin at 7904838296'
     ],
     screenshots: [],
     lastUpdated: '2026-07-30'
@@ -168,17 +167,17 @@ export const QNA_DATABASE: QnAItem[] = [
   {
     id: 'qna-exam-config',
     question: 'Exam Configuration Missing / No Active Exam',
-    answer: 'Follow these steps to configure exam settings.',
+    answer: 'School HM must configure exam subjects from Marks Entry 2.0 page.',
     keywords: ['exam config', 'exam configuration', 'exam missing', 'no exam', 'active exam', 'exam error'],
     intent: 'exam_config',
     category: 'EXAM_CONFIG',
     steps: [
-      'Log in as School Administrator or DEO',
-      'Go to "Exam Management" page',
-      'Select current exam (e.g., SSLC Model Exam 2026)',
-      'Click "Enable for School" button',
-      'Set Maximum CE and TE marks for all 10 subjects',
-      'Click "Save Exam Config" button'
+      'Log in as School HM',
+      'Go to "Marks Entry 2.0" page',
+      'Select the exam from the dropdown',
+      'Click "Exam Config" button to open configuration modal',
+      'Verify subjects are auto-selected per medium tab',
+      'Click "Save Configuration" button'
     ],
     screenshots: [],
     lastUpdated: '2026-07-30'
@@ -423,8 +422,7 @@ export const QNA_DATABASE: QnAItem[] = [
       'Select the Exam from dropdown',
       'Select Class and Division',
       'Enter marks for each student and subject',
-      'Click "Draft Save" to save temporarily',
-      'Click "Submit Final Subject Marks" after verification',
+      'Click "Save Progress" button',
       'Wait for confirmation message'
     ],
     screenshots: [],

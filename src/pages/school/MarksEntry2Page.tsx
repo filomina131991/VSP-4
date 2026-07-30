@@ -12,6 +12,7 @@ import { MarksEntryBulkGrid } from './MarksEntryBulkGrid';
 import PageLoader from '../../components/common/PageLoader';
 import ExamSelect from '../../components/common/ExamSelect';
 import Dropdown from '../../components/common/Dropdown';
+import FloatingHelpButton from '../../components/common/FloatingHelpButton';
 import { getSubjectShortLabel, sortSubjects } from '../../lib/subjectUtils';
 
 import PremiumExamConfigModal from '../../components/school/PremiumExamConfigModal';
@@ -2400,6 +2401,7 @@ const MarksEntry2Page: React.FC = () => {
           examName={exams.find((e: any) => e.id === selectedExamId)?.name || 'Exam'}
         />
       )}
+      <FloatingHelpButton />
     </div>
   );
 };

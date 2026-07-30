@@ -46,7 +46,7 @@ In Kerala SSLC examinations, candidate First Language papers follow strict regul
 # Marks Entry 2 Productivity Guide
 
 ### Key Tips for Subject Teachers:
-- **Offline Draft Saving:** Click **Draft Save** after every 5-10 student rows. Drafts are safely cached in browser storage.
+- **Save Progress:** Click **Save Progress** after every 5-10 student rows. Data is saved to the server.
 - **Keyboard Navigation:** Press **Tab** to move across subject columns; press **Enter** to jump down to the next student row.
 - **Absentee Candidates:** Type **Ab** (case insensitive) for absent candidates. Do NOT leave cells blank.
 - **Final Lock:** Once all marks are populated, click **Confirm & Lock Subject Marks** to generate your green lock certificate.

@@ -69,6 +69,7 @@ import { generateSchoolSubmissionPdf, printSchoolSubmissionWindow, formatDateTim
 import TeacherDashboard from './school/TeacherDashboard';
 import SubjectExpertDashboard from './repository/SubjectExpertDashboard';
 import MarkEntryStatusModal from '../components/school/MarkEntryStatusModal';
+import ExamSelect from '../components/common/ExamSelect';
 import { sortSubjects } from '../lib/subjectUtils';
 
 
@@ -141,11 +142,6 @@ const DashboardPage: React.FC = () => {
   const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
   const [langValidation, setLangValidation] = useState<any>(null);
   const [showLangModal, setShowLangModal] = useState(false);
-  const [isExamDropdownOpen, setIsExamDropdownOpen] = useState(false);
-  const [examSearchQuery, setExamSearchQuery] = useState('');
-  const [highlightedIdx, setHighlightedIdx] = useState(-1);
-  const examDropdownRef = useRef<HTMLDivElement>(null);
-  const examSearchInputRef = useRef<HTMLInputElement>(null);
 
   // Region Analytics
   const [regionAnalytics, setRegionAnalytics] = useState<any>(null);
@@ -158,15 +154,6 @@ const DashboardPage: React.FC = () => {
   const [isSchoolTypeLoading, setIsSchoolTypeLoading] = useState(false);
   const [isAllMediumsExpanded, setIsAllMediumsExpanded] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-
-  const filteredExams = useMemo(() => {
-    if (!examSearchQuery) return exams;
-    const q = examSearchQuery.toLowerCase();
-    return exams.filter((ex: any) =>
-      ex.name.toLowerCase().includes(q) ||
-      (ex.academicYear || '').toLowerCase().includes(q)
-    );
-  }, [exams, examSearchQuery]);
 
   const selectedExam = exams.find((e: any) => e.id === selectedExamId) || exams[0];
 
@@ -432,39 +419,6 @@ const DashboardPage: React.FC = () => {
   }, [langValidation]);
 
 
-
-  // Click outside to close exam dropdown
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (examDropdownRef.current && !examDropdownRef.current.contains(e.target as Node)) {
-        setIsExamDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleExamKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (!isExamDropdownOpen) return;
-    const items = filteredExams;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlightedIdx(prev => Math.min(prev + 1, items.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlightedIdx(prev => Math.max(prev - 1, 0));
-    } else if (e.key === 'Enter' && highlightedIdx >= 0 && items[highlightedIdx]) {
-      e.preventDefault();
-      setSelectedExamId(items[highlightedIdx].id);
-      setIsExamDropdownOpen(false);
-      setExamSearchQuery('');
-      setHighlightedIdx(-1);
-    } else if (e.key === 'Escape') {
-      setIsExamDropdownOpen(false);
-      setExamSearchQuery('');
-      setHighlightedIdx(-1);
-    }
-  }, [isExamDropdownOpen, filteredExams, highlightedIdx]);
 
   const handleBarClick = (item: any) => {
     if (user?.role === 'SCHOOL') return; // schools have static grade distribution charts
@@ -785,107 +739,13 @@ const DashboardPage: React.FC = () => {
 
             {/* Searchable Exam Selector */}
             {exams.length > 0 && (
-              <div ref={examDropdownRef} className="relative w-full sm:w-auto min-w-[220px] md:min-w-[280px]">
-                <button
-                  type="button"
-                  onClick={() => { setIsExamDropdownOpen(prev => !prev); setExamSearchQuery(''); setHighlightedIdx(-1); }}
-                  onKeyDown={(e) => { if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); setIsExamDropdownOpen(true); } }}
-                  className="w-full flex items-center gap-2 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] px-3.5 py-2.5 rounded-xl shadow-sm hover:shadow-md hover:border-gray-300 dark:hover:border-gray-600 transition-all cursor-pointer"
-                >
-                  <FileText size={15} className="text-indigo-500 dark:text-indigo-400 shrink-0" />
-                  <span className="flex-1 text-left text-xs font-bold uppercase text-black dark:text-white truncate">
-                    {selectedExam?.name || 'Select Exam'}
-                  </span>
-                  <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${isExamDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isExamDropdownOpen && (
-                  <div
-                    role="listbox"
-                    tabIndex={-1}
-                    onKeyDown={handleExamKeyDown}
-                    className="absolute top-full mt-1.5 left-0 right-0 z-50 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top"
-                  >
-                    {/* Search */}
-                    <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-[#30363d] bg-gray-50/50 dark:bg-gray-900/30">
-                      <Search size={14} className="text-gray-400 shrink-0" />
-                      <input
-                        ref={examSearchInputRef}
-                        type="text"
-                        placeholder="Search exams..."
-                        value={examSearchQuery}
-                        onChange={(e) => { setExamSearchQuery(e.target.value); setHighlightedIdx(0); }}
-                        className="w-full bg-transparent border-none text-xs font-bold text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none"
-                        autoFocus
-                      />
-                    </div>
-
-                    {/* List */}
-                    <div className="max-h-64 overflow-y-auto overscroll-contain divide-y divide-gray-50 dark:divide-gray-800">
-                      {filteredExams.length === 0 ? (
-                        <div className="px-4 py-6 text-center text-xs font-bold text-gray-400">No exams match your search</div>
-                      ) : (filteredExams as any[]).map((ex, idx) => {
-                        const isSelected = ex.id === selectedExamId;
-                        const schoolId = user?.schoolId || user?.id;
-                        const isConfirmedExam = ex.confirmedSchools?.includes(schoolId);
-
-                        return (
-                          <div
-                            key={ex.id}
-                            role="option"
-                            aria-selected={isSelected}
-                            onClick={() => { setSelectedExamId(ex.id); setIsExamDropdownOpen(false); setExamSearchQuery(''); setHighlightedIdx(-1); }}
-                            onMouseEnter={() => setHighlightedIdx(idx)}
-                            className={`flex items-start gap-3 px-3.5 py-3 cursor-pointer transition-all ${
-                              idx === highlightedIdx ? 'bg-indigo-50 dark:bg-indigo-950/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                            } ${isSelected ? 'bg-indigo-50/80 dark:bg-indigo-950/20 border-l-2 border-l-indigo-500' : 'border-l-2 border-l-transparent'}`}
-                          >
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isSelected ? 'bg-indigo-100 dark:bg-indigo-900/50' : 'bg-gray-100 dark:bg-gray-800'}`}>
-                              <FileText size={14} className={isSelected ? 'text-indigo-600' : 'text-gray-500'} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className={`text-sm font-black uppercase leading-tight truncate ${isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-800 dark:text-gray-200'}`}>
-                                {ex.name}
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2 mt-1">
-                                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500">
-                                  Academic Year: {ex.academicYear || 'N/A'}
-                                </span>
-                                <span className="text-[10px] font-bold text-gray-400 dark:text-gray-500 hidden sm:inline">
-                                  Class {ex.standard || '10'}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="shrink-0 mt-0.5">
-                              {(() => {
-                                let statusText = ex.status || 'ACTIVE';
-                                let statusColor = 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400';
-                                
-                                if (user?.role === 'SCHOOL' && isConfirmedExam) {
-                                  statusText = 'Confirmed';
-                                  statusColor = 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400';
-                                } else {
-                                  const s = (ex.status || '').toUpperCase();
-                                  if (s === 'PUBLISHED') statusColor = 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400';
-                                  else if (s === 'ACTIVE') statusColor = 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400';
-                                  else if (s === 'DRAFT') statusColor = 'bg-gray-100 dark:bg-gray-900/40 text-gray-700 dark:text-gray-400';
-                                  else if (s === 'COMPLETED' || s === 'ARCHIVED') statusColor = 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400';
-                                }
-
-                                return (
-                                  <span className={`inline-block text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${statusColor}`}>
-                                    {statusText}
-                                  </span>
-                                );
-                              })()}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <ExamSelect
+                exams={exams}
+                selectedExamId={selectedExamId}
+                onSelect={(id) => setSelectedExamId(id)}
+                schoolId={user?.schoolId || user?.id}
+                className="w-full sm:w-auto min-w-[280px]"
+              />
             )}
           </div>
         </div>
