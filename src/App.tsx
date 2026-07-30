@@ -85,7 +85,7 @@ export default function App() {
           <Suspense fallback={<PageLoader />}>
             <Routes>
               {/* Public Routes */}
-              <Route path="/" element={<Navigate to="/help" replace />} />
+              <Route path="/" element={<Navigate to="/login" replace />} />
               <Route path="/results" element={<StateResultsPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
