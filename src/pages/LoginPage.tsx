@@ -12,9 +12,11 @@ import {
   User,
   HelpCircle,
   Sparkles,
+  MessageCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
+import FloatingHelpButton from '../components/common/FloatingHelpButton';
 import palakkadFort from '../assets/palakkad/palakkad-fort.jpg';
 import paddyField from '../assets/palakkad/paddy-field.jpg';
 import alathurImg from '../assets/palakkad/alathur.png';
@@ -169,20 +171,7 @@ const LoginPage: React.FC = () => {
           />
 
           <div className="relative z-10 w-full max-w-[342px] sm:max-w-md page-enter">
-            <div className="mb-8 flex items-center justify-between">
-              <Link
-                to="/help"
-                className={cn(
-                  'flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-bold transition-all shadow-sm',
-                  isDark
-                    ? 'border-blue-500/40 bg-blue-950/60 text-blue-300 hover:bg-blue-900/60'
-                    : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                )}
-              >
-                <HelpCircle size={15} className="text-blue-500" />
-                <span>Public Help Center</span>
-              </Link>
-
+            <div className="mb-8 flex items-center justify-end">
               <div
                 className={cn(
                   'flex rounded-[8px] border p-1',
@@ -320,6 +309,7 @@ const LoginPage: React.FC = () => {
           </div>
         </main>
       </div>
+      <FloatingHelpButton />
     </div>
   );
 };

@@ -9,7 +9,6 @@ import {
   Bookmark, 
   HelpCircle, 
   BookOpen, 
-  CheckCircle, 
   Compass, 
   AlertTriangle, 
   MessageSquare, 
@@ -64,7 +63,6 @@ export const HelpHeader: React.FC = () => {
 
   const navLinks = [
     { label: 'Home', path: '/help', icon: Compass },
-    { label: '16-Step Guide', path: '/help/guide', icon: CheckCircle },
     { label: '100+ Error Library', path: '/help/errors', icon: AlertTriangle },
     { label: 'Knowledge Base', path: '/help/kb', icon: BookOpen },
     { label: 'FAQs', path: '/help/faq', icon: HelpCircle },

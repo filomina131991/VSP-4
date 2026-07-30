@@ -61,6 +61,12 @@ const UserSchema = new Schema({
   toObject: { virtuals: true },
 });
 
+// High-performance compound indexes for multi-tenant queries
+UserSchema.index({ schoolId: 1, role: 1, active: 1 });
+UserSchema.index({ districtId: 1, role: 1, active: 1 });
+UserSchema.index({ subDistrictId: 1, role: 1, active: 1 });
+UserSchema.index({ role: 1, active: 1 });
+
 // Virtual aliases for frontend compatibility
 UserSchema.virtual('displayName')
   .get(function(this: any) { return this.name; })
@@ -347,6 +353,7 @@ StudentSchema.index({ schoolId: 1, active: 1, className: 1 });
 StudentSchema.index({ schoolId: 1, className: 1, active: 1, gender: 1 });
 StudentSchema.index({ className: 1, active: 1, gender: 1, schoolId: 1 });
 StudentSchema.index({ schoolId: 1, mediumId: 1 });
+StudentSchema.index({ schoolId: 1, className: 1, mediumId: 1, active: 1 });
 
 
 // Virtual aliases for frontend compatibility
@@ -421,6 +428,7 @@ MarkSchema.index({ examId: 1, subjectId: 1, grade: 1 });
 MarkSchema.index({ schoolId: 1, examId: 1, subjectId: 1, grade: 1 });
 MarkSchema.index({ examId: 1, studentId: 1 });
 MarkSchema.index({ examId: 1, subjectId: 1, schoolId: 1, workflowStatus: 1 });
+MarkSchema.index({ examId: 1, schoolId: 1, className: 1 });
 
 // ─── Preferences ──────────────────────────────────────────────────────────────
 
@@ -662,6 +670,112 @@ const BlueprintTemplateSchema = new Schema({
   }]
 }, { timestamps: true });
 
+// ─── Help Center Analytics ─────────────────────────────────────────────────────
+
+const HelpViewSchema = new Schema({
+  id:        { type: String, required: true, unique: true },
+  errorId:   { type: String },
+  errorName: { type: String },
+  matchType: { type: String, enum: ['qna', 'error'], required: true },
+  query:     { type: String },
+  resolved:  { type: Boolean, default: false },
+  user:      { type: String },
+  schoolCode:{ type: String },
+  schoolName:{ type: String },
+  userRole:  { type: String },
+  timestamp: { type: Date, default: Date.now }
+}, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
+HelpViewSchema.index({ errorId: 1 });
+HelpViewSchema.index({ timestamp: -1 });
+
+const HelpFeedbackSchema = new Schema({
+  id:          { type: String, required: true, unique: true },
+  type:        { type: String, enum: ['up', 'down'], required: true },
+  query:       { type: String },
+  matchedTitle:{ type: String },
+  matchedId:   { type: String },
+  matchType:   { type: String, enum: ['qna', 'error'] },
+  user:        { type: String },
+  schoolCode:  { type: String },
+  schoolName:  { type: String },
+  userRole:    { type: String },
+}, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
+
+const ErrorViewCounterSchema = new Schema({
+  errorId:      { type: String, required: true, unique: true },
+  errorName:    { type: String, required: true },
+  category:     { type: String },
+  count:        { type: Number, default: 0 },
+  lastViewedAt: { type: Date, default: Date.now },
+}, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
+
+// ─── Help Article Schema ─────────────────────────────────────────────────────
+
+const HelpArticleSchema = new Schema({
+  title:       { type: String, required: true },
+  category:    { type: String, required: true, index: true },
+  keywords:    { type: [String], default: [] },
+  problem:     { type: String, default: '' },
+  solutionSteps: [{ type: String }],
+  relatedErrors: [{ type: String }],
+  youtubeUrl:  { type: String },
+  attachments: [{ name: String, url: String }],
+  version:     { type: Number, default: 1 },
+  isPublished: { type: Boolean, default: true, index: true },
+  createdBy:   { type: String },
+  viewCount:   { type: Number, default: 0 },
+  helpfulCount:{ type: Number, default: 0 },
+  notHelpfulCount: { type: Number, default: 0 },
+}, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
+HelpArticleSchema.index({ title: 'text', problem: 'text', keywords: 'text' });
+HelpArticleSchema.index({ createdAt: -1 });
+HelpArticleSchema.index({ updatedAt: -1 });
+
+// ─── Help Search Log Schema ───────────────────────────────────────────────────
+
+const HelpSearchLogSchema = new Schema({
+  schoolId:         { type: String, index: true },
+  schoolName:       { type: String },
+  schoolCode:       { type: String },
+  district:         { type: String },
+  educationalDistrict: { type: String },
+  subDistrict:      { type: String },
+  searchedBy:       { type: String },
+  userRole:         { type: String },
+  searchText:       { type: String, required: true },
+  matchedArticleId: { type: String },
+  matched:          { type: Boolean, default: false, index: true },
+  browser:          { type: String },
+  ip:               { type: String },
+  device:           { type: String },
+}, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
+HelpSearchLogSchema.index({ createdAt: -1 });
+HelpSearchLogSchema.index({ searchText: 1, matched: 1 });
+
+// ─── Missing Help Request Schema ──────────────────────────────────────────────
+
+const MissingHelpRequestSchema = new Schema({
+  searchText:        { type: String, required: true },
+  searchCount:       { type: Number, default: 1 },
+  firstRequested:    { type: Date, default: Date.now },
+  lastRequested:     { type: Date, default: Date.now },
+  status:            { type: String, enum: ['Pending', 'Created', 'Ignored'], default: 'Pending', index: true },
+  createdHelpArticleId: { type: String },
+  schools:           [{ schoolId: String, schoolName: String }],
+}, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
+MissingHelpRequestSchema.index({ searchText: 1 }, { unique: true });
+MissingHelpRequestSchema.index({ status: 1, lastRequested: -1 });
+
+// ─── Help Category Schema ─────────────────────────────────────────────────────
+
+const HelpCategorySchema = new Schema({
+  name:        { type: String, required: true, unique: true },
+  description: { type: String },
+  icon:        { type: String },
+  order:       { type: Number, default: 0 },
+  isActive:    { type: Boolean, default: true },
+}, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
+
 // ─── Model Exports ────────────────────────────────────────────────────────────
 // School and User both map to the 'users' collection — School is a filtered view.
 
@@ -697,6 +811,14 @@ export const QuestionTask: mongoose.Model<any> = (mongoose.models['QuestionTask'
 
 export const DashboardSummary: mongoose.Model<any> = (mongoose.models['DashboardSummary'] || mongoose.model('DashboardSummary', DashboardSummarySchema, 'dashboardsummaries'));
 export const SchoolSummary: mongoose.Model<any> = (mongoose.models['SchoolSummary'] || mongoose.model('SchoolSummary', SchoolSummarySchema, 'schoolsummaries'));
+export const HelpView: mongoose.Model<any> = (mongoose.models['HelpView'] || mongoose.model('HelpView', HelpViewSchema, 'helpviews'));
+export const HelpFeedback: mongoose.Model<any> = (mongoose.models['HelpFeedback'] || mongoose.model('HelpFeedback', HelpFeedbackSchema, 'helpfeedback'));
+export const ErrorViewCounter: mongoose.Model<any> = (mongoose.models['ErrorViewCounter'] || mongoose.model('ErrorViewCounter', ErrorViewCounterSchema, 'errorviewcounters'));
+
+export const HelpArticle: mongoose.Model<any> = (mongoose.models['HelpArticle'] || mongoose.model('HelpArticle', HelpArticleSchema, 'help_articles'));
+export const HelpSearchLog: mongoose.Model<any> = (mongoose.models['HelpSearchLog'] || mongoose.model('HelpSearchLog', HelpSearchLogSchema, 'help_search_logs'));
+export const MissingHelpRequest: mongoose.Model<any> = (mongoose.models['MissingHelpRequest'] || mongoose.model('MissingHelpRequest', MissingHelpRequestSchema, 'missing_help_requests'));
+export const HelpCategory: mongoose.Model<any> = (mongoose.models['HelpCategory'] || mongoose.model('HelpCategory', HelpCategorySchema, 'help_categories'));
 
 // School is just a User with role === 'SCHOOL'
 // We keep a School model to simplify queries in server.ts.

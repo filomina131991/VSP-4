@@ -77,7 +77,7 @@ export const FAQS_DATA: FaqItem[] = [
     malayalamQuestion: "Marks Entry 2.0-ൽ പരീക്ഷ വിഷയങ്ങൾ എങ്ങനെ കോൺഫിഗർ ചെയ്യാം?",
     answer: "Login as School HM, go to Marks Entry 2.0, and select the exam. Click 'Exam Config' to open the configuration modal. Subjects with enrolled students are auto-selected per medium. Core subjects (P05–P10) are always included. Verify subject selection per medium tab, then click 'Save Configuration'. After successful save, the exam is ready for marks entry.",
     malayalamAnswer: "സ്കൂൾ എച്ച്.എം ആയി ലോഗിൻ ചെയ്ത് Marks Entry 2.0-ൽ പോയി പരീക്ഷ സെലക്ട് ചെയ്യുക. 'Exam Config' ബട്ടൺ ക്ലിക്ക് ചെയ്ത് കോൺഫിഗറേഷൻ മോഡൽ തുറക്കുക. വിദ്യാർത്ഥികളുള്ള വിഷയങ്ങൾ ഓരോ മീഡിയത്തിനും ഓട്ടോമാറ്റിക്കായി സെലക്ട് ചെയ്യപ്പെടും. കോർ വിഷയങ്ങൾ (P05–P10) എപ്പോഴും ഉൾപ്പെടുത്തും. ഓരോ മീഡിയം ടാബിലും വിഷയങ്ങൾ പരിശോധിച്ച് 'Save Configuration' ക്ലിക്ക് ചെയ്യുക.",
-    category: "EXAM_CONFIGURATION",
+    category: "EXAM_CONFIG",
     keywords: ["exam config", "configure", "subjects", "marks entry", "medium"],
     relatedErrorId: "exam-config-missing"
   }

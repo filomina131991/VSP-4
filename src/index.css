@@ -514,14 +514,11 @@ input[type=number] {
 }
 
 /* ============================================================
-   UNIFIED DROPDOWN SYSTEM (non-exam selectors)
+   UNIFIED DROPDOWN SYSTEM
    
-   Goal: every <select> / SearchableSelect across all pages uses the
-   SAME look — a left indigo accent border, rounded-2xl, consistent
-   padding, and a properly padded option list.
-
-   The exam selector on the Dashboard is intentionally left as-is and
-   does NOT use these classes.
+   Goal: every <select> / SearchableSelect / ExamSelect across all pages
+   uses the SAME standard height and font sizing — rounded-xl/2xl,
+   consistent normal padding, and standard option list styling.
    ============================================================ */
 
 /* Wrapper that frames the dropdown (border + left accent + padding) */

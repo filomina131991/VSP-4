@@ -99,10 +99,7 @@ export function processQuery(
       steps: selectedQnA.steps,
       matchedQnA: selectedQnA,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      suggestions: [
-        { label: 'View Full Details', link: `/help/errors/${selectedQnA.id}` },
-        { label: 'Was this helpful?', action: 'feedback_yes' }
-      ]
+      suggestions: []
     };
   }
 
@@ -114,10 +111,7 @@ export function processQuery(
       steps: selectedError.solution,
       matchedError: selectedError,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      suggestions: [
-        { label: 'View Full Error Page', link: `/help/errors/${selectedError.id}` },
-        { label: 'Create Ticket', link: '/help/tickets' }
-      ]
+      suggestions: []
     };
   }
 

@@ -44,10 +44,6 @@ export const AboutPage: React.FC = () => {
             </li>
             <li className="flex items-start gap-2 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl">
               <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-              <span><strong>Bilingual 16-Step Guide:</strong> Interactive step-by-step walkthrough with English titles, Malayalam descriptions, zoom screenshots, warning flags, and progress bar.</span>
-            </li>
-            <li className="flex items-start gap-2 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
               <span><strong>Offline AI Assistant:</strong> Floating chat assistant searching local IndexedDB data first, generating bilingual resolution steps.</span>
             </li>
           </ul>

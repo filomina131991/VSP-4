@@ -44,7 +44,6 @@ const BackupDataPage = React.lazy(() => import('./pages/management/BackupDataPag
 // Help Center PWA Module
 const HelpCenterLayout = React.lazy(() => import('./help-center/layout/HelpCenterLayout'));
 const HelpHomePage = React.lazy(() => import('./help-center/pages/HelpHomePage').then(m => ({ default: m.HelpHomePage })));
-const InteractiveGuidePage = React.lazy(() => import('./help-center/pages/InteractiveGuidePage').then(m => ({ default: m.InteractiveGuidePage })));
 const SearchPage = React.lazy(() => import('./help-center/pages/SearchPage').then(m => ({ default: m.SearchPage })));
 const FaqPage = React.lazy(() => import('./help-center/pages/FaqPage').then(m => ({ default: m.FaqPage })));
 const KnowledgeBasePage = React.lazy(() => import('./help-center/pages/KnowledgeBasePage').then(m => ({ default: m.KnowledgeBasePage })));
@@ -92,10 +91,13 @@ export default function App() {
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
 
-              {/* Vijayasree Palakkad Help Center (PWA) Offline Routes */}
-              <Route path="/help" element={<HelpCenterLayout />}>
+              {/* Vijayasree Palakkad Help Center (PWA) */}
+              <Route path="/help" element={
+                <ProtectedRoute allowedRoles={['WEBMASTER', 'DEO', 'DIET', 'SCHOOL']}>
+                  <HelpCenterLayout />
+                </ProtectedRoute>
+              }>
                 <Route index element={<HelpHomePage />} />
-                <Route path="guide" element={<InteractiveGuidePage />} />
                 <Route path="search" element={<SearchPage />} />
                 <Route path="faq" element={<FaqPage />} />
                 <Route path="kb" element={<KnowledgeBasePage />} />

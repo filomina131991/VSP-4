@@ -4,7 +4,6 @@ import {
   AlertTriangle, 
   CheckCircle, 
   HelpCircle, 
-  Compass, 
   Layers, 
   BookOpen, 
   MessageSquare,
@@ -26,13 +25,6 @@ export const QuickActionsGrid: React.FC = () => {
       link: "/help/errors/medium-missing",
       icon: CheckCircle,
       color: "from-blue-600 to-indigo-600"
-    },
-    {
-      title: "16-Step User Guide",
-      description: "Step-by-step bilingual walkthrough from login to final submit.",
-      link: "/help/guide",
-      icon: Compass,
-      color: "from-emerald-500 to-teal-600"
     },
     {
       title: "Troubleshooting Wizard",

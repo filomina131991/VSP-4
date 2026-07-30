@@ -15,6 +15,7 @@ interface ExamSelectProps {
   placeholder?: string;
   className?: string;
   configuredIds?: string[];
+  schoolId?: string;
 }
 
 const ExamSelect: React.FC<ExamSelectProps> = ({
@@ -84,28 +85,31 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
     <div ref={dropdownRef} className={`relative ${className}`}>
       <button
         type="button"
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+        aria-label="Select Exam"
         onClick={() => { setIsOpen(prev => !prev); setSearchQuery(''); setHighlightedIdx(-1); }}
         onKeyDown={(e) => { if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); setIsOpen(true); } }}
-        className={`w-full text-left px-4 py-3 rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer border-2 ${
+        className={`w-full text-left px-3.5 py-2 rounded-xl shadow-sm hover:shadow transition-all cursor-pointer border ${
           selectedExam
             ? 'bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-400 dark:border-emerald-600/80 hover:border-emerald-500'
             : 'bg-white dark:bg-[#161b22] border-gray-200 dark:border-[#30363d] hover:border-gray-300 dark:hover:border-gray-500'
         }`}
       >
-        <div className="flex items-start gap-3">
+        <div className="flex items-center gap-2.5">
           <div className="flex-1 min-w-0">
-            <div className="text-sm sm:text-base font-black text-gray-900 dark:text-white leading-tight whitespace-nowrap">
+            <div className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white leading-tight truncate">
               {selectedExam?.name || placeholder}
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0 mt-1">
+          <div className="flex items-center gap-1.5 shrink-0">
             {selectedExam && (
-              <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center">
-                <Check size={12} className="text-white" strokeWidth={3} />
+              <div className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center">
+                <Check size={10} className="text-white" strokeWidth={3} />
               </div>
             )}
-            <ChevronDown size={16} className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
           </div>
         </div>
       </button>
@@ -115,25 +119,25 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
           role="listbox"
           tabIndex={-1}
           onKeyDown={handleKeyDown}
-          className="absolute top-full mt-1.5 left-0 right-0 z-50 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top"
-          style={{ minWidth: '320px' }}
+          className="absolute top-full mt-1 left-0 right-0 z-50 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 origin-top"
+          style={{ minWidth: '260px' }}
         >
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-[#30363d] bg-gray-50/50 dark:bg-gray-900/30">
-            <Search size={14} className="text-gray-400 shrink-0" />
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-[#30363d] bg-gray-50/50 dark:bg-gray-900/30">
+            <Search size={13} className="text-gray-400 shrink-0" />
             <input
               ref={searchInputRef}
               type="text"
               placeholder="Search exams..."
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setHighlightedIdx(0); }}
-              className="w-full bg-transparent border-none text-xs font-bold text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none"
+              className="w-full bg-transparent border-none text-xs font-semibold text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none"
               autoFocus
             />
           </div>
 
-          <div className="max-h-80 overflow-y-auto overscroll-contain divide-y divide-gray-50 dark:divide-gray-800">
+          <div className="max-h-72 overflow-y-auto overscroll-contain divide-y divide-gray-50 dark:divide-gray-800">
             {filteredExams.length === 0 ? (
-              <div className="px-4 py-8 text-center text-xs font-bold text-gray-400">No exams match your search</div>
+              <div className="px-3 py-6 text-center text-xs font-semibold text-gray-400">No exams match your search</div>
             ) : filteredExams.map((ex, idx) => {
               const isSelected = ex.id === selectedExamId;
               const isConfigured = configuredIds.includes(ex.id);
@@ -145,7 +149,7 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
                   aria-selected={isSelected}
                   onClick={() => { onSelect(ex.id); setIsOpen(false); setSearchQuery(''); setHighlightedIdx(-1); }}
                   onMouseEnter={() => setHighlightedIdx(idx)}
-                  className={`px-4 py-3.5 cursor-pointer transition-all ${
+                  className={`px-3 py-2.5 cursor-pointer transition-all ${
                     idx === highlightedIdx
                       ? 'bg-gray-50 dark:bg-gray-800/60'
                       : isSelected
@@ -153,28 +157,28 @@ const ExamSelect: React.FC<ExamSelectProps> = ({
                       : 'hover:bg-gray-50 dark:hover:bg-gray-800/40'
                   } ${isConfigured ? 'border-l-4 border-l-emerald-500' : 'border-l-4 border-l-transparent'}`}
                 >
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-center gap-2.5">
                     <div className="flex-1 min-w-0">
-                      <div className={`text-sm font-black leading-tight whitespace-nowrap ${isSelected ? 'text-emerald-900 dark:text-emerald-200' : 'text-gray-900 dark:text-white'}`}>
+                      <div className={`text-xs sm:text-sm font-bold leading-tight truncate ${isSelected ? 'text-emerald-900 dark:text-emerald-200' : 'text-gray-900 dark:text-white'}`}>
                         {ex.name}
                       </div>
 
-                      <div className="flex items-center gap-3 mt-1.5">
-                        <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                          Academic Year : {ex.academicYear || 'N/A'}
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 truncate">
+                          Academic Year: {ex.academicYear || 'N/A'}
                         </span>
-                        <span className="text-[11px] font-bold text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                          Class : {ex.standard || '10'}
+                        <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 truncate">
+                          Class: {ex.standard || '10'}
                         </span>
                       </div>
                     </div>
 
                     {isConfigured ? (
-                      <div className="w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center shrink-0 mt-1">
-                        <Check size={11} className="text-white" strokeWidth={3} />
+                      <div className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
+                        <Check size={10} className="text-white" strokeWidth={3} />
                       </div>
                     ) : (
-                      <AlertCircle size={16} className="text-amber-500 shrink-0 mt-1" />
+                      <AlertCircle size={14} className="text-amber-500 shrink-0" />
                     )}
                   </div>
                 </div>

@@ -13,7 +13,6 @@ import {
   FileText,
   ArrowRight,
   AlertTriangle,
-  ChevronRight
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -110,13 +109,7 @@ export const WorkflowDiagram: React.FC = () => {
               </h3>
             </div>
 
-            <Link
-              to="/help/guide"
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors w-fit"
-            >
-              <span>View Interactive Guide</span>
-              <ChevronRight className="w-4 h-4" />
-            </Link>
+
           </div>
 
           <p className="text-sm text-gray-700 dark:text-gray-300 mt-4 leading-relaxed">

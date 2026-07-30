@@ -211,7 +211,14 @@ import {
   SchoolTarget,
   QuestionTask,
   QuestionPaperBlueprint,
-  AuditLog
+  AuditLog,
+  HelpView,
+  HelpFeedback,
+  ErrorViewCounter,
+  HelpArticle,
+  HelpSearchLog,
+  MissingHelpRequest,
+  HelpCategory
 } from "./db.js";
 
 // ─── Dynamic Medium Resolution Helpers ─────────────────────────────────────
@@ -1287,6 +1294,437 @@ app.get("/api/alerts/active", authenticateToken, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+// ─── Help Center Analytics ──────────────────────────────────────────────────────
+
+app.post("/api/help/view", authenticateToken, async (req: any, res: any) => {
+  try {
+    const { errorId, errorName, matchType, query, resolved, schoolCode, schoolName, category } = req.body;
+    const id = `help-view-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+    await HelpView.create({
+      id,
+      errorId, errorName,
+      matchType: matchType || (errorId ? 'error' : 'qna'),
+      query, resolved: resolved || false,
+      user: req.user?.username || 'anonymous',
+      schoolCode: schoolCode || req.user?.schoolCode || '',
+      schoolName: schoolName || '',
+      userRole: req.user?.role || '',
+      timestamp: new Date()
+    });
+
+    if (errorId) {
+      await ErrorViewCounter.findOneAndUpdate(
+        { errorId },
+        {
+          $inc: { count: 1 },
+          $set: { errorName, category: category || '', lastViewedAt: new Date() }
+        },
+        { upsert: true }
+      );
+    }
+
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post("/api/help/feedback", authenticateToken, async (req: any, res: any) => {
+  try {
+    const { type, query, matchedTitle, matchedId, matchType, schoolCode, schoolName } = req.body;
+    if (!type || !['up', 'down'].includes(type)) {
+      return res.status(400).json({ message: "Valid type (up/down) is required" });
+    }
+
+    await HelpFeedback.create({
+      id: `help-feedback-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type, query, matchedTitle, matchedId, matchType,
+      user: req.user?.username || 'anonymous',
+      schoolCode: schoolCode || req.user?.schoolCode || '',
+      schoolName: schoolName || '',
+      userRole: req.user?.role || ''
+    });
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get("/api/help/most-viewed", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+    const mostViewed = await ErrorViewCounter.find()
+      .sort({ count: -1 })
+      .limit(limit)
+      .lean();
+    res.json(mostViewed);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ─── Help Center API ─────────────────────────────────────────────────────────────
+
+// Search articles by keyword/title/problem
+app.post("/api/help/articles/search", async (req, res) => {
+  try {
+    const { q } = req.body;
+    if (!q || q.trim().length < 1) return res.json([]);
+    const regex = new RegExp(q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const articles = await HelpArticle.find({
+      isPublished: true,
+      $or: [
+        { title: regex },
+        { keywords: { $elemMatch: { $regex: regex } } },
+        { problem: regex },
+      ]
+    }).sort({ viewCount: -1 }).limit(20).lean();
+    res.json(articles);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Auto-suggest for search box
+app.get("/api/help/suggestions", async (req, res) => {
+  try {
+    const q = (req.query.q as string || '').trim();
+    if (q.length < 1) return res.json([]);
+    const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const articles = await HelpArticle.find({
+      isPublished: true,
+      $or: [
+        { title: regex },
+        { keywords: { $elemMatch: { $regex: regex } } },
+      ]
+    }).select('title keywords').limit(8).lean();
+    const suggestions = articles.flatMap((a: any) => {
+      const matches: string[] = [];
+      if (regex.test(a.title)) matches.push(a.title);
+      a.keywords?.forEach((k: string) => { if (regex.test(k) && !matches.includes(k)) matches.push(k); });
+      return matches;
+    }).slice(0, 8);
+    res.json(suggestions);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Log a search and attempt match, track missing requests
+app.post("/api/help/search-log", authenticateToken, async (req: any, res: any) => {
+  try {
+    const { searchText, matchedArticleId, matched } = req.body;
+    if (!searchText) return res.status(400).json({ message: "searchText required" });
+
+    const log = await HelpSearchLog.create({
+      schoolId: req.user?.id || '',
+      schoolName: req.user?.displayName || '',
+      schoolCode: req.user?.schoolCode || '',
+      district: req.user?.district || '',
+      educationalDistrict: req.user?.educationalDistrict || '',
+      subDistrict: req.user?.subDistrict || '',
+      searchedBy: req.user?.username || 'anonymous',
+      userRole: req.user?.role || '',
+      searchText: searchText.trim(),
+      matchedArticleId: matchedArticleId || null,
+      matched: matched || false,
+      browser: req.headers['user-agent'] || '',
+      ip: req.ip || req.connection?.remoteAddress || '',
+      device: req.headers['sec-ch-ua-platform'] || '',
+    });
+
+    if (!matched) {
+      await MissingHelpRequest.findOneAndUpdate(
+        { searchText: searchText.trim() },
+        {
+          $inc: { searchCount: 1 },
+          $set: { lastRequested: new Date() },
+          $addToSet: { schools: { schoolId: req.user?.id || '', schoolName: req.user?.displayName || '' } },
+          $setOnInsert: { firstRequested: new Date(), status: 'Pending' }
+        },
+        { upsert: true }
+      );
+    }
+
+    res.json({ success: true, id: log._id });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// CRUD: Help Articles (admin)
+app.get("/api/help/articles", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req, res) => {
+  try {
+    const { page = '1', limit = '20', search, category, status } = req.query;
+    const query: any = {};
+    if (search) {
+      const regex = new RegExp(String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      query.$or = [{ title: regex }, { keywords: { $elemMatch: { $regex: regex } } }, { problem: regex }];
+    }
+    if (category) query.category = category;
+    if (status === 'published') query.isPublished = true;
+    else if (status === 'draft') query.isPublished = false;
+
+    const total = await HelpArticle.countDocuments(query);
+    const articles = await HelpArticle.find(query)
+      .sort({ updatedAt: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean();
+
+    res.json({ articles, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get("/api/help/articles/:id", authenticateToken, async (req, res) => {
+  try {
+    const article = await HelpArticle.findById(req.params.id).lean();
+    if (!article) return res.status(404).json({ message: "Article not found" });
+    await HelpArticle.findByIdAndUpdate(req.params.id, { $inc: { viewCount: 1 } });
+    if (article.relatedErrors?.length) {
+      article.relatedArticles = await HelpArticle.find({ _id: { $in: article.relatedErrors }, isPublished: true })
+        .select('title viewCount').limit(5).lean();
+    }
+    res.json(article);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post("/api/help/articles", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
+  try {
+    const { title, category, keywords, problem, solutionSteps, relatedErrors, youtubeUrl, attachments, isPublished } = req.body;
+    if (!title || !category) return res.status(400).json({ message: "Title and category required" });
+    const article = await HelpArticle.create({
+      title, category, keywords: keywords || [], problem: problem || '',
+      solutionSteps: solutionSteps || [], relatedErrors: relatedErrors || [],
+      youtubeUrl, attachments: attachments || [], isPublished: isPublished !== false,
+      createdBy: req.user?.username || 'admin',
+    });
+    res.status(201).json(article);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.put("/api/help/articles/:id", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
+  try {
+    const article = await HelpArticle.findByIdAndUpdate(
+      req.params.id,
+      { $set: req.body, $inc: { version: 1 } },
+      { new: true }
+    );
+    if (!article) return res.status(404).json({ message: "Article not found" });
+    res.json(article);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete("/api/help/articles/:id", authenticateToken, requireRole('WEBMASTER'), async (req, res) => {
+  try {
+    const article = await HelpArticle.findByIdAndDelete(req.params.id);
+    if (!article) return res.status(404).json({ message: "Article not found" });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Article feedback (helpful / not helpful)
+app.post("/api/help/articles/:id/feedback", authenticateToken, async (req: any, res: any) => {
+  try {
+    const { helpful } = req.body;
+    if (helpful === true) await HelpArticle.findByIdAndUpdate(req.params.id, { $inc: { helpfulCount: 1 } });
+    else if (helpful === false) await HelpArticle.findByIdAndUpdate(req.params.id, { $inc: { notHelpfulCount: 1 } });
+    else return res.status(400).json({ message: "helpful (boolean) required" });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Search Logs (admin)
+app.get("/api/help/search-logs", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req, res) => {
+  try {
+    const { page = '1', limit = '20', search, matched, schoolId, startDate, endDate } = req.query;
+    const query: any = {};
+    if (search) query.searchText = { $regex: String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+    if (matched === 'true') query.matched = true;
+    else if (matched === 'false') query.matched = false;
+    if (schoolId) query.schoolId = schoolId;
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(String(startDate));
+      if (endDate) query.createdAt.$lte = new Date(String(endDate));
+    }
+    const total = await HelpSearchLog.countDocuments(query);
+    const logs = await HelpSearchLog.find(query).sort({ createdAt: -1 })
+      .skip((Number(page) - 1) * Number(limit)).limit(Number(limit)).lean();
+    res.json({ logs, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Missing Requests (admin)
+app.get("/api/help/missing-requests", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req, res) => {
+  try {
+    const { page = '1', limit = '20', search, status } = req.query;
+    const query: any = {};
+    if (search) query.searchText = { $regex: String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+    if (status) query.status = status;
+    const total = await MissingHelpRequest.countDocuments(query);
+    const requests = await MissingHelpRequest.find(query).sort({ lastRequested: -1 })
+      .skip((Number(page) - 1) * Number(limit)).limit(Number(limit)).lean();
+    res.json({ requests, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Create article from missing request
+app.post("/api/help/missing-requests/:id/create-article", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
+  try {
+    const missing = await MissingHelpRequest.findById(req.params.id);
+    if (!missing) return res.status(404).json({ message: "Missing request not found" });
+    const article = await HelpArticle.create({
+      title: req.body.title || missing.searchText,
+      category: req.body.category || 'SYSTEM_NETWORK',
+      keywords: req.body.keywords || [missing.searchText],
+      problem: req.body.problem || '',
+      solutionSteps: req.body.solutionSteps || [],
+      isPublished: false,
+      createdBy: req.user?.username || 'admin',
+    });
+    missing.status = 'Created';
+    missing.createdHelpArticleId = article._id.toString();
+    await missing.save();
+    res.status(201).json({ article, missing });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Bulk update missing request status
+app.patch("/api/help/missing-requests/:id/status", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['Pending', 'Created', 'Ignored'].includes(status)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+    const request = await MissingHelpRequest.findByIdAndUpdate(req.params.id, { $set: { status } }, { new: true });
+    if (!request) return res.status(404).json({ message: "Not found" });
+    res.json(request);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Categories CRUD
+app.get("/api/help/categories", authenticateToken, async (req, res) => {
+  try {
+    const categories = await HelpCategory.find({ isActive: true }).sort({ order: 1 }).lean();
+    res.json(categories);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.post("/api/help/categories", authenticateToken, requireRole('WEBMASTER'), async (req, res) => {
+  try {
+    const { name, description, icon, order } = req.body;
+    if (!name) return res.status(400).json({ message: "Name required" });
+    const category = await HelpCategory.create({ name, description, icon, order: order || 0 });
+    res.status(201).json(category);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.put("/api/help/categories/:id", authenticateToken, requireRole('WEBMASTER'), async (req, res) => {
+  try {
+    const category = await HelpCategory.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
+    if (!category) return res.status(404).json({ message: "Not found" });
+    res.json(category);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete("/api/help/categories/:id", authenticateToken, requireRole('WEBMASTER'), async (req, res) => {
+  try {
+    await HelpCategory.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Analytics dashboard
+app.get("/api/help/analytics", authenticateToken, requireRole('WEBMASTER', 'DEO', 'DIET'), async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const totalSearches = await HelpSearchLog.countDocuments();
+    const todaySearches = await HelpSearchLog.countDocuments({ createdAt: { $gte: today } });
+    const matched = await HelpSearchLog.countDocuments({ matched: true });
+    const notFound = await HelpSearchLog.countDocuments({ matched: false });
+    const totalArticles = await HelpArticle.countDocuments();
+    const publishedArticles = await HelpArticle.countDocuments({ isPublished: true });
+
+    const topSearched = await HelpSearchLog.aggregate([
+      { $group: { _id: '$searchText', count: { $sum: 1 }, matched: { $sum: { $cond: ['$matched', 1, 0] } }, notMatched: { $sum: { $cond: [{ $not: '$matched' }, 1, 0] } } } },
+      { $sort: { count: -1 } },
+      { $limit: 20 }
+    ]);
+
+    const schoolWise = await HelpSearchLog.aggregate([
+      { $group: { _id: { schoolId: '$schoolId', schoolName: '$schoolName' }, total: { $sum: 1 }, matched: { $sum: { $cond: ['$matched', 1, 0] } }, notMatched: { $sum: { $cond: [{ $not: '$matched' }, 1, 0] } } } },
+      { $sort: { total: -1 } },
+      { $limit: 50 }
+    ]);
+
+    const dailyTrend = await HelpSearchLog.aggregate([
+      { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+      { $sort: { _id: -1 } },
+      { $limit: 30 }
+    ]);
+
+    const categoryWise = await HelpArticle.aggregate([
+      { $group: { _id: '$category', count: { $sum: 1 }, published: { $sum: { $cond: ['$isPublished', 1, 0] } } } },
+      { $sort: { count: -1 } }
+    ]);
+
+    const districtWise = await HelpSearchLog.aggregate([
+      { $group: { _id: { district: '$district', educationalDistrict: '$educationalDistrict' }, count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 20 }
+    ]);
+
+    const topFailed = await HelpSearchLog.aggregate([
+      { $match: { matched: false } },
+      { $group: { _id: '$searchText', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 20 }
+    ]);
+
+    res.json({
+      totalSearches, todaySearches, matched, notFound, totalArticles, publishedArticles,
+      successRate: totalSearches > 0 ? Math.round((matched / totalSearches) * 100) : 0,
+      topSearched, schoolWise, dailyTrend, categoryWise, districtWise, topFailed
+    });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ─── Auth ────────────────────────────────────────────────────────────────────────
 
 app.post("/api/auth/logout", async (req, res) => {
   try {
@@ -3535,10 +3973,16 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
     }
 
     // Check LRU Cache
+    const isForceRefresh = req.query.force === 'true' || req.query.refresh === 'true';
     const cacheKey = `dashboard_${effectiveSchoolId || 'none'}_${effectiveEduId || 'none'}_${effectiveDistrictId || 'none'}_${activeExamId}_${examClass}`;
-    const cached = analyticsCache.get(cacheKey);
-    if (cached) {
-      return res.json(cached);
+    if (!isForceRefresh) {
+      const cached = analyticsCache.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+    } else {
+      analyticsCache.delete(cacheKey);
+      analyticsCache.clearPattern(/dashboard_/);
     }
 
     // Determine the summary to fetch
@@ -11496,7 +11940,6 @@ async function autoNormalizeStudentLanguages() {
 // Server Initialization
 async function startServer() {
   await connectDB();
-  await autoNormalizeStudentLanguages();
 
   // If in dev mode, we do NOT load the Vite middleware inside server.ts because Vite dev server runs separately!
   if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {

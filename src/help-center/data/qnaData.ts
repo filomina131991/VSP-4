@@ -268,9 +268,9 @@ export const QNA_DATABASE: QnAItem[] = [
       'Check your internet connection',
       'Clear browser cache and cookies',
       'Try using Chrome or Firefox browser',
-      'Click "Forgot Password" link on login page',
-      'Enter your registered email or username',
-      'Check email for password reset link',
+      'For School HM / Admin: Click "Forgot Password" link on login page, enter your email, and reset via email link',
+      'For Teachers: Ask your School HM to reset your password from "Teacher Management" page',
+      'Check email for password reset link (if you are a School user)',
       'Click the reset link and create a new password',
       'Try logging in with the new password'
     ],
@@ -405,6 +405,27 @@ export const QNA_DATABASE: QnAItem[] = [
       'Confirm the new password',
       'Click "Reset Password" button',
       'Go back to Login page and sign in with new password'
+    ],
+    screenshots: [],
+    lastUpdated: '2026-07-30'
+  },
+  {
+    id: 'qna-teacher-password-reset',
+    question: 'Teacher Password Reset by School Admin',
+    answer: 'When a teacher forgets their password, the School HM / Admin can reset it from Teacher Management. The password is reset to the teacher\'s PEN number.',
+    keywords: ['teacher password reset', 'teacher forgot password', 'reset teacher password', 'teacher pen password', 'teacher login', 'teacher cannot login', 'teacher account reset'],
+    intent: 'teacher_password_reset',
+    category: 'TEACHER_PROFILE',
+    steps: [
+      'Log in with your School (HM) account credentials',
+      'Go to "Teacher Management" page from the Dashboard menu',
+      'Find the teacher using the search bar (search by Name or PEN Number)',
+      'Click the "Reset" button in the Password column for that teacher',
+      'A confirmation popup will appear: "Are you sure you want to reset the password to the PEN number?"',
+      'Click "Yes, reset it!" to confirm',
+      'The teacher\'s password is now reset to their PEN number (default)',
+      'Inform the teacher that their username and password are their PEN number',
+      'On next login, the teacher will be prompted to create a new password'
     ],
     screenshots: [],
     lastUpdated: '2026-07-30'

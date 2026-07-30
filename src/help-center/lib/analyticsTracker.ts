@@ -1,5 +1,6 @@
 import { helpDb } from '../db/indexedDb';
 import { ErrorAnalyticsEntry, SearchAnalyticsEntry } from '../types';
+import { apiClient } from '../../lib/apiClient';
 
 async function ensureDb(): Promise<void> {
   try {
@@ -15,6 +16,7 @@ export async function trackErrorView(params: {
   userQuery: string;
   user?: string;
   category: string;
+  matchType?: 'qna' | 'error';
 }): Promise<void> {
   try {
     await ensureDb();
@@ -31,6 +33,16 @@ export async function trackErrorView(params: {
       category: params.category
     };
     await helpDb.put('analytics', entry);
+
+    apiClient.post('/help/view', {
+      errorId: params.errorId,
+      errorName: params.errorName,
+      matchType: params.matchType || (params.errorId ? 'error' : 'qna'),
+      query: params.userQuery,
+      category: params.category,
+      schoolCode: params.schoolCode,
+      schoolName: params.schoolName,
+    }).catch(() => {});
   } catch (err) {
     console.error('Failed to track error view:', err);
   }

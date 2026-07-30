@@ -266,6 +266,32 @@ const DashboardPage: React.FC = () => {
     }
   };
 
+  const [isRefreshingExamStats, setIsRefreshingExamStats] = useState(false);
+
+  const handleRefreshExamStats = async () => {
+    setIsRefreshingExamStats(true);
+    const toastId = toast.loading('Recalculating Exam Statistics live...');
+    try {
+      const params = new URLSearchParams();
+      const effectiveSchoolId = user?.role === 'SCHOOL' ? (user.schoolId || user.id) : selectedSchoolId;
+      if (effectiveSchoolId) params.append('schoolId', effectiveSchoolId);
+      if (selectedEduId) params.append('eduId', selectedEduId);
+      if (selectedDistrict) params.append('districtId', selectedDistrict);
+      if (selectedExamId) params.append('examId', selectedExamId);
+      params.append('force', 'true');
+
+      const res = await apiClient.get(`/dashboard/stats?${params.toString()}`);
+      setData(res.data);
+      setRefreshKey(prev => prev + 1);
+      toast.success('Exam Statistics updated live from database!', { id: toastId });
+    } catch (err) {
+      console.error("Error refreshing exam stats:", err);
+      toast.error('Failed to refresh stats', { id: toastId });
+    } finally {
+      setIsRefreshingExamStats(false);
+    }
+  };
+
   // Language Distribution Validation
   useEffect(() => {
     const fetchLangValidation = async () => {
@@ -1671,33 +1697,192 @@ const DashboardPage: React.FC = () => {
             </div>
           </div>
 
-          {/* ======== ROW 2: 10 KPI CARDS ======== */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-2">
-            {[
-              { label: 'Total Schools', value: totalSchools.toLocaleString(), color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-950/20', border: 'border-purple-100 dark:border-purple-800', icon: <SchoolIcon size={14} className="text-purple-500" />, clickable: true, onClick: () => setIsSchoolListModalOpen(true) },
-              { label: 'Total Students', value: (data?.totalStudents || 0).toLocaleString(), color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-950/20', border: 'border-indigo-100 dark:border-indigo-800', icon: <Users size={14} className="text-indigo-500" />, sub: `M: ${(data?.maleCount || 0).toLocaleString()} | F: ${(data?.femaleCount || 0).toLocaleString()}`, clickable: true, onClick: () => setIsDistrictStudentsModalOpen(true) },
-              { label: 'Male', value: (data?.maleCount || 0).toLocaleString(), color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-100 dark:border-blue-800', icon: <Users size={14} className="text-blue-500" /> },
-              { label: 'Female', value: (data?.femaleCount || 0).toLocaleString(), color: 'text-pink-600', bg: 'bg-pink-50 dark:bg-pink-950/20', border: 'border-pink-100 dark:border-pink-800', icon: <Users size={14} className="text-pink-500" /> },
-              { label: 'Appeared', value: (data?.appeared || 0).toLocaleString(), color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-100 dark:border-blue-800', icon: <Eye size={14} className="text-blue-500" /> },
-              { label: 'Passed', value: (data?.pass || 0).toLocaleString(), color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/20', border: 'border-emerald-100 dark:border-emerald-800', icon: <CheckCircle2 size={14} className="text-emerald-500" /> },
-              { label: 'Failed', value: (data?.fail || 0).toLocaleString(), color: 'text-red-600', bg: 'bg-red-50 dark:bg-red-950/20', border: 'border-red-100 dark:border-red-800', icon: <XCircle size={14} className="text-red-500" /> },
-              { label: 'Absent', value: (data?.absent || 0).toLocaleString(), color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-950/20', border: 'border-orange-100 dark:border-orange-800', icon: <AlertTriangle size={14} className="text-orange-500" /> },
-              { label: 'Not Enter Marks', value: (data?.notEntered || 0).toLocaleString(), color: 'text-gray-600', bg: 'bg-gray-50 dark:bg-gray-950/20', border: 'border-gray-100 dark:border-gray-800', icon: <FileText size={14} className="text-gray-500" /> },
-              { label: 'Scribe', value: (data?.scribeCount || 0).toLocaleString(), color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-950/20', border: 'border-violet-100 dark:border-violet-800', icon: <FileText size={14} className="text-violet-500" /> },
-            ].map((c, i) => (
-              <div 
-                key={i} 
-                onClick={(c as any).onClick ? (c as any).onClick : (c as any).clickable ? () => setIsSchoolListModalOpen(true) : undefined}
-                className={`${c.bg} border ${c.border} rounded-xl p-2.5 hover:shadow-md transition-all duration-300 ${(c as any).clickable ? 'cursor-pointer hover:scale-[1.02] active:scale-[0.98]' : ''}`}
-              >
-                <div className="flex items-center gap-1 mb-1">{c.icon}<span className="text-[9px] font-black text-gray-400 uppercase tracking-wider leading-none truncate">{c.label}</span></div>
-                <div className={`text-base sm:text-lg font-black ${c.color} leading-none`}>{c.value}</div>
-                {(c as any).sub && (
-                  <div className="text-[9px] font-extrabold text-indigo-700 dark:text-indigo-400 mt-1 truncate">{(c as any).sub}</div>
-                )}
+          {/* ======== ROW 2: REDESIGNED COUNT CARDS (50% / 50% SPLIT) ======== */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+            {/* LEFT CONTAINER: General Statistics (50%) */}
+            <div className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-2xl p-4 shadow-xs">
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100 dark:border-[#30363d]">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                    General Statistics
+                  </h3>
+                </div>
+                <span className="text-[10px] font-extrabold text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-md">
+                  Master Data
+                </span>
               </div>
-            ))}
-           </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {[
+                  { 
+                    label: 'Total Schools', 
+                    value: totalSchools.toLocaleString(), 
+                    color: 'text-purple-600 dark:text-purple-400', 
+                    bg: 'bg-purple-50 dark:bg-purple-950/20', 
+                    border: 'border-purple-100 dark:border-purple-800', 
+                    icon: <SchoolIcon size={14} className="text-purple-500" />, 
+                    clickable: true, 
+                    onClick: () => setIsSchoolListModalOpen(true) 
+                  },
+                  { 
+                    label: 'Total Students', 
+                    value: (data?.totalStudents || 0).toLocaleString(), 
+                    color: 'text-indigo-600 dark:text-indigo-400', 
+                    bg: 'bg-indigo-50 dark:bg-indigo-950/20', 
+                    border: 'border-indigo-100 dark:border-indigo-800', 
+                    icon: <Users size={14} className="text-indigo-500" />, 
+                    clickable: true, 
+                    onClick: () => setIsDistrictStudentsModalOpen(true) 
+                  },
+                  { 
+                    label: 'Male Students', 
+                    value: (data?.maleCount || 0).toLocaleString(), 
+                    color: 'text-blue-600 dark:text-blue-400', 
+                    bg: 'bg-blue-50 dark:bg-blue-950/20', 
+                    border: 'border-blue-100 dark:border-blue-800', 
+                    icon: <Users size={14} className="text-blue-500" /> 
+                  },
+                  { 
+                    label: 'Female Students', 
+                    value: (data?.femaleCount || 0).toLocaleString(), 
+                    color: 'text-pink-600 dark:text-pink-400', 
+                    bg: 'bg-pink-50 dark:bg-pink-950/20', 
+                    border: 'border-pink-100 dark:border-pink-800', 
+                    icon: <Users size={14} className="text-pink-500" /> 
+                  },
+                  { 
+                    label: 'Scribe Students', 
+                    value: (data?.scribeCount ? data.scribeCount.toLocaleString() : '--'), 
+                    color: 'text-violet-600 dark:text-violet-400', 
+                    bg: 'bg-violet-50 dark:bg-violet-950/20', 
+                    border: 'border-violet-100 dark:border-violet-800', 
+                    icon: <FileText size={14} className="text-violet-500" /> 
+                  },
+                  { 
+                    label: 'Condonation', 
+                    value: '--', 
+                    color: 'text-amber-600 dark:text-amber-400', 
+                    bg: 'bg-amber-50 dark:bg-amber-950/20', 
+                    border: 'border-amber-100 dark:border-amber-800', 
+                    icon: <Award size={14} className="text-amber-500" /> 
+                  },
+                ].map((c, i) => (
+                  <div 
+                    key={i} 
+                    onClick={c.onClick}
+                    className={`${c.bg} border ${c.border} rounded-xl p-3 hover:shadow-md transition-all duration-300 ${c.clickable ? 'cursor-pointer hover:scale-[1.02] active:scale-[0.98]' : ''}`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      {c.icon}
+                      <span className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-wider leading-none truncate">
+                        {c.label}
+                      </span>
+                    </div>
+                    <div className={`text-base sm:text-lg font-black ${c.color} leading-none`}>
+                      {c.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* RIGHT CONTAINER: Exam Statistics (50%) */}
+            <div className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-2xl p-4 shadow-xs">
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100 dark:border-[#30363d]">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">
+                    Exam Statistics
+                  </h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-extrabold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 px-2 py-0.5 rounded-md truncate max-w-[180px]">
+                    {selectedExam?.name || 'Selected Test'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRefreshExamStats}
+                    disabled={isRefreshingExamStats}
+                    className="p-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-all cursor-pointer disabled:opacity-50"
+                    title="Refresh & Recalculate Exam Statistics"
+                  >
+                    <RefreshCw size={13} className={isRefreshingExamStats ? 'animate-spin text-emerald-500' : ''} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {[
+                  { 
+                    label: 'Schools Submitted', 
+                    value: (data?.confirmedSchoolsCount || 0).toLocaleString(), 
+                    color: 'text-emerald-600 dark:text-emerald-400', 
+                    bg: 'bg-emerald-50 dark:bg-emerald-950/20', 
+                    border: 'border-emerald-100 dark:border-emerald-800', 
+                    icon: <CheckCircle2 size={14} className="text-emerald-500" /> 
+                  },
+                  { 
+                    label: 'Total Students', 
+                    value: (data?.totalStudents || 0).toLocaleString(), 
+                    color: 'text-indigo-600 dark:text-indigo-400', 
+                    bg: 'bg-indigo-50 dark:bg-indigo-950/20', 
+                    border: 'border-indigo-100 dark:border-indigo-800', 
+                    icon: <Users size={14} className="text-indigo-500" /> 
+                  },
+                  { 
+                    label: 'Appeared', 
+                    value: (data?.appeared || 0).toLocaleString(), 
+                    color: 'text-blue-600 dark:text-blue-400', 
+                    bg: 'bg-blue-50 dark:bg-blue-950/20', 
+                    border: 'border-blue-100 dark:border-blue-800', 
+                    icon: <Eye size={14} className="text-blue-500" /> 
+                  },
+                  { 
+                    label: 'Absent', 
+                    value: (data?.absent || 0).toLocaleString(), 
+                    color: 'text-orange-600 dark:text-orange-400', 
+                    bg: 'bg-orange-50 dark:bg-orange-950/20', 
+                    border: 'border-orange-100 dark:border-orange-800', 
+                    icon: <AlertTriangle size={14} className="text-orange-500" /> 
+                  },
+                  { 
+                    label: 'Passed', 
+                    value: (data?.pass || 0).toLocaleString(), 
+                    color: 'text-emerald-600 dark:text-emerald-400', 
+                    bg: 'bg-emerald-50 dark:bg-emerald-950/20', 
+                    border: 'border-emerald-100 dark:border-emerald-800', 
+                    icon: <CheckCircle2 size={14} className="text-emerald-500" /> 
+                  },
+                  { 
+                    label: 'Failed', 
+                    value: (data?.fail || 0).toLocaleString(), 
+                    color: 'text-red-600 dark:text-red-400', 
+                    bg: 'bg-red-50 dark:bg-red-950/20', 
+                    border: 'border-red-100 dark:border-red-800', 
+                    icon: <XCircle size={14} className="text-red-500" /> 
+                  },
+                ].map((c, i) => (
+                  <div 
+                    key={i} 
+                    className={`${c.bg} border ${c.border} rounded-xl p-3 hover:shadow-md transition-all duration-300`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      {c.icon}
+                      <span className="text-[10px] font-black text-gray-500 dark:text-gray-400 uppercase tracking-wider leading-none truncate">
+                        {c.label}
+                      </span>
+                    </div>
+                    <div className={`text-base sm:text-lg font-black ${c.color} leading-none`}>
+                      {c.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
         </>
       )}
 
@@ -1827,75 +2012,82 @@ const DashboardPage: React.FC = () => {
                   return (
                     <div key={med.code} className={`bg-gradient-to-br ${st.gradient} border ${st.ring} rounded-2xl overflow-hidden shadow-xs flex flex-col justify-between`}>
                       {/* Card Header */}
-                      <div className="p-4 border-b border-gray-100/80 dark:border-[#30363d]">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${st.badgeBg}`}>
+                      <div className="p-3.5 border-b border-gray-100/80 dark:border-[#30363d]">
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-md shrink-0 ${st.badgeBg}`}>
                               {med.code}
                             </span>
-                            <h4 className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-wider">
+                            <h4 className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-wider truncate">
                               {med.name}
                             </h4>
                           </div>
-                          <span className="text-[10px] font-black text-gray-500 bg-white/80 dark:bg-[#161b22]/80 px-2 py-0.5 rounded-full border border-gray-200/50 dark:border-gray-700">
+                          <span className="text-[11px] font-bold text-gray-700 dark:text-gray-300 bg-white/80 dark:bg-[#161b22]/80 px-2 py-0.5 rounded-md border border-gray-200/50 dark:border-gray-700 shrink-0">
                             {med.total.toLocaleString()} Students
                           </span>
                         </div>
 
                         {/* Gender Breakdown Row */}
-                        <div className="flex items-center justify-between text-[11px] bg-white/70 dark:bg-[#161b22]/70 px-3 py-1.5 rounded-xl border border-gray-100 dark:border-[#30363d] mt-2">
+                        <div className="flex items-center justify-between text-[11px] bg-white/60 dark:bg-[#161b22]/60 px-3 py-1 rounded-lg border border-gray-100/80 dark:border-[#30363d]">
                           <span className="text-blue-600 dark:text-blue-400 font-extrabold flex items-center gap-1">
-                            Boys: <span className="font-black">{med.male.toLocaleString()}</span>
+                            Boys : <span className="font-black">{med.male.toLocaleString()}</span>
                           </span>
                           <span className="text-rose-600 dark:text-rose-400 font-extrabold flex items-center gap-1">
-                            Girls: <span className="font-black">{med.female.toLocaleString()}</span>
+                            Girls : <span className="font-black">{med.female.toLocaleString()}</span>
                           </span>
                         </div>
                       </div>
 
-                      {/* Card Body - Subject List */}
-                      <div className="p-4 flex-1">
-                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2.5 flex items-center justify-between">
-                          <span>Subject Code & Name</span>
-                          <span>Student Breakdown</span>
-                        </div>
-
+                      {/* Card Body - Subject Table */}
+                      <div className="p-3 flex-1 overflow-hidden">
                         {displayedSubjects.length > 0 ? (
-                          <div className="space-y-2">
-                            {displayedSubjects.map((subItem: any, idx: number) => (
-                              <div key={subItem.pCode + subItem.subjectName + idx} className="bg-white/80 dark:bg-[#161b22]/80 p-2.5 rounded-xl border border-gray-100 dark:border-[#30363d] flex items-center justify-between shadow-2xs hover:border-gray-300 dark:hover:border-gray-600 transition-all">
-                                <div className="flex items-center gap-1.5 truncate max-w-[150px]">
-                                  <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800">
-                                    {subItem.pCode}
-                                  </span>
-                                  <span className="text-xs font-black text-gray-800 dark:text-gray-100 uppercase tracking-tight truncate" title={subItem.subjectName}>
-                                    {subItem.subjectName}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-1.5 text-[11px]">
-                                  <span className="text-blue-600 dark:text-blue-400 font-bold" title="Boys">
-                                    M:{subItem.male.toLocaleString()}
-                                  </span>
-                                  <span className="text-gray-300 dark:text-gray-600 font-normal">|</span>
-                                  <span className="text-rose-600 dark:text-rose-400 font-bold" title="Girls">
-                                    F:{subItem.female.toLocaleString()}
-                                  </span>
-                                  <span className="text-gray-300 dark:text-gray-600 font-normal">|</span>
-                                  <span className="text-gray-900 dark:text-white font-black bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">
-                                    Total: {subItem.total.toLocaleString()}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
+                          <div className="overflow-x-auto rounded-xl border border-gray-200/60 dark:border-[#30363d] bg-white/70 dark:bg-[#161b22]/70 shadow-2xs">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="bg-gray-100/70 dark:bg-gray-800/60 border-b border-gray-200/60 dark:border-[#30363d] text-[10px] font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                  <th className="py-2 px-2.5 w-14 text-center">Code</th>
+                                  <th className="py-2 px-2.5">Subject</th>
+                                  <th className="py-2 px-2.5 text-right w-16">Male</th>
+                                  <th className="py-2 px-2.5 text-right w-16">Female</th>
+                                  <th className="py-2 px-2.5 text-right w-20">Total</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-xs">
+                                {displayedSubjects.map((subItem: any, idx: number) => (
+                                  <tr 
+                                    key={subItem.pCode + subItem.subjectName + idx} 
+                                    className="hover:bg-white/90 dark:hover:bg-gray-800/50 transition-colors h-9"
+                                  >
+                                    <td className="py-1.5 px-2.5 text-center">
+                                      <span className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800">
+                                        {subItem.pCode}
+                                      </span>
+                                    </td>
+                                    <td className="py-1.5 px-2.5 font-semibold text-gray-800 dark:text-gray-200 truncate max-w-[160px]" title={subItem.subjectName}>
+                                      {subItem.subjectName}
+                                    </td>
+                                    <td className="py-1.5 px-2.5 text-right font-bold text-blue-600 dark:text-blue-400">
+                                      {subItem.male.toLocaleString()}
+                                    </td>
+                                    <td className="py-1.5 px-2.5 text-right font-bold text-rose-600 dark:text-rose-400">
+                                      {subItem.female.toLocaleString()}
+                                    </td>
+                                    <td className="py-1.5 px-2.5 text-right font-extrabold text-gray-900 dark:text-white">
+                                      {subItem.total.toLocaleString()}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         ) : (
                           <p className="text-[11px] font-medium text-gray-400 py-3 text-center">No subjects recorded for this medium.</p>
                         )}
                       </div>
 
-                      {/* Card Footer - Expandable More Toggle (Synchronized Across All Mediums) */}
+                      {/* Card Footer - Expandable More Toggle */}
                       {allSubjects.length > 5 && (
-                        <div className="p-3 bg-white/40 dark:bg-[#161b22]/40 border-t border-gray-100/60 dark:border-[#30363d] text-center">
+                        <div className="p-2.5 bg-white/40 dark:bg-[#161b22]/40 border-t border-gray-100/60 dark:border-[#30363d] text-center">
                           <button
                             type="button"
                             onClick={() => setIsAllMediumsExpanded(!isAllMediumsExpanded)}
@@ -1903,11 +2095,11 @@ const DashboardPage: React.FC = () => {
                           >
                             {isAllMediumsExpanded ? (
                               <>
-                                <ChevronUp size={14} /> Show less (Collapse All)
+                                <ChevronUp size={14} /> ▲ Show Less
                               </>
                             ) : (
                               <>
-                                <ChevronDown size={14} /> + {remainingCount} more subjects (Expand All)
+                                <ChevronDown size={14} /> ▼ +{remainingCount} More Subjects (Expand All)
                               </>
                             )}
                           </button>
@@ -1961,30 +2153,41 @@ const DashboardPage: React.FC = () => {
                     const st = typeStyles[type];
 
                     return (
-                      <div key={type} className={`bg-gradient-to-br ${st.gradient} border ${st.border} rounded-xl p-4 transition-all hover:shadow-md`}>
+                      <div key={type} className={`bg-gradient-to-br ${st.gradient} border ${st.border} rounded-2xl p-4 transition-all hover:shadow-md flex flex-col justify-between`}>
+                        {/* Header: Icon + Type Name + % of Total Badge */}
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
-                            <div className={`w-8 h-8 ${st.iconBg} rounded-lg flex items-center justify-center`}>
+                            <div className={`w-8 h-8 ${st.iconBg} rounded-xl flex items-center justify-center`}>
                               <SchoolIcon size={16} className={st.iconText} />
                             </div>
-                            <div>
-                              <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">{type}</h4>
-                              <p className="text-[9px] font-bold text-gray-400">{typeData.schools} Schools</p>
+                            <h4 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">{type}</h4>
+                          </div>
+                          <span className={`text-[10px] font-black ${st.iconText} bg-white/80 dark:bg-[#161b22]/80 px-2 py-0.5 rounded-md border border-gray-200/50 dark:border-gray-700`}>
+                            {typePct}% of Total
+                          </span>
+                        </div>
+
+                        {/* Primary Stat Block: Prominent School Count & Total Students */}
+                        <div className="grid grid-cols-2 gap-2 mb-3 bg-white/60 dark:bg-[#161b22]/60 p-3 rounded-xl border border-gray-100/80 dark:border-[#30363d]">
+                          <div>
+                            <div className={`text-2xl sm:text-3xl font-black ${st.iconText} leading-none`}>
+                              {typeData.schools.toLocaleString()}
+                            </div>
+                            <div className="text-[9px] font-extrabold text-gray-500 dark:text-gray-400 uppercase tracking-wider mt-1">
+                              Schools
                             </div>
                           </div>
-                          <div className="text-right">
-                            <div className={`text-lg font-black ${st.iconText}`}>{typePct}%</div>
-                            <div className="text-[9px] font-bold text-gray-400">of Total</div>
+                          <div className="border-l border-gray-200/60 dark:border-[#30363d] pl-3">
+                            <div className="text-lg sm:text-xl font-black text-gray-900 dark:text-white leading-none">
+                              {typeData.total.toLocaleString()}
+                            </div>
+                            <div className="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider mt-1 truncate">
+                              Total Students
+                            </div>
                           </div>
                         </div>
 
-                        {/* Total Count */}
-                        <div className="mb-3">
-                          <div className="text-2xl font-black text-gray-900 dark:text-white">{typeData.total.toLocaleString()}</div>
-                          <div className="text-[9px] font-bold text-gray-400 uppercase">Total Students</div>
-                        </div>
-
-                        {/* Gender Split */}
+                        {/* Gender Split Progress Bars */}
                         <div className="space-y-2">
                           <div>
                             <div className="flex items-center justify-between mb-0.5">
@@ -1992,7 +2195,7 @@ const DashboardPage: React.FC = () => {
                                 <span className="w-2 h-2 rounded-full bg-blue-500" />
                                 <span className="text-[10px] font-bold text-gray-500 uppercase">Male</span>
                               </div>
-                              <span className="text-[10px] font-black text-blue-600">{typeData.male.toLocaleString()}</span>
+                              <span className="text-[10px] font-black text-blue-600 dark:text-blue-400">{typeData.male.toLocaleString()}</span>
                             </div>
                             <div className="h-2 bg-white dark:bg-[#161b22] rounded-full overflow-hidden">
                               <div className={`h-full ${st.maleBar} rounded-full transition-all duration-700`} style={{ width: `${typeData.total > 0 ? (typeData.male / typeData.total) * 100 : 0}%` }} />
@@ -2004,7 +2207,7 @@ const DashboardPage: React.FC = () => {
                                 <span className="w-2 h-2 rounded-full bg-pink-500" />
                                 <span className="text-[10px] font-bold text-gray-500 uppercase">Female</span>
                               </div>
-                              <span className="text-[10px] font-black text-pink-600">{typeData.female.toLocaleString()}</span>
+                              <span className="text-[10px] font-black text-pink-600 dark:text-pink-400">{typeData.female.toLocaleString()}</span>
                             </div>
                             <div className="h-2 bg-white dark:bg-[#161b22] rounded-full overflow-hidden">
                               <div className={`h-full ${st.femaleBar} rounded-full transition-all duration-700`} style={{ width: `${typeData.total > 0 ? (typeData.female / typeData.total) * 100 : 0}%` }} />
@@ -2012,12 +2215,10 @@ const DashboardPage: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Donut Summary */}
-                        <div className="mt-3 pt-3 border-t border-white/50 dark:border-white/5 flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            <span className="text-[9px] font-bold text-gray-400">M:F Ratio</span>
-                          </div>
-                          <span className="text-[10px] font-black text-gray-600 dark:text-gray-300">
+                        {/* Footer: M:F Ratio */}
+                        <div className="mt-3 pt-2.5 border-t border-white/50 dark:border-white/5 flex items-center justify-between">
+                          <span className="text-[9px] font-bold text-gray-400">M:F Ratio</span>
+                          <span className="text-[10px] font-black text-gray-700 dark:text-gray-300">
                             {typeData.female > 0 ? `${(typeData.male / typeData.female).toFixed(2)}` : typeData.male > 0 ? 'All M' : '-'}
                           </span>
                         </div>
@@ -2025,47 +2226,6 @@ const DashboardPage: React.FC = () => {
                     );
                   })}
                 </div>
-
-                {/* Summary Bar Chart */}
-                {(() => {
-                  const types = ['Government', 'Aided', 'Unaided'];
-                  const chartData = types.map(type => {
-                    const d = schoolTypeCounts.schoolTypes?.[type] || { male: 0, female: 0, total: 0, schools: 0 };
-                    return { name: type, Male: d.male, Female: d.female, Total: d.total };
-                  });
-                  const maxVal = Math.max(...chartData.map(d => d.Total), 1);
-                  return (
-                    <div className="mt-4 pt-4 border-t border-gray-100 dark:border-[#30363d]">
-                      <div className="flex items-center gap-2 mb-3">
-                        <BarChart3 size={14} className="text-indigo-500" />
-                        <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-500">Comparison Overview</h4>
-                      </div>
-                      <div className="space-y-3">
-                        {chartData.map((item, i) => {
-                          const malePct = item.Total > 0 ? Math.round((item.Male / item.Total) * 100) : 0;
-                          const femalePct = 100 - malePct;
-                          const barColors = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500'];
-                          return (
-                            <div key={i}>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="text-[11px] font-black text-gray-700 dark:text-gray-300 uppercase">{item.name}</span>
-                                <span className="text-[10px] font-bold text-gray-400">{item.Total.toLocaleString()} students &bull; {item.Male.toLocaleString()}M : {item.Female.toLocaleString()}F</span>
-                              </div>
-                              <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex">
-                                <div className={`h-full ${barColors[i]} rounded-l-full transition-all duration-1000`} style={{ width: `${item.Total > 0 ? (item.Male / maxVal) * 100 : 0}%` }} title={`Male: ${item.Male.toLocaleString()}`} />
-                                <div className={`h-full opacity-40 rounded-r-full transition-all duration-1000`} style={{ width: `${item.Total > 0 ? (item.Female / maxVal) * 100 : 0}%`, backgroundColor: ['#3b82f6', '#22c55e', '#f59e0b'][i] }} title={`Female: ${item.Female.toLocaleString()}`} />
-                              </div>
-                              <div className="flex items-center justify-between mt-0.5">
-                                <span className="text-[8px] font-bold text-blue-500">Male {malePct}%</span>
-                                <span className="text-[8px] font-bold text-pink-500">Female {femalePct}%</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
             </div>
           )}

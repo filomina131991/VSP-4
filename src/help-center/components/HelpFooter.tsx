@@ -32,7 +32,6 @@ export const HelpFooter: React.FC = () => {
           <div>
             <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Quick Modules</h4>
             <ul className="space-y-2 text-xs">
-              <li><Link to="/help/guide" className="hover:text-blue-400 transition-colors">16-Step User Guide</Link></li>
               <li><Link to="/help/errors" className="hover:text-blue-400 transition-colors">100+ Error Library</Link></li>
               <li><Link to="/help/wizard" className="hover:text-blue-400 transition-colors">Troubleshooting Wizard</Link></li>
               <li><Link to="/help/workflow" className="hover:text-blue-400 transition-colors">Interactive Workflow</Link></li>
