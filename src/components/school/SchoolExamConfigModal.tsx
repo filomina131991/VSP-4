@@ -191,11 +191,23 @@ const SchoolExamConfigModal: React.FC<SchoolExamConfigModalProps> = ({ onClose, 
         });
         setCodeMarks(savedMarks);
       } else {
+        const currentExam = exams.find(e => e.id === examId);
         mediums.forEach((medium: string) => {
-          getSubjectsForMedium(medium, data.languagesByMedium || {}).forEach(s => initialSelected.add(s.id));
+          getSubjectsForMedium(medium, data.languagesByMedium || {}).forEach(s => {
+            const pType = (s.paperType || s.code || s.shortName || '').toUpperCase();
+            const eMarks = currentExam?.maxMarks?.[s.id] ?? currentExam?.maxMarks?.[pType];
+            if (!!eMarks) {
+              initialSelected.add(s.id);
+            }
+          });
         });
         [...(data.commonSubjects?.p03 || []), ...(data.commonSubjects?.p04 || []), ...(data.commonSubjects?.core || [])].forEach((s: any) => {
-          initialSelected.add(s._id || s.id);
+          const sId = s._id || s.id;
+          const pType = (s.paperType || s.code || s.shortName || '').toUpperCase();
+          const eMarks = currentExam?.maxMarks?.[sId] ?? currentExam?.maxMarks?.[pType];
+          if (!!eMarks) {
+            initialSelected.add(sId);
+          }
         });
         setCodeMarks({ ...DEFAULT_CODE_MARKS });
       }
@@ -418,12 +430,20 @@ const SchoolExamConfigModal: React.FC<SchoolExamConfigModalProps> = ({ onClose, 
                         const isCore = ['P05', 'P06', 'P07', 'P08', 'P09', 'P10'].includes(paperType) || category === 'CORE';
                         const isP03P04 = paperType === 'P03' || paperType === 'P04' || category === 'SECOND_LANGUAGE' || category === 'THIRD_LANGUAGE';
                         // For Malayalam medium: only P01, P02, and Core (P05-P10) allowed. P03/P04 disabled (managed from student side)
-                        const isDisabled = isMalayalamMedium && isP03P04;
+                        const examMaxMarks = globalExam?.maxMarks?.[sub.id] ?? globalExam?.maxMarks?.[paperType];
+                        const isZeroMarksInExam = !examMaxMarks;
+                        const isDisabled = (isMalayalamMedium && isP03P04) || isZeroMarksInExam;
 
                       return (
                         <div 
                           key={sub.id}
-                          onClick={() => { if (!isDisabled) toggleSubject(sub.id); }}
+                          onClick={() => { 
+                            if (isZeroMarksInExam) {
+                              toast.error('Concerned subject is not allowed for this exam configuration');
+                              return;
+                            }
+                            if (!isDisabled) toggleSubject(sub.id); 
+                          }}
                           className={`flex items-start gap-4 p-4 rounded-2xl border-2 transition-all duration-200 ${
                             isDisabled 
                               ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed dark:border-gray-800 dark:bg-gray-900'

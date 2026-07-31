@@ -8,6 +8,7 @@ import {
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { apiClient } from '../../lib/apiClient';
+import { normalizeDobValue } from '../../lib/studentImportUtils';
 import toast from 'react-hot-toast';
 
 export interface StudentBulkImportWizardProps {
@@ -29,6 +30,7 @@ export type ImportStage =
   | 'mapping_data' 
   | 'uploading' 
   | 'saving' 
+  | 'verifying' 
   | 'completed';
 
 export interface LogEntry {
@@ -55,6 +57,7 @@ export interface RowDiagnostic {
 export interface ImportSummary {
   total: number;
   imported: number;
+  updated?: number;
   failed: number;
   skipped: number;
   warnings: number;
@@ -68,7 +71,8 @@ const STAGES: { key: ImportStage; label: string; icon: any }[] = [
   { key: 'mapping_data', label: '4. Mapping Data', icon: Layers },
   { key: 'uploading', label: '5. Uploading', icon: Upload },
   { key: 'saving', label: '6. Saving to Database', icon: RefreshCw },
-  { key: 'completed', label: '7. Completed', icon: CheckCircle2 }
+  { key: 'verifying', label: '7. Verifying DB', icon: ShieldCheck },
+  { key: 'completed', label: '8. Completed', icon: CheckCircle2 }
 ];
 
 export const StudentBulkImportWizard: React.FC<StudentBulkImportWizardProps> = ({
@@ -408,7 +412,7 @@ export const StudentBulkImportWizard: React.FC<StudentBulkImportWizardProps> = (
       let division = (letterMatch && letterMatch[1]) ? letterMatch[1].toUpperCase() : (selectedDivision ? selectedDivision.toUpperCase() : 'A');
 
       // 4. Medium & Category
-      let medium = 'Tamil';
+      let medium = '';
       let category = 'General';
       let dob = (normObj['dob'] || normObj['dateofbirth'] || normObj['birthdate'] || '').trim();
       let caste = (normObj['caste'] || '').trim();
@@ -420,7 +424,9 @@ export const StudentBulkImportWizard: React.FC<StudentBulkImportWizardProps> = (
 
       if (normObj['medium']) {
         const mUpper = normObj['medium'].toUpperCase().trim();
-        if (KNOWN_MEDIUMS[mUpper]) {
+        if (mUpper === 'NONE' || mUpper === 'N/A' || mUpper === 'EMPTY') {
+          medium = '';
+        } else if (KNOWN_MEDIUMS[mUpper]) {
           medium = KNOWN_MEDIUMS[mUpper];
         } else if (!KNOWN_CATEGORIES.includes(mUpper)) {
           medium = normObj['medium'];
@@ -547,28 +553,34 @@ export const StudentBulkImportWizard: React.FC<StudentBulkImportWizardProps> = (
     await sleep(300);
 
     // -------------------------------------------------------------
-    // STAGE 6: Live Saving to Database
+    // STAGE 6: Live Saving to Database (chunked + verified)
     // -------------------------------------------------------------
     setStage('saving');
     addLog('SAVING', `Executing live MongoDB transactions for ${normalizedRows.length} candidates in batches...`);
 
-    const BATCH_SIZE = 20;
-    let totalSaved = 0;
+    const BATCH_SIZE = 100;
+    let totalImported = 0;
+    let totalUpdated = 0;
     let totalFailed = 0;
     let totalSkipped = 0;
     const allResults: any[] = [];
+    const savedRegNos = new Set<string>();
 
-    const payloadStudents = normalizedRows.map(r => ({
+    // DOB is normalized to a canonical YYYY-MM-DD string so the backend never
+    // receives an unparseable Date (e.g. "15/05/2010") that Mongoose would
+    // silently drop during bulkWrite.
+    const payloadStudents = normalizedRows.map((r, idx) => ({
+      rowNumber: idx + 1,
       regNo: r.regNo,
       name: r.name,
       gender: r.gender,
-      classStandard: r.classStandard,
+      classStandard: '10',
       division: r.division,
       medium: r.medium,
       firstLangPaper1: r.firstLangPaper1,
       firstLangPaper2: r.firstLangPaper2,
       thirdLang: r.thirdLang,
-      dob: r.dob,
+      dob: normalizeDobValue(r.dob),
       category: r.category,
       religion: r.religion,
       caste: r.caste,
@@ -590,19 +602,30 @@ export const StudentBulkImportWizard: React.FC<StudentBulkImportWizardProps> = (
         const res = await apiClient.post('/management/students/bulk', {
           students: chunk,
           schoolId: activeSchoolId
-        }, { timeout: 60000 });
+        }, { timeout: 120000 });
 
         const data = res.data;
-        const chunkImported = data.imported || data.successfulCount || 0;
+
+        // Hard fail: the backend reported rows that never landed in the DB.
+        if (!data.success || data.verified === false) {
+          throw new Error(data.message || 'Database verification failed for one or more imported rows.');
+        }
+
+        const chunkImported = data.imported || 0;
+        const chunkUpdated = data.updated || 0;
         const chunkFailed = data.failedCount || 0;
         const chunkSkipped = data.skippedCount || 0;
 
-        totalSaved += chunkImported;
+        totalImported += chunkImported;
+        totalUpdated += chunkUpdated;
         totalFailed += chunkFailed;
         totalSkipped += chunkSkipped;
 
         if (data.results && Array.isArray(data.results)) {
           allResults.push(...data.results);
+          data.results.forEach((r: any) => {
+            if (r.status === 'success' && r.identifier) savedRegNos.add(String(r.identifier));
+          });
         }
 
         // Live update processed count and progress bar
@@ -612,10 +635,35 @@ export const StudentBulkImportWizard: React.FC<StudentBulkImportWizardProps> = (
         const currentProgress = 80 + Math.round((currentProcessed / payloadStudents.length) * 20);
         setProgress(currentProgress);
 
-        addLog('SUCCESS', `Batch (${startRow}-${endRow}) saved: +${chunkImported} saved (Total ${currentProcessed}/${payloadStudents.length}).`);
+        addLog('SUCCESS', `Batch (${startRow}-${endRow}) saved: +${chunkImported} imported, +${chunkUpdated} updated (Total ${currentProcessed}/${payloadStudents.length}).`);
         await sleep(100);
       }
 
+      // -------------------------------------------------------------
+      // STAGE 7: Verify every claimed row actually exists in the DB
+      // -------------------------------------------------------------
+      setStage('verifying');
+      setProgress(96);
+      addLog('SUCCESS', `Verifying ${savedRegNos.size} claimed-saved rows exist in the database...`);
+
+      if (savedRegNos.size > 0) {
+        const verifyRes = await apiClient.post('/management/students/verify-import', {
+          schoolId: activeSchoolId,
+          academicYear,
+          regNos: [...savedRegNos],
+          expectedCount: savedRegNos.size
+        }, { timeout: 60000 });
+
+        const verifyData = verifyRes.data;
+        if (!verifyData || verifyData.match !== true) {
+          throw new Error(`Database verification failed: expected ${verifyData?.expectedCount ?? savedRegNos.size} rows, found ${verifyData?.dbCount ?? '?'} in the database.`);
+        }
+        addLog('SUCCESS', `Database verified: ${verifyData.dbCount} of ${verifyData.expectedCount} rows present.`);
+      } else {
+        addLog('WARNING', 'No rows were saved by this import, so DB verification was skipped.');
+      }
+
+      const totalSaved = totalImported + totalUpdated;
       const durationMs = Date.now() - startTime;
 
       setProgress(100);
@@ -628,19 +676,23 @@ export const StudentBulkImportWizard: React.FC<StudentBulkImportWizardProps> = (
         addLog('WARNING', `${totalFailed} records failed backend validation.`);
       }
 
-      // Build row diagnostic state
-      const diagList: RowDiagnostic[] = (allResults || []).map((resRow: any, idx: number) => {
-        const matchingNorm = normalizedRows[idx];
+      // Build row diagnostic state (aligned by the absolute row number returned
+      // by the backend, which survives multi-batch uploads)
+      const normByRow = new Map<number, any>();
+      normalizedRows.forEach((nr) => normByRow.set(nr.rowNum, nr));
+
+      const diagList: RowDiagnostic[] = (allResults || []).map((resRow: any) => {
+        const matchingNorm = normByRow.get(resRow.row);
         return {
-          row: resRow.row || idx + 1,
+          row: resRow.row || matchingNorm?.rowNum || 0,
           name: resRow.name || matchingNorm?.name || 'Unknown Candidate',
           identifier: resRow.identifier || matchingNorm?.regNo || 'N/A',
           classStandard: resRow.classStandard || matchingNorm?.classStandard || '10',
           division: resRow.division || matchingNorm?.division || 'A',
-          medium: resRow.medium || matchingNorm?.medium || 'Tamil',
+          medium: resRow.medium || matchingNorm?.medium || '',
           gender: resRow.gender || matchingNorm?.gender || 'Male',
           category: resRow.category || matchingNorm?.category || 'General',
-          status: resRow.status || 'success',
+          status: resRow.status === 'success' ? 'success' : resRow.status === 'failed' ? 'failed' : 'skipped',
           reason: resRow.reason
         };
       });
@@ -648,7 +700,8 @@ export const StudentBulkImportWizard: React.FC<StudentBulkImportWizardProps> = (
       setRowDiagnostics(diagList);
       setSummary({
         total: normalizedRows.length,
-        imported: totalSaved,
+        imported: totalImported,
+        updated: totalUpdated,
         failed: totalFailed,
         skipped: totalSkipped,
         warnings: duplicateRows.length,
@@ -668,16 +721,16 @@ export const StudentBulkImportWizard: React.FC<StudentBulkImportWizardProps> = (
       addLog('ERROR', `Server request failed (HTTP ${err.response?.status || 500}): ${errDetail}`);
       
       setCriticalError({
-        title: isAuth ? 'Authentication Session Expired (401)' : 'Server Processing Error (500)',
+        title: isAuth ? 'Authentication Session Expired (401)' : 'Server Processing / Verification Error',
         message: isAuth 
           ? 'Your login session has expired. Please refresh your session or log in again to complete the import.'
-          : `The backend encountered an error: ${errDetail}`,
+          : `The import could not be completed successfully: ${errDetail}`,
         isAuthError: isAuth,
         details: JSON.stringify(err.response?.data || err, null, 2)
       });
 
       setStage('idle');
-      toast.error(isAuth ? 'Session expired. Please log in again.' : 'Import server error.');
+      toast.error(isAuth ? 'Session expired. Please log in again.' : 'Import failed. No false success is shown.');
     }
   };
 
@@ -728,7 +781,7 @@ export const StudentBulkImportWizard: React.FC<StudentBulkImportWizardProps> = (
 
         {/* Multi-Stage Animated Progress Header */}
         <div className="bg-slate-50 border-b border-gray-200 px-8 py-4 shrink-0">
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-8 gap-1">
             {STAGES.map((s, idx) => {
               const IconComp = s.icon;
               const isCurrent = stage === s.key;
@@ -983,6 +1036,9 @@ export const StudentBulkImportWizard: React.FC<StudentBulkImportWizardProps> = (
                 <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
                   <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 block mb-1">Imported</span>
                   <span className="text-xl font-black text-emerald-700">{summary.imported}</span>
+                  {typeof summary.updated === 'number' && summary.updated > 0 && (
+                    <span className="text-[10px] font-bold text-emerald-600 block mt-0.5">+{summary.updated} updated</span>
+                  )}
                 </div>
 
                 <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200">
