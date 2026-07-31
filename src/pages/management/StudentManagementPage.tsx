@@ -22,7 +22,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 
-import { autoCorrectRow, validateRow, ParsedStudentRow, ValidationError } from '../../lib/studentImportUtils';
+import { autoCorrectRow, validateRow, normalizeDobValue, ParsedStudentRow, ValidationError } from '../../lib/studentImportUtils';
 import { resolveMediumCode, resolveMediumShortName } from '../../lib/mediumUtils';
 import { apiClient } from '../../lib/apiClient';
 import { emitRefresh } from '../../lib/eventBus';
@@ -868,7 +868,7 @@ const StudentManagementPage: React.FC = () => {
       'regNo', 'name', 'sslcRegNo', 'gender', 'dob', 'classStandard', 'division', 'category', 'scribe', 'letterStatus', 'readingStatus', 'writingStatus'
     ];
 
-    const requiredFields = ['regNo', 'name', 'gender', 'classStandard', 'division', 'category'];
+    const requiredFields = ['regNo', 'name'];
 
     // Loop through lines to parse data
     lines.forEach((line, lineIdx) => {
@@ -1074,26 +1074,55 @@ const StudentManagementPage: React.FC = () => {
     const validRows = parsedImportRows;
     setIsBulkImporting(true);
     setImportStage('saving');
-    
+
+    // Normalize DOB to a canonical YYYY-MM-DD so the backend never receives an
+    // unparseable Date that Mongoose would silently drop during bulkWrite.
+    const payload = validRows.map(r => ({
+      ...r,
+      dob: normalizeDobValue((r as any).dob),
+      academicYear: bulkAcademicYear,
+      // If override is enabled, force all rows to the currently selected class+division
+      ...(bulkOverrideDivision && selectedStandard ? { classStandard: selectedStandard } : {}),
+      ...(bulkOverrideDivision && selectedDivision ? { division: selectedDivision } : {}),
+    }));
+
+    const BATCH_SIZE = 100;
+    let totalImported = 0;
+    let totalUpdated = 0;
+    let totalFailed = 0;
+    const allResults: any[] = [];
+    const allFailed: any[] = [];
+
     try {
-      const res = await apiClient.post('/management/students/bulk', {
-        students: validRows.map(r => ({
-          ...r,
-          academicYear: bulkAcademicYear,
-          // If override is enabled, force all rows to the currently selected class+division
-          ...(bulkOverrideDivision && selectedStandard ? { classStandard: selectedStandard } : {}),
-          ...(bulkOverrideDivision && selectedDivision ? { division: selectedDivision } : {}),
-        })),
-        schoolId: activeSchoolId
-      }, { timeout: 120000 });
-      const data = res.data;
+      for (let i = 0; i < payload.length; i += BATCH_SIZE) {
+        const chunk = payload.slice(i, i + BATCH_SIZE);
+        const res = await apiClient.post('/management/students/bulk', {
+          students: chunk,
+          schoolId: activeSchoolId
+        }, { timeout: 120000 });
+        const data = res.data;
+
+        // Hard fail: the backend reported rows that never landed in the DB.
+        if (!data.success || data.verified === false) {
+          throw new Error(data.message || 'Database verification failed for one or more imported rows.');
+        }
+
+        totalImported += data.imported || 0;
+        totalUpdated += data.updated || 0;
+        totalFailed += data.failedCount || 0;
+        if (Array.isArray(data.results)) allResults.push(...data.results);
+        if (Array.isArray(data.failed)) allFailed.push(...data.failed);
+      }
+
+      const successfulCount = totalImported + totalUpdated;
+      const failedCount = totalFailed + (parsedImportRows.length - validRows.length);
 
       // Set import summary state
       setImportSummary({
-        processed: data.processed,
-        successfulCount: data.successfulCount,
-        failedCount: data.failedCount + (parsedImportRows.length - validRows.length), // count filtered invalid rows as failed/skipped
-        successful: data.successful || [],
+        processed: payload.length,
+        successfulCount,
+        failedCount,
+        successful: allResults.filter((r: any) => r.status === 'success'),
         failed: [
           ...parsedImportRows.filter(r => !(r as any).isValid).map((r, i) => ({
             row: 'N/A',
@@ -1101,32 +1130,32 @@ const StudentManagementPage: React.FC = () => {
             identifier: r.regNo || 'N/A',
             reason: 'Missing one or more required fields (admission_no, name, gender, class, division, category).'
           })),
-          ...(data.failed || [])
+          ...allFailed
         ],
         type: 'student'
       });
 
       // Fire sweet alert
       Swal.fire({
-        title: data.failedCount > 0 || parsedImportRows.length > validRows.length ? 'Imported with Warnings' : 'Import Successful!',
+        title: failedCount > 0 || parsedImportRows.length > validRows.length ? 'Imported with Warnings' : 'Import Successful!',
         html: `
           <div style="text-align: left; font-family: system-ui, sans-serif; font-size: 14px; line-height: 1.6;" class="space-y-2">
             <p>Successfully processed student entries for import.</p>
             <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; margin-top: 10px;">
               <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                <span>Total Candidate Rows:</span> <strong>${parsedImportRows.length}</strong>
+                <span>Total Candidate Rows:</span> <strong>${payload.length}</strong>
               </div>
               <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #10b981;">
-                <span>Successfully Imported:</span> <strong>${data.successfulCount}</strong>
+                <span>Successfully Imported:</span> <strong>${successfulCount}</strong>
               </div>
               <div style="display: flex; justify-content: space-between; color: #ef4444;">
-                <span>Failed/Skipped:</span> <strong>${parsedImportRows.length - data.successfulCount}</strong>
+                <span>Failed/Skipped:</span> <strong>${payload.length - successfulCount}</strong>
               </div>
             </div>
             <p style="font-size: 12px; color: #64748b; margin-top: 8px;">A detailed row-by-row diagnostics breakdown has been loaded below.</p>
           </div>
         `,
-        icon: data.failedCount > 0 || parsedImportRows.length > validRows.length ? 'warning' : 'success',
+        icon: failedCount > 0 || parsedImportRows.length > validRows.length ? 'warning' : 'success',
         confirmButtonText: 'Inspect Details 🔍',
         confirmButtonColor: '#000000',
         customClass: {
@@ -1154,18 +1183,19 @@ const StudentManagementPage: React.FC = () => {
       });
 
       const targetStandard = (bulkOverrideDivision && selectedStandard) ? selectedStandard : validRows[0]?.classStandard;
-      const targetDivision = (bulkOverrideDivision && selectedDivision) ? selectedDivision : validRows[0]?.division;
-
-      if (targetStandard && targetDivision) {
-        setSelectedStandard(targetStandard);
-        setSelectedDivision(targetDivision);
-      }
+      const uniqueDivisionsInImport = Array.from(new Set(validRows.map(r => (bulkOverrideDivision && selectedDivision) ? selectedDivision : r.division))).filter(Boolean);
 
       await loadStudents();
       emitRefresh('students-updated');
       emitRefresh('data-updated');
 
-      if (targetStandard && targetDivision) {
+      if (uniqueDivisionsInImport.length > 1) {
+        setSelectedStandard(targetStandard || '10');
+        setSelectedDivision('');
+        setCurrentView('DIVISIONS');
+      } else if (targetStandard && uniqueDivisionsInImport[0]) {
+        setSelectedStandard(targetStandard);
+        setSelectedDivision(uniqueDivisionsInImport[0]);
         setCurrentView('STUDENTS');
       }
     } catch (err) {

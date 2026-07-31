@@ -44,6 +44,7 @@ export default function ChecklistDatabasePage() {
     const [activeCategory, setActiveCategory] = useState<'FIRST_LOGIN' | 'COMPLETED' | 'PENDING' | null>(null);
 
     const [studentSearch, setStudentSearch] = useState('');
+    const [filterClassId, setFilterClassId] = useState<string>('ALL');
 
     const filteredSchools = useMemo(() => {
     return schools.filter(s => {
@@ -58,9 +59,18 @@ export default function ChecklistDatabasePage() {
   const pendingSchools = useMemo(() => filteredSchools.filter(s => s.passwordChanged && !s.profileCompleted), [filteredSchools]);
 
   const filteredStudents = useMemo(() => {
-    if (!studentSearch.trim()) return students;
+    let result = students;
+
+    if (filterClassId !== 'ALL') {
+      result = result.filter(s => {
+        const effectiveClass = String(s.classStandard || s.className || '10').trim();
+        return effectiveClass === filterClassId;
+      });
+    }
+
+    if (!studentSearch.trim()) return result;
     const q = studentSearch.trim().toLowerCase();
-    return students.filter(s => {
+    return result.filter(s => {
       const fields = [
         s.regNo, s.globalId, s.name, s.className, s.division,
         s.gender, s.category, s.academicYear,
@@ -68,7 +78,7 @@ export default function ChecklistDatabasePage() {
       ].filter(Boolean).map(f => String(f).toLowerCase());
       return fields.some(f => f.includes(q));
     });
-  }, [students, studentSearch]);
+  }, [students, studentSearch, filterClassId]);
 
   const handlePrint = (categoryName: string, schoolList: any[]) => {
     const printWindow = window.open('', '_blank');
@@ -159,6 +169,7 @@ export default function ChecklistDatabasePage() {
     setErrorMsg('');
     setStudents([]);
     setSelectedStudentIds(new Set());
+    setFilterClassId('ALL');
     setIsSearching(true);
 
     try {
@@ -657,8 +668,18 @@ export default function ChecklistDatabasePage() {
                 className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
               />
             </div>
+            <select
+              value={filterClassId}
+              onChange={(e) => setFilterClassId(e.target.value)}
+              className="px-3 py-1 bg-white text-gray-700 font-bold text-xs uppercase tracking-wider rounded-md border border-gray-200 cursor-pointer outline-none focus:border-indigo-500 shadow-sm"
+            >
+              <option value="ALL">All Classes</option>
+              <option value="8">Class 8</option>
+              <option value="9">Class 9</option>
+              <option value="10">Class 10</option>
+            </select>
             <span className="text-xs font-black text-slate-700 uppercase px-3 py-1 bg-white rounded-md border border-gray-200 shadow-sm">
-              Total: {filteredStudents.length}{studentSearch ? ` / ${students.length}` : ''}
+              Total: {filteredStudents.length}{(studentSearch || filterClassId !== 'ALL') ? ` / ${students.length}` : ''}
             </span>
             <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-md border border-indigo-100 uppercase tracking-wider">
               Selected: {selectedStudentIds.size}

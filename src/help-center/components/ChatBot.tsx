@@ -47,7 +47,7 @@ export const ChatBot: React.FC = () => {
 
   useEffect(() => {
     if (!isOpen) { setSuggestions([]); setShowSuggestions(false); return; }
-    if (!inputText.trim() || mode === 'help') { setSuggestions([]); setShowSuggestions(false); return; }
+    if (!inputText.trim()) { setSuggestions([]); setShowSuggestions(false); return; }
     if (forgotState === 'awaiting_email') { setSuggestions([]); setShowSuggestions(false); return; }
     const timer = setTimeout(async () => {
       try {
@@ -55,9 +55,9 @@ export const ChatBot: React.FC = () => {
         setSuggestions(res.data || []);
         setShowSuggestions(res.data?.length > 0);
       } catch { setSuggestions([]); setShowSuggestions(false); }
-    }, 250);
+    }, 200);
     return () => clearTimeout(timer);
-  }, [inputText, isOpen, mode, forgotState]);
+  }, [inputText, isOpen, forgotState]);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -105,6 +105,7 @@ export const ChatBot: React.FC = () => {
   const handleSend = async (textToSend?: string) => {
     const q = textToSend || inputText;
     if (!q.trim()) return;
+    setMode('chat');
 
     if (forgotState === 'awaiting_email') {
       handleSendForgotEmail(q.trim());
@@ -539,22 +540,51 @@ export const ChatBot: React.FC = () => {
                   <div ref={messagesEndRef} />
                 </div>
 
-                <form onSubmit={e => { e.preventDefault(); handleSend(); }} className="p-2.5 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800 flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder={forgotState === 'awaiting_email' ? 'Enter your school email...' : 'Type your question...'}
-                    value={inputText}
-                    onChange={e => setInputText(e.target.value)}
-                    className="flex-1 px-3.5 py-2 text-xs rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!inputText.trim()}
-                    className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white transition-colors flex-shrink-0"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </form>
+                <div className="relative">
+                  {showSuggestions && suggestions.length > 0 && (
+                    <div ref={suggestRef} className="absolute bottom-full mb-1 left-2 right-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl shadow-2xl z-50 overflow-hidden max-h-48 overflow-y-auto animate-in fade-in slide-in-from-bottom-2">
+                      <div className="px-3 py-1.5 bg-gray-50 dark:bg-slate-900/60 border-b border-gray-100 dark:border-slate-700/50 text-[10px] font-black uppercase text-gray-400 tracking-wider flex items-center justify-between">
+                        <span>Suggested Articles / Topics</span>
+                        <span className="text-[9px] font-mono text-blue-600 dark:text-blue-400">{suggestions.length} matches</span>
+                      </div>
+                      <div className="divide-y divide-gray-100 dark:divide-slate-700/50">
+                        {suggestions.map((sug, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => {
+                              setInputText(sug);
+                              setShowSuggestions(false);
+                              handleSend(sug);
+                            }}
+                            className="w-full text-left px-3.5 py-2.5 text-xs font-semibold text-gray-800 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-blue-900/40 hover:text-blue-600 transition-colors flex items-center gap-2"
+                          >
+                            <Search size={12} className="text-gray-400 shrink-0" />
+                            <span className="truncate">{sug}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <form onSubmit={e => { e.preventDefault(); handleSend(); }} className="p-2.5 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800 flex items-center gap-2">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      placeholder={forgotState === 'awaiting_email' ? 'Enter your school email...' : 'Type your question...'}
+                      value={inputText}
+                      onChange={e => setInputText(e.target.value)}
+                      className="flex-1 px-3.5 py-2 text-xs rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!inputText.trim()}
+                      className="p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white transition-colors flex-shrink-0"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </form>
+                </div>
               </>
             )}
           </div>

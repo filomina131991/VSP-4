@@ -491,51 +491,55 @@ const UserManagementPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-8 py-5 text-center">
-                      <button
-                        onClick={() => handleDirectResetPassword(u)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-amber-250 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
-                        title="Reset User Password to default"
-                      >
-                        <RotateCcw size={12} />
-                        <span>Reset</span>
-                      </button>
+                      {currentUser?.role === 'WEBMASTER' && (
+                        <button
+                          onClick={() => handleDirectResetPassword(u)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-amber-250 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-xl text-xs font-bold transition-all active:scale-95 cursor-pointer"
+                          title="Reset User Password to default"
+                        >
+                          <RotateCcw size={12} />
+                          <span>Reset</span>
+                        </button>
+                      )}
                     </td>
                     <td className="px-8 py-5 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button 
-                          onClick={async () => {
-                            let distId = u.districtId;
-                            let eduId = u.eduId || u.subDistrictId;
+                      {currentUser?.role === 'WEBMASTER' && (
+                        <div className="flex items-center justify-end gap-2">
+                          <button 
+                            onClick={async () => {
+                              let distId = u.districtId;
+                              let eduId = u.eduId || u.subDistrictId;
 
-                            if (u.schoolId) {
-                              const school = schools.find(s => s.id === u.schoolId) || 
-                                            (await apiClient.get(`/management/schools?schoolId=${u.schoolId}`)).data[0];
-                              if (school) {
-                                eduId = school.eduId || school.subDistrictId;
+                              if (u.schoolId) {
+                                const school = schools.find(s => s.id === u.schoolId) || 
+                                              (await apiClient.get(`/management/schools?schoolId=${u.schoolId}`)).data[0];
+                                if (school) {
+                                  eduId = school.eduId || school.subDistrictId;
+                                  const edu = allEduDistricts.find(e => e.id === eduId) || 
+                                             (await apiClient.get(`/management/educational-districts?id=${eduId}`)).data[0];
+                                  if (edu) distId = edu.districtId;
+                                }
+                              } else if (eduId) {
                                 const edu = allEduDistricts.find(e => e.id === eduId) || 
                                            (await apiClient.get(`/management/educational-districts?id=${eduId}`)).data[0];
                                 if (edu) distId = edu.districtId;
                               }
-                            } else if (eduId) {
-                              const edu = allEduDistricts.find(e => e.id === eduId) || 
-                                         (await apiClient.get(`/management/educational-districts?id=${eduId}`)).data[0];
-                              if (edu) distId = edu.districtId;
-                            }
 
-                            setEditingUser({ ...u, districtId: distId, eduId: eduId, password: '' });
-                            setIsModalOpen(true);
-                          }}
-                          className="p-2 text-gray-300 hover:text-black transition-colors"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(u)}
-                          className="p-2 text-gray-300 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+                              setEditingUser({ ...u, districtId: distId, eduId: eduId, password: '' });
+                              setIsModalOpen(true);
+                            }}
+                            className="p-2 text-gray-300 hover:text-black transition-colors"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(u)}
+                            className="p-2 text-gray-300 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -654,7 +658,7 @@ const UserManagementPage: React.FC = () => {
                   </div>
                 )}
 
-                {(editingUser?.role === 'DEO' || editingUser?.role === 'SCHOOL') && editingUser?.mainDistrictId && (
+                {(editingUser?.role === 'DEO' || editingUser?.role === 'SCHOOL' || editingUser?.role === 'DIET') && editingUser?.mainDistrictId && (
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Revenue District Access</label>
                     {currentUser?.role === 'WEBMASTER' || currentUser?.role === 'DIET' ? (

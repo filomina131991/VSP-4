@@ -41,6 +41,52 @@ const cleanString = (str: any) => {
   return String(str).trim().replace(/\s+/g, ' ');
 };
 
+// Normalizes any DOB representation (ISO string, DD/MM/YYYY, Excel serial number,
+// Date) into a canonical YYYY-MM-DD string. Returns '' when the value is unparseable
+// so that the backend never receives an invalid Date that Mongoose would silently drop.
+export const normalizeDobValue = (v: any): string => {
+  if (v === undefined || v === null) return '';
+
+  if (v instanceof Date) {
+    if (isNaN(v.getTime())) return '';
+    return v.toISOString().slice(0, 10);
+  }
+
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  }
+
+  const s = String(v).trim();
+  if (!s) return '';
+
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:T.*)?$/);
+  if (iso) {
+    const d = new Date(Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])));
+    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  }
+
+  const serial = s.match(/^\d{4,6}(?:\.\d+)?$/);
+  if (serial) {
+    const d = new Date(Math.round((Number(serial[0]) - 25569) * 86400 * 1000));
+    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  }
+
+  const dmy = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+  if (dmy) {
+    const day = Number(dmy[1]);
+    const month = Number(dmy[2]);
+    let year = Number(dmy[3]);
+    if (year < 100) year += year >= 70 ? 1900 : 2000;
+    if (month < 1 || month > 12 || day < 1 || day > 31) return '';
+    const d = new Date(Date.UTC(year, month - 1, day));
+    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+  }
+
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+};
+
 export const autoCorrectRow = (rawRow: any): ParsedStudentRow => {
   const corrected: any = {};
 
