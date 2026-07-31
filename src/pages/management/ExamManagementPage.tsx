@@ -557,7 +557,7 @@ const ExamManagementPage: React.FC = () => {
                 onClick={() => setIsMarksSectionOpen(!isMarksSectionOpen)}
                 className="flex items-center justify-between w-full text-left group"
               >
-                <label className="text-[10px] uppercase font-bold text-gray-400 cursor-pointer group-hover:text-gray-600 transition-colors">
+                <label className="text-[10px] uppercase font-black bg-gradient-to-r from-pink-500 to-violet-500 bg-clip-text text-transparent cursor-pointer group-hover:from-pink-600 group-hover:to-violet-600 transition-all">
                   Subject Maximum Marks ({availableCodes.length} codes &middot; {Object.values(subjectsByMedium).reduce((sum, g) => sum + (g.p01?.length || 0) + (g.p02?.length || 0) + (g.p03?.length || 0) + (g.p04?.length || 0) + (g.core?.length || 0), 0)} subjects)
                 </label>
                 {isMarksSectionOpen ? (
@@ -638,7 +638,7 @@ const ExamManagementPage: React.FC = () => {
                                   <label className="text-[9px] font-black text-gray-500 truncate">{sub.name}</label>
                                   <input 
                                     type="number" 
-                                    min="1"
+                                    min="0"
                                     max="200"
                                     value={newExamMaxMarks[subId] || ''}
                                     onChange={e => {
@@ -682,7 +682,7 @@ const ExamManagementPage: React.FC = () => {
                                   <label className="text-[9px] font-black text-gray-500 truncate">{sub.name}</label>
                                   <input 
                                     type="number" 
-                                    min="1"
+                                    min="0"
                                     max="200"
                                     value={newExamMaxMarks[subId] ?? p01Val ?? ''}
                                     onChange={e => {
@@ -721,7 +721,7 @@ const ExamManagementPage: React.FC = () => {
                                   <label className="text-[9px] font-black text-gray-500 truncate">{sub.name}</label>
                                   <input 
                                     type="number" 
-                                    min="1"
+                                    min="0"
                                     max="200"
                                     value={newExamMaxMarks[subId] || ''}
                                     onChange={e => {
@@ -760,7 +760,7 @@ const ExamManagementPage: React.FC = () => {
                                   <label className="text-[9px] font-black text-gray-500 truncate">{sub.name}</label>
                                   <input 
                                     type="number" 
-                                    min="1"
+                                    min="0"
                                     max="200"
                                     value={newExamMaxMarks[subId] || ''}
                                     onChange={e => {
@@ -799,7 +799,7 @@ const ExamManagementPage: React.FC = () => {
                                   <label className="text-[9px] font-black text-gray-500 truncate">{sub.name}</label>
                                   <input 
                                     type="number" 
-                                    min="1"
+                                    min="0"
                                     max="200"
                                     value={newExamMaxMarks[subId] || ''}
                                     onChange={e => {

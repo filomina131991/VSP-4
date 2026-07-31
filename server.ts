@@ -255,7 +255,7 @@ async function getMediumMaps() {
 
 async function resolveMediumShortName(input: string): Promise<string> {
   const upper = (input || '').toUpperCase().trim();
-  if (!upper) return 'Tamil';
+  if (!upper || upper === 'NONE' || upper === 'N/A' || upper === 'EMPTY') return '';
   if (upper.includes('TAMIL') || upper === 'TM') return 'Tamil';
   if (upper.includes('MALAYALAM') || upper === 'MM') return 'Malayalam';
   if (upper.includes('ENGLISH') || upper === 'EM') return 'English';
@@ -265,9 +265,9 @@ async function resolveMediumShortName(input: string): Promise<string> {
   if (maps.codeToShortName[upper]) return maps.codeToShortName[upper];
   if (maps.shortNameToCode[upper]) {
     const code = maps.shortNameToCode[upper];
-    return maps.codeToShortName[code] || 'Tamil';
+    return maps.codeToShortName[code] || '';
   }
-  return 'Tamil';
+  return '';
 }
 
 async function resolveMediumSuffix(input: string): Promise<string> {
@@ -677,16 +677,30 @@ export async function calculateStatsForScope(examId: string, scopeFilter: any) {
     });
   });
 
-  // A student "appeared" if they have at least 1 non-absent, non-empty mark across all subjects.
+  // A student "appeared" if they are explicitly marked as present, OR if they have at least 1 non-absent, non-empty mark across all subjects.
   // marksList is already grouped by student (one entry per student).
   const appearedStudentIds = new Set<string>();
   marksList.forEach(m => {
+    const presentStatusObj = m.presentStatus ? Object.fromEntries(m.presentStatus) : {};
     const marksObj = m.marks ? Object.fromEntries(m.marks) : {};
     const grades = m.grades ? Object.fromEntries(m.grades) : {};
-    for (const val of [...Object.values(marksObj), ...Object.values(grades)]) {
-      if (val !== undefined && val !== null && String(val).trim() !== '' && !isAbsentGrade(String(val))) {
-        appearedStudentIds.add(m.studentId);
+    
+    let explicitlyPresent = false;
+    for (const pStatus of Object.values(presentStatusObj)) {
+      if ((pStatus as any)?.isPresent === true) {
+        explicitlyPresent = true;
         break;
+      }
+    }
+
+    if (explicitlyPresent) {
+      appearedStudentIds.add(m.studentId);
+    } else {
+      for (const val of [...Object.values(marksObj), ...Object.values(grades)]) {
+        if (val !== undefined && val !== null && String(val).trim() !== '' && !isAbsentGrade(String(val))) {
+          appearedStudentIds.add(m.studentId);
+          break;
+        }
       }
     }
   });
@@ -1081,15 +1095,22 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
       return res.status(400).json({ message: "Username and password are required" });
     }
 
-    const user = await User.findOne({ username });
+    const trimmedUser = String(username).trim();
+    const user = await User.findOne({
+      username: { $regex: new RegExp(`^${trimmedUser.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+    });
+
+    let needsPasswordRehash = false;
 
     const passwordMatches = async (candidate: string, stored: string | undefined | null) => {
       if (!stored || typeof stored !== 'string') return false;
       if (stored.startsWith('$2a$') || stored.startsWith('$2b$') || stored.startsWith('$2y$')) {
         return bcrypt.compare(candidate, stored);
       }
-      // Plaintext passwords are no longer accepted — reject them
-      console.warn(`User "${username}" has a non-hashed password stored. Password change required.`);
+      if (stored === candidate) {
+        needsPasswordRehash = true;
+        return true;
+      }
       return false;
     };
 
@@ -1112,18 +1133,19 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
         }
         await user.save();
       }
-    } else {
-      // No user found
     }
 
     if (authenticatedUser) {
       const accessToken = generateAccessToken(authenticatedUser);
       const refreshToken = generateRefreshToken(authenticatedUser);
 
-      // Reset login attempts on success
+      // Reset login attempts & upgrade password if needed
       authenticatedUser.loginAttempts = 0;
       authenticatedUser.lockedUntil = null;
       authenticatedUser.lastLogin = new Date();
+      if (needsPasswordRehash) {
+        authenticatedUser.password = await bcrypt.hash(password, 10);
+      }
 
       // Save refresh token to DB
       authenticatedUser.refreshToken = refreshToken;
@@ -1403,9 +1425,10 @@ app.post("/api/help/articles/search", async (req, res) => {
 // Auto-suggest for search box
 app.get("/api/help/suggestions", async (req, res) => {
   try {
-    const q = (req.query.q as string || '').trim();
+    const q = (req.query.q as string || '').trim().toLowerCase();
     if (q.length < 1) return res.json([]);
     const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
     const articles = await HelpArticle.find({
       isPublished: true,
       $or: [
@@ -1413,13 +1436,26 @@ app.get("/api/help/suggestions", async (req, res) => {
         { keywords: { $elemMatch: { $regex: regex } } },
       ]
     }).select('title keywords').limit(8).lean();
-    const suggestions = articles.flatMap((a: any) => {
-      const matches: string[] = [];
-      if (regex.test(a.title)) matches.push(a.title);
-      a.keywords?.forEach((k: string) => { if (regex.test(k) && !matches.includes(k)) matches.push(k); });
-      return matches;
-    }).slice(0, 8);
-    res.json(suggestions);
+
+    const matchesSet = new Set<string>();
+    articles.forEach((a: any) => {
+      if (regex.test(a.title)) matchesSet.add(a.title);
+      a.keywords?.forEach((k: string) => { if (regex.test(k)) matchesSet.add(k); });
+    });
+
+    const LOCAL_SUGGESTIONS = [
+      'How to add student?', 'How to delete student?', 'How to add teacher?',
+      'Medium Validation Error', 'Language Validation Error', 'Login Issues',
+      'Marks Entry Not Working', 'Exam Configuration Missing', 'Forgot Password',
+      'Paper I Missing', 'Subject Assignment Missing', 'ICT Option Missing',
+      'Final Confirmation Disabled', 'Student Count Mismatch', 'Dashboard Count Wrong'
+    ];
+
+    LOCAL_SUGGESTIONS.forEach(item => {
+      if (item.toLowerCase().includes(q)) matchesSet.add(item);
+    });
+
+    res.json(Array.from(matchesSet).slice(0, 8));
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
@@ -3965,13 +4001,13 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
 
     if (req.user) {
       if (req.user.role === 'DEO' || req.user.role === 'DIET') {
-        const deoEdu = req.user.subDistrictId || req.user.eduDistrictId || req.user.eduId;
+        const deoEdu = req.user.role === 'DEO' ? (req.user.subDistrictId || req.user.eduDistrictId || req.user.eduId) : null;
         if (deoEdu) {
           effectiveEduId = deoEdu;
         } else if (eduId && eduId !== 'ALL') {
           effectiveEduId = eduId;
         } else {
-          effectiveDistrictId = req.user.districtId || 'dist-9';
+          effectiveDistrictId = req.user.districtId || districtId || 'dist-9';
           effectiveEduId = undefined;
         }
       } else if (req.user.role === 'WEBMASTER') {
@@ -4323,6 +4359,58 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
         basicLevel: 0, averageLevel: 0, profoundLevel: 0,
         gradeDistribution: {}, aPlusBreakdown: {}, victoryPercentage: 0
       };
+    }
+
+    try {
+      let liveFilter: any = { className: examClass, active: { $ne: false } };
+      if (effectiveSchoolId) {
+        liveFilter.$or = [
+          { schoolId: effectiveSchoolId }, 
+          { schoolCode: effectiveSchoolId }, 
+          { schoolId: effectiveSchoolId.toString() }
+        ];
+        if (mongoose.Types.ObjectId.isValid(effectiveSchoolId)) {
+          liveFilter.$or.push({ schoolId: new mongoose.Types.ObjectId(effectiveSchoolId) });
+        }
+      } else if (effectiveEduId || (effectiveDistrictId && effectiveDistrictId !== 'ALL')) {
+        let sIds: string[] = [];
+        if (effectiveEduId) {
+          const schoolsInEdu = await School.find({ subDistrictId: effectiveEduId, role: "SCHOOL" }).lean();
+          sIds = schoolsInEdu.map((s: any) => s._id.toString());
+        } else {
+          const rawEdus = await EducationalDistrict.find({ districtId: effectiveDistrictId }).lean();
+          const eduIds = rawEdus.map((e: any) => e.id);
+          const schoolsInDist = await School.find({ subDistrictId: { $in: eduIds }, role: "SCHOOL" }).lean();
+          sIds = schoolsInDist.map((s: any) => s._id.toString());
+        }
+        
+        const objIds = sIds.filter(id => mongoose.Types.ObjectId.isValid(id)).map(id => new mongoose.Types.ObjectId(id));
+        liveFilter.$or = [
+          { schoolId: { $in: [...sIds, ...objIds] } }, 
+          { schoolCode: { $in: sIds } }
+        ];
+      }
+      
+      const actualTotalStudents = await Student.countDocuments(liveFilter);
+      const actualMaleStudents = await Student.countDocuments({ ...liveFilter, gender: { $regex: /^(male|boy)$/i } });
+      const actualFemaleStudents = await Student.countDocuments({ ...liveFilter, gender: { $regex: /^(female|girl)$/i } });
+
+      if (actualTotalStudents > 0 || effectiveSchoolId) {
+        // Calculate how many marks were actually entered according to the old stale stats
+        const staleTotal = statsData.totalStudents || 0;
+        const staleNotEntered = statsData.notEntered || 0;
+        const actualEnteredMarksCount = Math.max(0, staleTotal - staleNotEntered);
+
+        // Update with live total
+        statsData.totalStudents = actualTotalStudents;
+        statsData.maleCount = actualMaleStudents;
+        statsData.femaleCount = actualFemaleStudents;
+        
+        // Dynamically adjust notEntered based on the new total
+        statsData.notEntered = Math.max(0, actualTotalStudents - actualEnteredMarksCount);
+      }
+    } catch (err) {
+      console.error("Error fetching live total students count:", err);
     }
 
     const finalResponse = {
@@ -4749,6 +4837,115 @@ app.get("/api/dashboard/school-type-counts", async (req: any, res) => {
   }
 });
 
+
+app.get("/api/dashboard/entry-eagle-view", async (req: any, res) => {
+  try {
+    const examId = (req.query.examId as string) || 'exam-1';
+    const districtId = req.query.districtId as string | undefined;
+    const eduId = req.query.eduId as string | undefined;
+
+    const exam = await Exam.findOne({ id: examId }).lean();
+    const examClass = exam?.standard || '10';
+
+    const rawEduDistricts = await EducationalDistrict.find().lean();
+    
+    let query: any = { role: "SCHOOL" };
+    if (eduId && eduId !== 'ALL') {
+      query.subDistrictId = eduId;
+    } else if (districtId && districtId !== 'ALL') {
+      const eduIds = rawEduDistricts.filter((e: any) => e.districtId === districtId).map((e: any) => e.id);
+      query.subDistrictId = { $in: eduIds };
+    }
+
+    const schoolsList = await School.find(query).lean();
+    const schoolIds = schoolsList.map(s => s._id.toString());
+    const schoolCodes = schoolsList.map((s: any) => s.schoolCode).filter(Boolean);
+    const allIdentifiers = [...schoolIds, ...schoolCodes];
+    const schoolObjectIds = schoolIds.filter(id => mongoose.Types.ObjectId.isValid(id)).map(id => new mongoose.Types.ObjectId(id));
+
+    if (allIdentifiers.length === 0) {
+      return res.json({ schools: [] });
+    }
+
+    const students = await Student.find({
+      className: examClass,
+      active: { $ne: false },
+      $or: [
+        { schoolId: { $in: [...allIdentifiers, ...schoolObjectIds] } },
+        { schoolCode: { $in: allIdentifiers } }
+      ]
+    }, { id: 1, _id: 1, schoolId: 1, schoolCode: 1 }).lean();
+
+    const schoolDataMap: Record<string, any> = {};
+    const studentToSchoolMap: Record<string, string> = {};
+
+    schoolsList.forEach(s => {
+      schoolDataMap[s._id.toString()] = {
+        code: s.schoolCode || s.code || '',
+        name: s.name,
+        totalStudents: 0,
+        subjects: {}
+      };
+    });
+
+    students.forEach((student: any) => {
+      const sid = student.schoolId?.toString() || student.schoolCode?.toString();
+      if (!sid) return;
+      
+      let matchedSchoolId = '';
+      if (schoolDataMap[sid]) matchedSchoolId = sid;
+      else {
+        const matched = schoolsList.find(s => s.schoolCode === sid || s.code === sid || s._id.toString() === sid);
+        if (matched) matchedSchoolId = matched._id.toString();
+      }
+
+      if (matchedSchoolId) {
+        schoolDataMap[matchedSchoolId].totalStudents++;
+        const studentId = student.id || student._id.toString();
+        studentToSchoolMap[studentId] = matchedSchoolId;
+      }
+    });
+
+    const marks = await Mark.find({ examId }, { studentId: 1, subjectId: 1, mark: 1, grade: 1, isPresent: 1, isAbsent: 1 }).lean();
+    const { idToCode } = await getSubjectMapping();
+
+    marks.forEach((m: any) => {
+      const schoolId = studentToSchoolMap[m.studentId];
+      if (!schoolId) return;
+
+      const subjectCode = idToCode[m.subjectId?.toString()] || m.subjectId?.toString();
+      if (!subjectCode) return;
+
+      const hasMark = m.mark !== undefined && m.mark !== null && String(m.mark).trim() !== '';
+      const hasGrade = m.grade !== undefined && m.grade !== null && String(m.grade).trim() !== '';
+      if (hasMark || hasGrade || m.isAbsent === true || m.isPresent === true) {
+        if (!schoolDataMap[schoolId].subjects[subjectCode]) {
+           schoolDataMap[schoolId].subjects[subjectCode] = 0;
+        }
+        schoolDataMap[schoolId].subjects[subjectCode]++;
+      }
+    });
+
+    const resultSchools = Object.values(schoolDataMap).filter(s => s.totalStudents > 0);
+    resultSchools.sort((a, b) => b.totalStudents - a.totalStudents);
+
+    let validSubjects = [];
+    if (exam && exam.maxMarks) {
+      const examSubjectIds = Object.keys(exam.maxMarks).filter(id => exam.maxMarks[id] > 0);
+      validSubjects = examSubjectIds.map(id => idToCode[id] || id).filter(Boolean);
+      validSubjects = [...new Set(validSubjects)].sort();
+    } else {
+      // Fallback
+      validSubjects = ['P01', 'P02', 'P03', 'P04', 'P05', 'P06', 'P07', 'P08', 'P09', 'P10'];
+    }
+
+    return res.json({ schools: resultSchools, validSubjects });
+  } catch (err) {
+    console.error("Error in entry eagle view:", err);
+    res.status(500).json({ error: "Failed to fetch eagle view" });
+  }
+});
+
 app.get("/api/dashboard/district-school-students", async (req: any, res) => {
   try {
     const examId = (req.query.examId as string) || 'exam-1';
@@ -4785,6 +4982,8 @@ app.get("/api/dashboard/district-school-students", async (req: any, res) => {
     const schoolCodes = schoolsList.map((s: any) => s.schoolCode).filter(Boolean);
     const allIdentifiers = [...schoolIds, ...schoolCodes];
 
+    const schoolObjectIds = schoolIds.filter(id => mongoose.Types.ObjectId.isValid(id)).map(id => new mongoose.Types.ObjectId(id));
+
     if (allIdentifiers.length === 0) {
       return res.json({ schools: [], totalSchools: 0, totalMale: 0, totalFemale: 0, totalStudents: 0 });
     }
@@ -4795,7 +4994,7 @@ app.get("/api/dashboard/district-school-students", async (req: any, res) => {
           className: examClass,
           active: { $ne: false },
           $or: [
-            { schoolId: { $in: allIdentifiers } },
+            { schoolId: { $in: [...allIdentifiers, ...schoolObjectIds] } },
             { schoolCode: { $in: allIdentifiers } }
           ]
         }
@@ -4816,10 +5015,13 @@ app.get("/api/dashboard/district-school-students", async (req: any, res) => {
       if (!sid) return;
 
       if (!studentCountsBySchool[sid]) studentCountsBySchool[sid] = { male: 0, female: 0 };
-      if (gender === 'Male' || gender === 'Boy') {
+      const gUpper = String(gender).toUpperCase().trim();
+      if (gUpper === 'MALE' || gUpper === 'BOY' || gUpper === 'M') {
         studentCountsBySchool[sid].male += count;
-      } else if (gender === 'Female' || gender === 'Girl') {
+      } else if (gUpper === 'FEMALE' || gUpper === 'GIRL' || gUpper === 'F') {
         studentCountsBySchool[sid].female += count;
+      } else {
+        studentCountsBySchool[sid].male += count;
       }
     });
 
@@ -6111,7 +6313,7 @@ app.post("/api/user-presets", async (req, res) => {
 // Exams
 
 
-app.post("/api/management/exams", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/exams", requireRole('WEBMASTER', 'DEO', 'DIET'), async (req: any, res) => {
   try {
     const exam = req.body;
     if (!exam || !exam.name) {
@@ -6166,7 +6368,7 @@ app.post("/api/exams", async (req, res) => {
 });
 
 // PUT /api/management/exams/:id
-app.put("/api/management/exams/:id", requireRole('WEBMASTER'), async (req: any, res) => {
+app.put("/api/management/exams/:id", requireRole('WEBMASTER', 'DEO', 'DIET'), async (req: any, res) => {
   try {
     const { id } = req.params;
     const { _id, ...updateData } = req.body;
@@ -6197,7 +6399,7 @@ app.put("/api/exams/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/management/exams/:id", requireRole('WEBMASTER'), async (req: any, res) => {
+app.delete("/api/management/exams/:id", requireRole('WEBMASTER', 'DEO', 'DIET'), async (req: any, res) => {
   try {
     const { id } = req.params;
     await Exam.deleteOne({ id });
@@ -6213,7 +6415,7 @@ app.delete("/api/management/exams/:id", requireRole('WEBMASTER'), async (req: an
   }
 });
 
-app.post("/api/management/exams/:id/reset-school", requireRole('WEBMASTER'), async (req: any, res) => {
+app.post("/api/management/exams/:id/reset-school", requireRole('WEBMASTER', 'DEO', 'DIET'), async (req: any, res) => {
   try {
     const { id } = req.params;
     const { schoolId } = req.body;
@@ -7327,6 +7529,127 @@ app.post("/api/management/students/bulk-clear-fields", authenticateToken, requir
   }
 });
 
+// ─── Bulk Student Import: cast-safe normalization helpers ─────────────────────
+// Mongoose `bulkWrite(ordered: false)` SILENTLY drops documents that fail casting
+// (e.g. a `dob` string like "15/05/2010" or a NaN numeric status), while the promise
+// still resolves. These helpers guarantee every op we send is cast-safe so no row can
+// silently disappear, and `runStudentBulkChunk` additionally re-queries the DB after
+// each chunk to prove every accepted row was actually persisted.
+
+function normalizeImportNumber(v: any): number {
+  if (v === undefined || v === null || v === '') return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeStudentDob(v: any): Date | null {
+  if (v === undefined || v === null || v === '') return null;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000)); // Excel serial date
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const s = String(v).trim();
+  if (!s) return null;
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:T.*)?$/);
+  if (iso) {
+    const d = new Date(Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const dmy = s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/);
+  if (dmy) {
+    const day = Number(dmy[1]);
+    const month = Number(dmy[2]);
+    let year = Number(dmy[3]);
+    if (year < 100) year += year >= 70 ? 1900 : 2000;
+    if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+    const d = new Date(Date.UTC(year, month - 1, day));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Executes one chunk of upsert ops with honest per-row classification and a
+// post-write DB verification. Returns { imported, updated, invalid, skipped,
+// verificationFailures } where each bucket holds the original entries. Any row that
+// was accepted but did not actually land in the DB is moved to `invalid` and recorded
+// in `verificationFailures`, guaranteeing no silent data loss can go unreported.
+async function runStudentBulkChunk(entries: any[], schoolId: string) {
+  const out = {
+    imported: [] as any[],
+    updated: [] as any[],
+    invalid: [] as any[],
+    skipped: [] as any[],
+    verificationFailures: [] as any[]
+  };
+  if (!entries.length) return out;
+
+  const years = [...new Set(entries.map((e: any) => e.academicYear))].filter(Boolean);
+  const regNos = entries.map((e: any) => e.regNo);
+  const keyOf = (e: any) => `${schoolId}|${e.academicYear}|${e.regNo}`;
+  const yearFilter = years.length ? { $in: years } : { $exists: true };
+
+  const existingKeys = new Set<string>();
+  const existingDocs = await Student.find(
+    { schoolId, academicYear: yearFilter, globalId: { $in: regNos } },
+    { globalId: 1, academicYear: 1 }
+  ).lean();
+  existingDocs.forEach((d: any) => existingKeys.add(`${schoolId}|${d.academicYear}|${d.globalId}`));
+
+  let bulkResult: any = null;
+  const writeErrorIndices = new Set<number>();
+  try {
+    bulkResult = await Student.bulkWrite(entries.map((e: any) => e.op), { ordered: false });
+  } catch (err: any) {
+    const wErr: any[] = err?.writeErrors || err?.result?.writeErrors || [];
+    wErr.forEach((we: any) => {
+      const idx = we?.index;
+      if (idx === undefined) return;
+      writeErrorIndices.add(idx);
+      out.skipped.push({ entry: entries[idx], reason: `Database rejected write: ${we?.errmsg || we?.code || 'write error'}` });
+    });
+    if (wErr.length === 0) throw err; // Unexpected failure: bubble up to the outer handler
+  }
+
+  const upsertedIdx = bulkResult
+    ? new Set(Object.keys(bulkResult?.upsertedIds || {}).map(Number))
+    : new Set<number>();
+
+  entries.forEach((e: any, i: number) => {
+    if (writeErrorIndices.has(i)) return;
+    if (upsertedIdx.has(i)) out.imported.push(e);
+    else if (existingKeys.has(keyOf(e))) out.updated.push(e);
+    else out.imported.push(e); // Provisional — confirmed against the DB below
+  });
+
+  // Post-write verification: every accepted row must actually exist in the DB.
+  const postKeys = new Set<string>();
+  const postDocs = await Student.find(
+    { schoolId, academicYear: yearFilter, globalId: { $in: regNos } },
+    { globalId: 1, academicYear: 1 }
+  ).lean();
+  postDocs.forEach((d: any) => postKeys.add(`${schoolId}|${d.academicYear}|${d.globalId}`));
+
+  for (const bucket of [out.imported, out.updated]) {
+    for (let i = bucket.length - 1; i >= 0; i--) {
+      const e = bucket[i];
+      if (!postKeys.has(keyOf(e))) {
+        bucket.splice(i, 1);
+        out.invalid.push(e);
+        out.verificationFailures.push({
+          row: e.rowNum,
+          identifier: e.regNo,
+          name: e.name,
+          reason: 'Row passed validation but was not persisted to the database (silent write drop).'
+        });
+      }
+    }
+  }
+
+  return out;
+}
+
 app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
   const startTime = Date.now();
   const logPrefix = `[STUDENT_BULK_IMPORT] [${new Date().toISOString()}] [User: ${req.user?.username || req.user?.id || 'Unknown'}]`;
@@ -7379,9 +7702,8 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
       : `${yrD - 1}-${String(yrD).slice(-2)}`;
 
     const failed: any[] = [];
-    const successful: any[] = [];
-    const rowResults: any[] = [];
-    const bulkOps: any[] = [];
+    const bulkEntries: any[] = [];
+    const importAcademicYears = new Set<string>();
     const seenRegNos = new Map<string, number>(); // regNo -> first row number seen
     const batchBase = Date.now();
     
@@ -7401,14 +7723,15 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
     // Step 1: Pre-validate every row, check internal duplicates, and build MongoDB bulkOps array
     for (let idx = 0; idx < students.length; idx++) {
       const s = students[idx];
-      const rowNum = idx + 1;
+      const rowNum = Number(s.rowNumber || s.row) || (idx + 1);
       const rawName = s.name ? String(s.name).trim() : "";
       const name = rawName.toUpperCase();
       const regNo = s.regNo ? String(s.regNo).trim() : "";
       const rawClass = String(s.classStandard || s.className || '10').trim();
       const rawDiv = String(s.division || '').trim().toUpperCase();
 
-      let className = '10';
+      const classNumMatch = String(rawClass).match(/\b(\d{1,2})\b/);
+      let className = classNumMatch ? classNumMatch[1] : '10';
       let division = 'A';
 
       const combinedDivStr = `${rawClass} ${rawDiv}`.trim();
@@ -7423,7 +7746,6 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
       if (!name && !regNo) {
         const failItem = { row: rowNum, name: "Empty Row", identifier: "N/A", status: 'failed', reason: "Row is empty" };
         failed.push(failItem);
-        rowResults.push(failItem);
         continue;
       }
 
@@ -7431,7 +7753,6 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
       if (!regNo) {
         const failItem = { row: rowNum, name: name || "Unknown Candidate", identifier: "N/A", status: 'failed', reason: "Admission Number / Register Number is required" };
         failed.push(failItem);
-        rowResults.push(failItem);
         continue;
       }
 
@@ -7439,7 +7760,6 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
       if (!name) {
         const failItem = { row: rowNum, name: "Unknown Candidate", identifier: regNo, status: 'failed', reason: "Candidate Name is required" };
         failed.push(failItem);
-        rowResults.push(failItem);
         continue;
       }
 
@@ -7454,7 +7774,6 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
           reason: `Duplicate Admission Number '${regNo}' in import file (conflicts with Row ${prevRow})` 
         };
         failed.push(failItem);
-        rowResults.push(failItem);
         continue;
       }
       seenRegNos.set(regNo.toUpperCase(), rowNum);
@@ -7482,7 +7801,7 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
       const KNOWN_CATEGORIES = ['OBC', 'SC', 'ST', 'OEC', 'GENERAL', 'GEN', 'EWS', 'SEBC', 'EZHAVA', 'MUSLIM', 'LATIN CATHOLIC', 'OBH', 'CONVERTED', 'LC', 'MU', 'EZ', 'BH', 'FC', 'BC'];
       if (medium && KNOWN_CATEGORIES.includes(medium.toUpperCase())) {
         category = medium.toUpperCase() === 'GEN' ? 'General' : medium.toUpperCase();
-        medium = 'Tamil';
+        medium = '';
       }
 
       medium = await resolveMediumShortName(medium);
@@ -7497,7 +7816,7 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
         scribe: s.scribe !== undefined ? !!s.scribe : false,
         className: className || '10',
         division: division || '',
-        dob: s.dob || null,
+        dob: normalizeStudentDob(s.dob),
         fatherName: s.fatherName || '',
         motherName: s.motherName || '',
         caste: s.caste || '',
@@ -7506,12 +7825,13 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
         place: s.place || '',
         mobile: s.mobile || '',
         sslcRegNo: s.sslcRegNo || '',
-        lettersStatus: s.letterStatus !== undefined ? Number(s.letterStatus) : 0,
-        readingStatus: s.readingStatus !== undefined ? Number(s.readingStatus) : 0,
-        writingStatus: s.writingStatus !== undefined ? Number(s.writingStatus) : 0,
+        lettersStatus: normalizeImportNumber(s.letterStatus),
+        readingStatus: normalizeImportNumber(s.readingStatus),
+        writingStatus: normalizeImportNumber(s.writingStatus),
         academicYear,
         active: true
       };
+      importAcademicYears.add(academicYear);
 
       let paper1Raw = s.firstLangPaper1 ? String(s.firstLangPaper1).trim() : '';
       let paper2Raw = s.firstLangPaper2 ? String(s.firstLangPaper2).trim() : '';
@@ -7616,68 +7936,154 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
       updateFields.schoolCode = schoolCode;
       updateFields.active = true;
 
-      bulkOps.push({
-        updateOne: {
-          filter: {
-            $or: [
-              { uniqueId },
-              { schoolId, globalId: regNo }
-            ]
-          },
-          update: {
-            $set: updateFields,
-            $setOnInsert: {
-              id: s.id || newStudId,
-              globalId: regNo,
-              admissionNumber: regNo
-            }
-          },
-          upsert: true
-        }
-      });
-
-      const successItem = {
-        row: rowNum,
+      // Year-scoped filter: aligns with the compound unique index
+      // { globalId, schoolId, academicYear }, so a re-import updates the current
+      // year's enrollment instead of clobbering a previous year's student (which
+      // previously produced E11000 conflicts whose rows were silently counted as saved).
+      bulkEntries.push({
+        rowNum,
         name,
         identifier: regNo,
-        classStandard: mappedData.className,
+        regNo,
+        academicYear,
+        className: mappedData.className,
         division: mappedData.division,
         medium: mappedData.medium,
-        status: 'success'
-      };
-      successful.push(successItem);
-      rowResults.push(successItem);
+        gender: mappedData.gender,
+        category: mappedData.category,
+        op: {
+          updateOne: {
+            filter: {
+              schoolId,
+              globalId: regNo,
+              academicYear
+            },
+            update: {
+              $set: updateFields,
+              $setOnInsert: {
+                id: s.id || newStudId,
+                globalId: regNo,
+                admissionNumber: regNo
+              }
+            },
+            upsert: true
+          }
+        }
+      });
     }
 
-    // Step 2: Execute MongoDB bulkWrite operations in transactions/batches of 100
+    // Step 2: Execute chunked upserts with per-row classification and DB verification
     const BATCH_SIZE = 100;
-    let totalWritten = 0;
+    let imported = 0;
+    let updated = 0;
+    let invalid = 0;
+    let skippedWrite = 0;
+    const verificationFailures: any[] = [];
+    const chunkResults: any[] = [];
 
-    if (bulkOps.length > 0) {
-      for (let i = 0; i < bulkOps.length; i += BATCH_SIZE) {
-        const chunk = bulkOps.slice(i, i + BATCH_SIZE);
-        console.log(`${logPrefix} Executing bulkWrite batch ${Math.floor(i / BATCH_SIZE) + 1} (${chunk.length} items)...`);
-        await Student.bulkWrite(chunk, { ordered: false });
-        totalWritten += chunk.length;
+    const toResult = (e: any, status: string, classification: string, reason?: string) => ({
+      row: e.rowNum,
+      name: e.name,
+      identifier: e.identifier,
+      classStandard: e.className,
+      division: e.division,
+      medium: e.medium,
+      gender: e.gender,
+      category: e.category,
+      status,
+      classification,
+      ...(reason ? { reason } : {})
+    });
+
+    const preCount = importAcademicYears.size
+      ? await Student.countDocuments({ schoolId, academicYear: { $in: [...importAcademicYears] } })
+      : 0;
+
+    if (bulkEntries.length > 0) {
+      const totalChunks = Math.ceil(bulkEntries.length / BATCH_SIZE);
+      for (let i = 0; i < bulkEntries.length; i += BATCH_SIZE) {
+        const chunk = bulkEntries.slice(i, i + BATCH_SIZE);
+        const chunkNo = Math.floor(i / BATCH_SIZE) + 1;
+        console.log(`${logPrefix} Executing bulkWrite chunk ${chunkNo}/${totalChunks} (${chunk.length} rows)...`);
+        const out = await runStudentBulkChunk(chunk, schoolId);
+        imported += out.imported.length;
+        updated += out.updated.length;
+        invalid += out.invalid.length;
+        skippedWrite += out.skipped.length;
+        verificationFailures.push(...out.verificationFailures);
+        chunkResults.push(...out.imported.map((e: any) => toResult(e, 'success', 'imported')));
+        chunkResults.push(...out.updated.map((e: any) => toResult(e, 'success', 'updated')));
+        chunkResults.push(...out.invalid.map((e: any) => toResult(e, 'failed', 'invalid', 'Row was not persisted to the database (silent write drop).')));
+        chunkResults.push(...out.skipped.map((s: any) => toResult(s.entry, 'skipped', 'skipped', s.reason)));
       }
       invalidateSchoolAnalytics(schoolId);
+      if (typeof (analyticsCache as any).flushAll === 'function') (analyticsCache as any).flushAll();
+      else if (typeof (analyticsCache as any).clear === 'function') (analyticsCache as any).clear();
     }
 
+    const postCount = importAcademicYears.size
+      ? await Student.countDocuments({ schoolId, academicYear: { $in: [...importAcademicYears] } })
+      : 0;
+    const expectedPostCount = preCount + imported;
+    const countMatch = postCount === expectedPostCount;
+    const verified = verificationFailures.length === 0 && countMatch;
+
+    // Build final per-row results for the frontend diagnostics tables
+    const failedResults = failed.map((f: any) => ({
+      row: f.row,
+      name: f.name,
+      identifier: f.identifier,
+      classStandard: '',
+      division: '',
+      medium: '',
+      gender: '',
+      category: '',
+      status: 'failed',
+      classification: f.reason?.includes('Duplicate') ? 'duplicate' : 'invalid',
+      reason: f.reason
+    }));
+    const allResults = [...failedResults, ...chunkResults];
+    const successfulResults = chunkResults.filter((r: any) => r.status === 'success');
+    const failedFinal = [...failedResults, ...chunkResults.filter((r: any) => r.status === 'failed')];
+    const duplicateCount = failed.filter((f: any) => f.reason?.includes('Duplicate')).length;
+
     const durationMs = Date.now() - startTime;
-    console.log(`${logPrefix} Import complete in ${durationMs}ms: ${totalWritten} imported, ${failed.length} failed.`);
+    console.log(`${logPrefix} Import finished in ${durationMs}ms: ${imported} imported, ${updated} updated, ${invalid} invalid, ${skippedWrite} skipped, ${failed.length} failed. Verification: ${verified ? 'PASS' : 'FAIL'} (DB ${preCount} -> ${postCount}, expected ${expectedPostCount}).`);
+
+    if (!verified) {
+      console.error(`${logPrefix} VERIFICATION FAILED: ${verificationFailures.length} row(s) not persisted.`, verificationFailures.slice(0, 20));
+    }
 
     return res.json({
-      success: true,
-      message: `Bulk import completed. ${totalWritten} records saved/updated, ${failed.length} failed.`,
+      success: verified,
+      verified,
+      message: verified
+        ? `Bulk import completed. ${imported} imported, ${updated} updated, ${failed.length} failed, ${skippedWrite} skipped. Database verified (${preCount} -> ${postCount}).`
+        : `Import FAILED verification: ${verificationFailures.length} row(s) were reported but were not persisted to the database. No success was recorded for those rows.`,
       processed: students.length,
-      imported: totalWritten,
-      successfulCount: totalWritten,
-      failedCount: failed.length,
-      skippedCount: failed.filter(f => f.reason?.includes('Duplicate')).length,
+      previewCount: students.length,
+      imported,
+      updated,
+      invalid,
+      skippedCount: skippedWrite,
+      duplicateCount,
+      failedCount: failedFinal.length,
+      successfulCount: imported + updated,
+      databasePreCount: preCount,
+      databaseSavedCount: postCount,
+      expectedDatabaseCount: expectedPostCount,
+      verification: {
+        ok: verified,
+        preCount,
+        postCount,
+        expectedPostCount,
+        countMatch,
+        failures: verificationFailures
+      },
       processingTimeMs: durationMs,
-      successful,
-      failed,
-      results: rowResults
+      successful: successfulResults,
+      failed: failedFinal,
+      results: allResults
     });
   } catch (err: any) {
     const durationMs = Date.now() - startTime;
@@ -7694,6 +8100,44 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
     });
   }
 });
+
+// Post-import DB verification: confirms every regNo the client was told was saved
+// actually exists in the students collection for the given school + academic year.
+app.post("/api/management/students/verify-import", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
+  try {
+    const { schoolId, academicYear, regNos, expectedCount } = req.body;
+    if (!schoolId) {
+      return res.status(400).json({ success: false, message: "School ID is required" });
+    }
+    if (!Array.isArray(regNos) || regNos.length === 0) {
+      return res.status(400).json({ success: false, message: "RegNos array is required" });
+    }
+    if (!academicYear) {
+      return res.status(400).json({ success: false, message: "Academic Year is required" });
+    }
+
+    const uniqueRegNos = [...new Set(regNos.map((r: any) => String(r)))];
+    const dbCount = await Student.countDocuments({
+      schoolId,
+      academicYear,
+      globalId: { $in: uniqueRegNos }
+    });
+    const expected = typeof expectedCount === 'number' ? expectedCount : uniqueRegNos.length;
+    const match = dbCount === expected;
+
+    return res.json({
+      success: match,
+      verified: match,
+      expectedCount: expected,
+      dbCount,
+      match
+    });
+  } catch (err: any) {
+    console.error("Verify Import Error:", err);
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
 app.post("/api/management/students/bulk-update-medium", authenticateToken, async (req: any, res) => {
   try {
     const { schoolId, academicYear, className, division, medium: rawMedium, firstLangPaper1, firstLangPaper2, secondLang: reqSecondLang, thirdLang: reqThirdLang } = req.body;

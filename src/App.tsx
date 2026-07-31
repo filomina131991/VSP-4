@@ -15,6 +15,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage';
 
 // Lazy-load all other pages
 const DashboardPage = React.lazy(() => import('./pages/DashboardPage'));
+
 const DataManagementPage = React.lazy(() => import('./pages/management/DataManagementPage'));
 const ExamManagementPage = React.lazy(() => import('./pages/management/ExamManagementPage'));
 const UserManagementPage = React.lazy(() => import('./pages/management/UserManagementPage'));

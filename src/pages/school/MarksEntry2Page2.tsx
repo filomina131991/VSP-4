@@ -1557,7 +1557,21 @@ const MarksEntry2Page: React.FC = () => {
                       <input
                         type="checkbox"
                         checked={availableSubjects.length > 0 && selectedSubjectIds.length === availableSubjects.length}
-                        onChange={(e) => setSelectedSubjectIds(e.target.checked ? availableSubjects.map(s => s.id) : [])}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            const validSubjects = availableSubjects.filter(s => {
+                              const subCode = s.code || ((`${s.shortName || ''} ${s.name || ''}`.toUpperCase().match(/P\d{2}/)?.[0] || s.shortName));
+                              const subjectMaxMarks = selectedExamObj?.maxMarks?.[s.id] || (subCode && selectedExamObj?.maxMarks?.[subCode]);
+                              return !!subjectMaxMarks;
+                            });
+                            if (validSubjects.length < availableSubjects.length) {
+                                toast.error('Some subjects are not allowed for this exam configuration and were skipped.');
+                            }
+                            setSelectedSubjectIds(validSubjects.map(s => s.id));
+                          } else {
+                            setSelectedSubjectIds([]);
+                          }
+                        }}
                         className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                       />
                       <span className="text-xs font-bold text-gray-700 dark:text-gray-300">Select All</span>

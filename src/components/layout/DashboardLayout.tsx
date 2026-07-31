@@ -169,7 +169,6 @@ const DashboardLayout: React.FC = () => {
       { label: 'Exams Config', path: '/dashboard/exams', icon: ClipboardList },
       { label: 'Question Repository', path: '/dashboard/repository', icon: BookOpen },
       { label: 'Broadcast Alerts', path: '/dashboard/alerts', icon: Megaphone },
-      { label: 'Help Center', path: '/help', icon: HelpCircle },
     ],
     SCHOOL: [
       { label: 'Analysis Dashboard', path: '/dashboard', icon: LayoutDashboard },

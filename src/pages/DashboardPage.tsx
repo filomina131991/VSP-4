@@ -33,7 +33,8 @@ import {
   Edit3,
   Map,
   Info,
-  RefreshCw
+  RefreshCw,
+  ArrowLeft
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -115,6 +116,11 @@ const DashboardPage: React.FC = () => {
   const [districtModalEduDistrict, setDistrictModalEduDistrict] = useState('ALL');
   const [districtModalSchoolType, setDistrictModalSchoolType] = useState('ALL');
   const [districtModalGender, setDistrictModalGender] = useState('ALL');
+
+  const [isEagleViewModalOpen, setIsEagleViewModalOpen] = useState(false);
+  const [eagleViewData, setEagleViewData] = useState<any>(null);
+  const [isEagleViewLoading, setIsEagleViewLoading] = useState(false);
+  const [eagleViewSearch, setEagleViewSearch] = useState('');
 
   const isWebmaster = user?.role === 'WEBMASTER';
   const userSubDistrictId = user?.subDistrictId;
@@ -389,6 +395,25 @@ const DashboardPage: React.FC = () => {
     };
     fetchDistrictStudents();
   }, [isDistrictStudentsModalOpen, selectedExamId, selectedDistrict, selectedEduId, refreshKey]);
+
+  useEffect(() => {
+    if (!isEagleViewModalOpen || !selectedExamId) return;
+    const fetchEagleViewData = async () => {
+      setIsEagleViewLoading(true);
+      try {
+        const params = new URLSearchParams({ examId: selectedExamId });
+        if (selectedDistrict && selectedDistrict !== 'ALL') params.append('districtId', selectedDistrict);
+        if (selectedEduId && selectedEduId !== 'ALL') params.append('eduId', selectedEduId);
+        const res = await apiClient.get(`/dashboard/entry-eagle-view?${params.toString()}`);
+        setEagleViewData(res.data);
+      } catch (err) {
+        console.error("Error fetching eagle view data:", err);
+      } finally {
+        setIsEagleViewLoading(false);
+      }
+    };
+    fetchEagleViewData();
+  }, [isEagleViewModalOpen, selectedExamId, selectedDistrict, selectedEduId, refreshKey]);
 
   const filteredDistrictSchools = useMemo(() => {
     if (!districtSchoolStudentsData?.schools) return [];
@@ -1577,7 +1602,13 @@ const DashboardPage: React.FC = () => {
             </div>
 
             {/* Overall Entry Rate Gauge */}
-            <div className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-xl p-4">
+            <div 
+              className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-xl p-4 cursor-pointer hover:shadow-lg hover:border-cyan-200 dark:hover:border-cyan-800 transition-all group relative"
+              onClick={() => setIsEagleViewModalOpen(true)}
+            >
+              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="text-[9px] font-black uppercase text-cyan-600 bg-cyan-50 px-2 py-1 rounded">Eagle View</span>
+              </div>
               <div className="flex items-center gap-2 mb-3">
                 <BookOpen size={16} className="text-cyan-500" />
                 <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">Overall Entry Rate</h3>
@@ -3034,7 +3065,113 @@ const DashboardPage: React.FC = () => {
       )}
 
       {/* District Student Breakdown Modal */}
-      {isDistrictStudentsModalOpen && (
+
+      
+
+
+      {isEagleViewModalOpen && (
+        <div className="fixed inset-0 z-[100] bg-slate-50 dark:bg-[#0d1117] flex flex-col overflow-hidden">
+          {/* Header */}
+          <div className="bg-white dark:bg-[#161b22] border-b border-gray-200 dark:border-[#30363d] px-6 py-4 flex items-center justify-between shadow-sm shrink-0">
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setIsEagleViewModalOpen(false)}
+                className="p-2 bg-gray-50 dark:bg-[#0d1117] border border-gray-200 dark:border-[#30363d] rounded-xl text-gray-500 hover:text-cyan-600 hover:border-cyan-200 transition-all"
+              >
+                <ArrowLeft size={20} />
+              </button>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 rounded-xl">
+                  <BookOpen size={20} />
+                </div>
+                <div>
+                  <h1 className="text-lg font-black uppercase tracking-wider text-gray-900 dark:text-white leading-tight">ENTRY RATE BREAKDOWN (EAGLE VIEW)</h1>
+                  <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mt-0.5">MONITOR MARKS ENTRY PROGRESS PER SCHOOL AND SUBJECT</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                <input
+                  type="text"
+                  placeholder="Search schools..."
+                  value={eagleViewSearch}
+                  onChange={(e) => setEagleViewSearch(e.target.value)}
+                  className="w-64 bg-slate-50 dark:bg-[#0d1117] border border-gray-200 dark:border-[#30363d] rounded-xl py-2 pl-9 pr-3 text-xs font-bold focus:ring-2 focus:ring-cyan-500 outline-none"
+                />
+              </div>
+              <button onClick={() => setIsEagleViewModalOpen(false)} className="px-4 py-2 bg-gray-800 dark:bg-gray-700 text-white text-xs font-black rounded-lg hover:bg-gray-700 transition-colors">Close</button>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 p-6 flex flex-col min-h-0">
+            <div className="max-w-[1400px] mx-auto w-full flex-1 flex flex-col min-h-0 bg-white dark:bg-[#161b22] border border-gray-200 dark:border-[#30363d] rounded-2xl shadow-sm">
+              {isEagleViewLoading ? (
+                <div className="p-20 text-center text-sm font-bold text-gray-500 flex flex-col items-center gap-4">
+                  <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+                  Loading eagle view data...
+                </div>
+              ) : (
+                <div className="overflow-auto custom-scrollbar flex-1 rounded-2xl relative shadow-inner">
+                  <table className="w-full text-left border-separate border-spacing-0 min-w-[1000px]">
+                    <thead>
+                      <tr className="bg-slate-100 dark:bg-[#1f242c]">
+                        <th className="px-2 py-2 text-[10px] font-black text-gray-500 uppercase tracking-widest text-center w-8 sticky left-0 top-0 bg-slate-100 dark:bg-[#1f242c] z-30 border-b border-gray-200 dark:border-[#30363d] shadow-[1px_0_0_rgba(0,0,0,0.05)]">#</th>
+                        <th className="px-2 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider min-w-[180px] sticky left-[32px] top-0 bg-slate-100 dark:bg-[#1f242c] z-30 border-b border-gray-200 dark:border-[#30363d] shadow-[1px_0_0_rgba(0,0,0,0.05)]">School Name (Code)</th>
+                        <th className="px-2 py-2 text-[10px] font-bold text-indigo-600 uppercase tracking-wider text-center w-20 sticky top-0 bg-slate-100 dark:bg-[#1f242c] z-20 border-b border-r border-gray-200 dark:border-[#30363d]">Total</th>
+                        {(eagleViewData?.validSubjects || []).map((p: string) => (
+                          <th key={p} className="px-1 py-2 text-[10px] font-bold text-cyan-600 uppercase tracking-wider text-center min-w-[50px] sticky top-0 bg-slate-100 dark:bg-[#1f242c] z-20 border-b border-gray-200 dark:border-[#30363d]">{p}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-[#30363d]">
+                      {(!eagleViewData?.schools || eagleViewData.schools.length === 0) ? (
+                          <tr><td colSpan={3 + ((eagleViewData?.validSubjects || []).length)} className="p-12 text-center text-sm text-gray-400 font-bold uppercase tracking-widest">No data available for this selection</td></tr>
+                      ) : (
+                        eagleViewData.schools
+                          .filter((s: any) => !eagleViewSearch || s.name.toLowerCase().includes(eagleViewSearch.toLowerCase()) || s.code.includes(eagleViewSearch))
+                          .map((s: any, idx: number) => (
+                          <tr key={s.code} className="hover:bg-slate-50 dark:hover:bg-[#1f242c]/50 transition-colors group">
+                            <td className="px-2 py-2 text-center text-xs text-gray-400 sticky left-0 bg-white group-hover:bg-slate-50 dark:bg-[#161b22] dark:group-hover:bg-[#1f242c]/50 transition-colors z-10 shadow-[1px_0_0_rgba(0,0,0,0.05)] dark:shadow-[#30363d]">{idx + 1}</td>
+                            <td className="px-2 py-2 text-[11px] font-medium text-gray-800 dark:text-gray-200 truncate max-w-[200px] sticky left-[32px] bg-white group-hover:bg-slate-50 dark:bg-[#161b22] dark:group-hover:bg-[#1f242c]/50 transition-colors z-10 shadow-[1px_0_0_rgba(0,0,0,0.05)] dark:shadow-[#30363d]" title={`${s.name} (${s.code})`}>
+                              {s.name} <span className="text-gray-400 font-mono text-[9px] ml-1">({s.code})</span>
+                            </td>
+                            <td className="px-2 py-2 text-center text-[11px] font-bold text-indigo-600 border-r border-gray-100 dark:border-[#30363d]">{s.totalStudents}</td>
+                            {(eagleViewData?.validSubjects || []).map((p: string) => {
+                              const entered = s.subjects[p] || 0;
+                              const total = s.totalStudents;
+                              const isComplete = entered >= total;
+                              const isPending = entered > 0 && entered < total;
+                              
+                              return (
+                                <td key={p} className="px-1 py-1 text-center border-r border-gray-50 dark:border-[#30363d]/30 last:border-0">
+                                  <div className="flex flex-col items-center justify-center gap-0.5" title={`${entered} / ${total} marks entered`}>
+                                    <span className={`text-[9px] font-bold uppercase px-1 py-[1px] rounded-[4px] border shadow-sm leading-none ${
+                                      isComplete ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/30 dark:border-emerald-700/50' :
+                                      isPending ? 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/30 dark:border-amber-700/50' :
+                                      'bg-red-50 text-red-500 border-red-200 dark:bg-red-900/30 dark:border-red-700/50'
+                                    }`}>
+                                      {isComplete ? 'Done' : isPending ? 'Pend' : 'None'}
+                                    </span>
+                                    <span className="text-[9px] font-medium text-gray-500 dark:text-gray-400 leading-none">{entered}/{total}</span>
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+\n      {isDistrictStudentsModalOpen && (
         <Modal 
           isOpen={isDistrictStudentsModalOpen} 
           onClose={() => {
