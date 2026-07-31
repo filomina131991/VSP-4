@@ -223,7 +223,7 @@ import {
 
 // ─── Dynamic Medium Resolution Helpers ─────────────────────────────────────
 // Cache for medium maps to avoid repeated DB queries within a single request
-let _mediumCache: { codeToShortName: Record<string, string>; shortNameToCode: Record<string, string>; shortNameToId: Record<string, string>; allCodes: string[] } | null = null;
+let _mediumCache: { codeToShortName: Record<string, string>; shortNameToCode: Record<string, string>; shortNameToId: Record<string, string>; codeToId: Record<string, string>; idToShortName: Record<string, string>; allCodes: string[] } | null = null;
 const MEDIUM_CACHE_TTL_MS = 60_000;
 let _mediumCacheTs = 0;
 
@@ -234,28 +234,40 @@ async function getMediumMaps() {
   const codeToShortName: Record<string, string> = {};
   const shortNameToCode: Record<string, string> = {};
   const shortNameToId: Record<string, string> = {};
+  const codeToId: Record<string, string> = {};
+  const idToShortName: Record<string, string> = {};
   for (const m of allMediums) {
+    const idStr = String(m._id || m.id || '');
     if (m.code && m.shortName) {
-      codeToShortName[m.code.toUpperCase()] = m.shortName;
-      shortNameToCode[m.shortName.toUpperCase()] = m.code.toUpperCase();
-      shortNameToId[m.shortName.toUpperCase()] = String(m._id || m.id || '');
+      const codeUpper = String(m.code).toUpperCase();
+      const shortUpper = String(m.shortName).toUpperCase();
+      codeToShortName[codeUpper] = m.shortName;
+      shortNameToCode[shortUpper] = codeUpper;
+      shortNameToId[shortUpper] = idStr;
+      codeToId[codeUpper] = idStr;
+      if (idStr) idToShortName[idStr] = m.shortName;
     }
   }
-  _mediumCache = { codeToShortName, shortNameToCode, shortNameToId, allCodes: Object.keys(codeToShortName) };
+  _mediumCache = { codeToShortName, shortNameToCode, shortNameToId, codeToId, idToShortName, allCodes: Object.keys(codeToShortName) };
   _mediumCacheTs = now;
   return _mediumCache;
 }
 
 async function resolveMediumShortName(input: string): Promise<string> {
   const upper = (input || '').toUpperCase().trim();
-  if (!upper) return '';
+  if (!upper) return 'Tamil';
+  if (upper.includes('TAMIL') || upper === 'TM') return 'Tamil';
+  if (upper.includes('MALAYALAM') || upper === 'MM') return 'Malayalam';
+  if (upper.includes('ENGLISH') || upper === 'EM') return 'English';
+  if (upper.includes('KANNADA') || upper === 'KM') return 'Kannada';
+
   const maps = await getMediumMaps();
   if (maps.codeToShortName[upper]) return maps.codeToShortName[upper];
   if (maps.shortNameToCode[upper]) {
     const code = maps.shortNameToCode[upper];
-    return maps.codeToShortName[code] || input;
+    return maps.codeToShortName[code] || 'Tamil';
   }
-  return input;
+  return 'Tamil';
 }
 
 async function resolveMediumSuffix(input: string): Promise<string> {
@@ -6879,6 +6891,10 @@ app.get("/api/management/students/summary", authenticateToken, requireRole('WEBM
 });
 
 async function populateStudentSubjectIds(studentData: any, mediumMapsSingle: any, subjectNameMap?: Map<string, string>, subjectIdMap?: Map<string, any>) {
+  if (!mediumMapsSingle) {
+    mediumMapsSingle = await getMediumMaps();
+  }
+
   if (!subjectNameMap || !subjectIdMap) {
       const allSubjects = await Subject.find().lean();
       subjectNameMap = new Map<string, string>();
@@ -6892,23 +6908,28 @@ async function populateStudentSubjectIds(studentData: any, mediumMapsSingle: any
       });
   }
   
-  // 1. Resolve medium and mediumId
-  if (studentData.mediumId && mediumMapsSingle.idToShortName && mediumMapsSingle.idToShortName[studentData.mediumId]) {
+  // Ensure medium is resolved to canonical shortName
+  if (studentData.medium) {
+    studentData.medium = await resolveMediumShortName(studentData.medium);
+  }
+
+  // 1. Resolve medium and mediumId safely
+  if (studentData.mediumId && mediumMapsSingle?.idToShortName?.[studentData.mediumId]) {
       if (!studentData.medium || studentData.medium === studentData.mediumId) {
           studentData.medium = mediumMapsSingle.idToShortName[studentData.mediumId];
       }
   } else if (studentData.medium) {
       const medUpper = String(studentData.medium).trim().toUpperCase();
-      if (mediumMapsSingle.idToShortName && mediumMapsSingle.idToShortName[medUpper]) {
+      if (mediumMapsSingle?.idToShortName?.[medUpper]) {
           studentData.mediumId = medUpper;
           studentData.medium = mediumMapsSingle.idToShortName[medUpper];
       } else {
-          studentData.mediumId = mediumMapsSingle.shortNameToId[medUpper] || mediumMapsSingle.codeToId[medUpper] || '';
+          studentData.mediumId = mediumMapsSingle?.shortNameToId?.[medUpper] || mediumMapsSingle?.codeToId?.[medUpper] || '';
       }
   }
 
   // 2. Resolve language paper names and subject IDs
-  const medCode = mediumMapsSingle.shortNameToCode[String(studentData.medium).trim().toUpperCase()] || 'EM';
+  const medCode = mediumMapsSingle?.shortNameToCode?.[String(studentData.medium).trim().toUpperCase()] || 'EM';
   const resolveSubject = (subName: string, subId: string, pCode?: string): { id: string; name: string } => {
       let finalName = subName ? String(subName).trim() : '';
       
@@ -7307,16 +7328,30 @@ app.post("/api/management/students/bulk-clear-fields", authenticateToken, requir
 });
 
 app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMASTER', 'SCHOOL', 'HEADMASTER', 'DEO', 'DIET'), async (req: any, res) => {
+  const startTime = Date.now();
+  const logPrefix = `[STUDENT_BULK_IMPORT] [${new Date().toISOString()}] [User: ${req.user?.username || req.user?.id || 'Unknown'}]`;
+  
   try {
+    console.log(`${logPrefix} Initiating bulk student import process...`);
     const { students, schoolId } = req.body;
+
     if (!students || !Array.isArray(students)) {
-      return res.status(400).json({ message: "Invalid students data format" });
-    }
-    if (!schoolId) {
-      return res.status(400).json({ message: "School ID is required for bulk import" });
+      console.warn(`${logPrefix} Rejected: Invalid or missing 'students' array in request payload.`);
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid students data format. Expected an array of student objects." 
+      });
     }
 
-    // Safe lookup: handles both ObjectId and custom string school IDs
+    if (!schoolId) {
+      console.warn(`${logPrefix} Rejected: Missing required 'schoolId' parameter.`);
+      return res.status(400).json({ 
+        success: false, 
+        message: "School ID is required for student bulk import." 
+      });
+    }
+
+    // Safe school lookup: handles both ObjectId and custom string school IDs
     const school = await School.findOne({
       $or: [
         ...(mongoose.Types.ObjectId.isValid(schoolId) ? [{ _id: schoolId }] : []),
@@ -7324,6 +7359,15 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
         { schoolCode: schoolId }
       ]
     });
+
+    if (!school) {
+      console.warn(`${logPrefix} Rejected: School not found for ID '${schoolId}'.`);
+      return res.status(404).json({
+        success: false,
+        message: `School not found for specified ID: ${schoolId}`
+      });
+    }
+
     const schoolCode = (school as any)?.schoolCode || (school as any)?.code || "";
 
     // Default academic year: current Kerala academic year (June-May)
@@ -7335,8 +7379,10 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
       : `${yrD - 1}-${String(yrD).slice(-2)}`;
 
     const failed: any[] = [];
+    const successful: any[] = [];
+    const rowResults: any[] = [];
     const bulkOps: any[] = [];
-    const validMeta: Array<{ rowNum: number; name: string; regNo: string }> = [];
+    const seenRegNos = new Map<string, number>(); // regNo -> first row number seen
     const batchBase = Date.now();
     
     const allSubjects = await Subject.find().lean();
@@ -7345,33 +7391,101 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
         const nm = String(s.name).trim().toUpperCase();
         const id = String(s.id || s._id);
         subjectNameMap.set(nm, id);
-        subjectNameMap.set(nm.replace(/\\s*\\([EMTK]M\\)\\s*/g, '').trim(), id);
+        subjectNameMap.set(nm.replace(/\s*\([EMTK]M\)\s*/g, '').trim(), id);
     });
 
-    // Step 1: Pre-validate every row and build MongoDB bulkOps array
+    const mediumMapsImport = await getMediumMaps();
+
+    console.log(`${logPrefix} Processing ${students.length} rows for school '${schoolCode}' (ID: ${schoolId})...`);
+
+    // Step 1: Pre-validate every row, check internal duplicates, and build MongoDB bulkOps array
     for (let idx = 0; idx < students.length; idx++) {
       const s = students[idx];
       const rowNum = idx + 1;
-      const name = s.name ? String(s.name).trim().toUpperCase() : "";
+      const rawName = s.name ? String(s.name).trim() : "";
+      const name = rawName.toUpperCase();
       const regNo = s.regNo ? String(s.regNo).trim() : "";
+      const rawClass = String(s.classStandard || s.className || '10').trim();
+      const rawDiv = String(s.division || '').trim().toUpperCase();
 
+      let className = '10';
+      let division = 'A';
+
+      const combinedDivStr = `${rawClass} ${rawDiv}`.trim();
+      let cleanDivText = combinedDivStr.replace(/\b\d{4}[-/\s]*\d{2,4}\b/g, ''); // Remove years e.g. 2026-2027
+      cleanDivText = cleanDivText.replace(/\b(?:10th|10|CLASS|STD|X)\b/gi, ''); // Remove class 10 prefixes
+      const letterMatch = cleanDivText.match(/([A-Za-z])/);
+      if (letterMatch && letterMatch[1]) {
+        division = letterMatch[1].toUpperCase();
+      }
+
+      // Validate empty row
       if (!name && !regNo) {
-        failed.push({ row: rowNum, name: "Empty row", identifier: "N/A", reason: "Row is empty" });
+        const failItem = { row: rowNum, name: "Empty Row", identifier: "N/A", status: 'failed', reason: "Row is empty" };
+        failed.push(failItem);
+        rowResults.push(failItem);
         continue;
       }
+
+      // Validate required register number
       if (!regNo) {
-        failed.push({ row: rowNum, name: name || "Unknown", identifier: "N/A", reason: "Register Number is required" });
+        const failItem = { row: rowNum, name: name || "Unknown Candidate", identifier: "N/A", status: 'failed', reason: "Admission Number / Register Number is required" };
+        failed.push(failItem);
+        rowResults.push(failItem);
         continue;
       }
+
+      // Validate required candidate name
       if (!name) {
-        failed.push({ row: rowNum, name: "Unknown Candidate", identifier: regNo, reason: "Name is required" });
+        const failItem = { row: rowNum, name: "Unknown Candidate", identifier: regNo, status: 'failed', reason: "Candidate Name is required" };
+        failed.push(failItem);
+        rowResults.push(failItem);
         continue;
+      }
+
+      // Check duplicate admission numbers within this import file
+      if (seenRegNos.has(regNo.toUpperCase())) {
+        const prevRow = seenRegNos.get(regNo.toUpperCase());
+        const failItem = { 
+          row: rowNum, 
+          name, 
+          identifier: regNo, 
+          status: 'failed', 
+          reason: `Duplicate Admission Number '${regNo}' in import file (conflicts with Row ${prevRow})` 
+        };
+        failed.push(failItem);
+        rowResults.push(failItem);
+        continue;
+      }
+      seenRegNos.set(regNo.toUpperCase(), rowNum);
+
+      // Validate gender constraint
+      let gender = s.gender ? String(s.gender).trim() : 'Male';
+      const genderLower = gender.toLowerCase();
+      if (genderLower.startsWith('f') || genderLower === 'girl') {
+        gender = 'Female';
+      } else if (genderLower.startsWith('m') || genderLower === 'boy') {
+        gender = 'Male';
+      } else if (['other', 'transgender'].includes(genderLower)) {
+        gender = 'Other';
+      } else {
+        gender = 'Male'; // Fallback clean default
       }
 
       const academicYear = (s.academicYear && String(s.academicYear).trim()) || defaultAcademicYear;
       const uniqueId = schoolCode + regNo;
-      // Unique student ID: batch base + index offset ensures no collisions within the batch
       const newStudId = `stud-${batchBase + idx}-${Math.floor(Math.random() * 99999).toString().padStart(5, '0')}`;
+
+      let medium = s.medium ? String(s.medium).trim() : '';
+      let category = s.category ? String(s.category).trim() : 'General';
+
+      const KNOWN_CATEGORIES = ['OBC', 'SC', 'ST', 'OEC', 'GENERAL', 'GEN', 'EWS', 'SEBC', 'EZHAVA', 'MUSLIM', 'LATIN CATHOLIC', 'OBH', 'CONVERTED', 'LC', 'MU', 'EZ', 'BH', 'FC', 'BC'];
+      if (medium && KNOWN_CATEGORIES.includes(medium.toUpperCase())) {
+        category = medium.toUpperCase() === 'GEN' ? 'General' : medium.toUpperCase();
+        medium = 'Tamil';
+      }
+
+      medium = await resolveMediumShortName(medium);
 
       const mappedData: any = {
         globalId: regNo,
@@ -7379,15 +7493,15 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
         schoolId,
         schoolCode,
         uniqueId,
-        gender: s.gender || 'Male',
+        gender,
         scribe: s.scribe !== undefined ? !!s.scribe : false,
-        className: s.classStandard || s.className || '10',
-        division: s.division || '',
+        className: className || '10',
+        division: division || '',
         dob: s.dob || null,
         fatherName: s.fatherName || '',
         motherName: s.motherName || '',
         caste: s.caste || '',
-        category: s.category || 'General',
+        category: category || 'General',
         religion: s.religion || '',
         place: s.place || '',
         mobile: s.mobile || '',
@@ -7396,33 +7510,76 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
         readingStatus: s.readingStatus !== undefined ? Number(s.readingStatus) : 0,
         writingStatus: s.writingStatus !== undefined ? Number(s.writingStatus) : 0,
         academicYear,
-        active: { $ne: false }
+        active: true
       };
 
-      let medium = s.medium ? String(s.medium).trim() : '';
-      medium = await resolveMediumShortName(medium);
-      let paper1 = s.firstLangPaper1 ? String(s.firstLangPaper1).trim() : '';
-      let paper2 = s.firstLangPaper2 ? String(s.firstLangPaper2).trim() : '';
-      let secondLang = s.secondLang ? String(s.secondLang).trim() : '';
-      let thirdLang = s.thirdLang ? String(s.thirdLang).trim() : '';
+      let paper1Raw = s.firstLangPaper1 ? String(s.firstLangPaper1).trim() : '';
+      let paper2Raw = s.firstLangPaper2 ? String(s.firstLangPaper2).trim() : '';
+      let secondLang = s.secondLang ? String(s.secondLang).trim() : 'ENGLISH - P03';
+      let thirdLangRaw = s.thirdLang ? String(s.thirdLang).trim() : '';
 
+      let mediumCode = mediumMapsImport.shortNameToCode[medium.toUpperCase()] || 'EM';
 
-      if (thirdLang.toUpperCase() === 'HINDI' || thirdLang.toUpperCase() === 'HINDI (THIRD LANGUAGE) - P04') thirdLang = 'HINDI - P04 TM';
-
-      if (medium && (!paper1 || !paper2)) {
+      // Smart Resolution of First Language Paper I (P01)
+      let paper1 = paper1Raw;
+      if (paper1Raw) {
+        const p1Upper = paper1Raw.toUpperCase();
+        if (p1Upper === 'TAMIL' || p1Upper.includes('TAMIL')) {
+          paper1 = (mediumCode === 'TM') ? 'TAMIL AT - P01' : `TAMIL AT - P01 ${mediumCode}`;
+        } else if (p1Upper === 'MALAYALAM' || p1Upper.includes('MALAYALAM')) {
+          paper1 = (mediumCode === 'MM') ? 'MALAYALAM AT - P01' : `MALAYALAM AT - P01 ${mediumCode}`;
+        } else if (p1Upper === 'KANNADA' || p1Upper.includes('KANNADA')) {
+          paper1 = (mediumCode === 'KM') ? 'KANNADA AT - P01' : `KANNADA AT - P01 ${mediumCode}`;
+        }
+      } else {
         const medUpper = medium.toUpperCase();
-        paper1 = paper1 || `${medUpper} AT - P01`;
-        paper2 = paper2 || `${medUpper} BT - P02`;
+        if (medUpper === 'TAMIL') paper1 = 'TAMIL AT - P01';
+        else if (medUpper === 'MALAYALAM') paper1 = 'MALAYALAM AT - P01';
+        else if (medUpper === 'KANNADA') paper1 = 'KANNADA AT - P01';
+        else paper1 = `${medUpper} AT - P01`;
       }
 
-      const mediumMapsImport = await getMediumMaps();
-      let mediumCode = mediumMapsImport.shortNameToCode[medium.toUpperCase()] || 'EM';
+      // Smart Resolution of First Language Paper II (P02)
+      let paper2 = paper2Raw;
+      if (paper2Raw) {
+        const p2Upper = paper2Raw.toUpperCase();
+        if (p2Upper === 'TAMIL' || p2Upper.includes('TAMIL')) {
+          paper2 = (mediumCode === 'TM') ? 'TAMIL BT - P02' : `TAMIL BT - P02 ${mediumCode}`;
+        } else if (p2Upper === 'MALAYALAM' || p2Upper.includes('MALAYALAM')) {
+          paper2 = (mediumCode === 'MM') ? 'MALAYALAM BT - P02' : `MALAYALAM BT - P02 ${mediumCode}`;
+        } else if (p2Upper === 'KANNADA' || p2Upper.includes('KANNADA')) {
+          paper2 = (mediumCode === 'KM') ? 'KANNADA BT - P02' : `KANNADA BT - P02 ${mediumCode}`;
+        }
+      } else {
+        const medUpper = medium.toUpperCase();
+        if (medUpper === 'TAMIL') paper2 = 'TAMIL BT - P02';
+        else if (medUpper === 'MALAYALAM') paper2 = 'MALAYALAM BT - P02';
+        else if (medUpper === 'KANNADA') paper2 = 'KANNADA BT - P02';
+        else paper2 = `${medUpper} BT - P02`;
+      }
+
+      // Smart Resolution of Third Language (P04)
+      let thirdLang = thirdLangRaw;
+      if (thirdLangRaw) {
+        const tUpper = thirdLangRaw.toUpperCase();
+        if (tUpper === 'HINDI' || tUpper.includes('HINDI')) {
+          thirdLang = `HINDI - P04 ${mediumCode}`;
+        } else if (tUpper === 'ARABIC' || tUpper.includes('ARABIC')) {
+          thirdLang = `ARABIC - P04 ${mediumCode}`;
+        } else if (tUpper === 'SANSKRIT' || tUpper.includes('SANSKRIT')) {
+          thirdLang = `SANSKRIT - P04 ${mediumCode}`;
+        } else if (tUpper === 'URDU' || tUpper.includes('URDU')) {
+          thirdLang = `URDU - P04 ${mediumCode}`;
+        }
+      } else {
+        thirdLang = `HINDI - P04 ${mediumCode}`;
+      }
 
       const studentSubjects: string[] = [];
       if (paper1) studentSubjects.push(paper1.trim());
       if (paper2) studentSubjects.push(paper2.trim());
-      studentSubjects.push(secondLang.trim());
-      studentSubjects.push(thirdLang.trim());
+      if (secondLang) studentSubjects.push(secondLang.trim());
+      if (thirdLang) studentSubjects.push(thirdLang.trim());
 
       studentSubjects.push(`SOCIAL SCIENCE - P05 ${mediumCode}`);
       studentSubjects.push(`PHYSICS - P06 ${mediumCode}`);
@@ -7445,32 +7602,96 @@ app.post("/api/management/students/bulk", authenticateToken, requireRole('WEBMAS
       
       await populateStudentSubjectIds(mappedData, mediumMapsImport, subjectNameMap);
 
+      // Build non-empty update fields so missing fields enrich existing student without overwriting with blank
+      const updateFields: any = {};
+      Object.keys(mappedData).forEach(k => {
+        if (k === 'globalId' || k === 'admissionNumber') return;
+        const val = mappedData[k];
+        if (val !== undefined && val !== null && val !== '') {
+          updateFields[k] = val;
+        }
+      });
+
+      updateFields.schoolId = schoolId;
+      updateFields.schoolCode = schoolCode;
+      updateFields.active = true;
 
       bulkOps.push({
         updateOne: {
-          filter: { uniqueId },
+          filter: {
+            $or: [
+              { uniqueId },
+              { schoolId, globalId: regNo }
+            ]
+          },
           update: {
-            $set: mappedData,
-            $setOnInsert: { id: s.id || newStudId }
+            $set: updateFields,
+            $setOnInsert: {
+              id: s.id || newStudId,
+              globalId: regNo,
+              admissionNumber: regNo
+            }
           },
           upsert: true
         }
       });
+
+      const successItem = {
+        row: rowNum,
+        name,
+        identifier: regNo,
+        classStandard: mappedData.className,
+        division: mappedData.division,
+        medium: mappedData.medium,
+        status: 'success'
+      };
+      successful.push(successItem);
+      rowResults.push(successItem);
     }
 
+    // Step 2: Execute MongoDB bulkWrite operations in transactions/batches of 100
+    const BATCH_SIZE = 100;
+    let totalWritten = 0;
+
     if (bulkOps.length > 0) {
-      await Student.bulkWrite(bulkOps);
+      for (let i = 0; i < bulkOps.length; i += BATCH_SIZE) {
+        const chunk = bulkOps.slice(i, i + BATCH_SIZE);
+        console.log(`${logPrefix} Executing bulkWrite batch ${Math.floor(i / BATCH_SIZE) + 1} (${chunk.length} items)...`);
+        await Student.bulkWrite(chunk, { ordered: false });
+        totalWritten += chunk.length;
+      }
       invalidateSchoolAnalytics(schoolId);
     }
 
-    res.json({
-      message: "Import successful",
-      imported: bulkOps.length,
-      failed: failed
+    const durationMs = Date.now() - startTime;
+    console.log(`${logPrefix} Import complete in ${durationMs}ms: ${totalWritten} imported, ${failed.length} failed.`);
+
+    return res.json({
+      success: true,
+      message: `Bulk import completed. ${totalWritten} records saved/updated, ${failed.length} failed.`,
+      processed: students.length,
+      imported: totalWritten,
+      successfulCount: totalWritten,
+      failedCount: failed.length,
+      skippedCount: failed.filter(f => f.reason?.includes('Duplicate')).length,
+      processingTimeMs: durationMs,
+      successful,
+      failed,
+      results: rowResults
     });
   } catch (err: any) {
-    console.error("POST Students Bulk Error:", err);
-    res.status(500).json({ message: "Internal server error" });
+    const durationMs = Date.now() - startTime;
+    console.error(`${logPrefix} CRITICAL ERROR after ${durationMs}ms:`, err);
+    
+    return res.status(500).json({
+      success: false,
+      message: "An internal server error occurred while processing the bulk import.",
+      error: {
+        code: "INTERNAL_IMPORT_ERROR",
+        details: err.message || String(err),
+        stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
+      }
+    });
   }
 });
 app.post("/api/management/students/bulk-update-medium", authenticateToken, async (req: any, res) => {

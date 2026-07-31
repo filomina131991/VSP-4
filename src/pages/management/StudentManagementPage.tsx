@@ -31,6 +31,7 @@ import Dropdown from '../../components/common/Dropdown';
 import toast from 'react-hot-toast';
 import Swal from 'sweetalert2';
 import PageLoader from '../../components/common/PageLoader';
+import { StudentBulkImportWizard } from '../../components/school/StudentBulkImportWizard';
 
 interface Student {
   id: string;
@@ -1227,23 +1228,38 @@ const StudentManagementPage: React.FC = () => {
       title: 'Rename Division',
       input: 'text',
       inputValue: oldDiv,
-      inputLabel: `Rename Division ${selectedStandard}${oldDiv} to:`,
-      inputPlaceholder: 'New Division Name',
+      inputLabel: `Rename Division ${selectedStandard}${oldDiv} (Single Capital Letter A-Z):`,
+      inputPlaceholder: 'A',
       showCancelButton: true,
       confirmButtonColor: '#4f46e5',
-      confirmButtonText: 'Rename',
+      confirmButtonText: 'Rename Division',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
       customClass: { popup: 'rounded-3xl shadow-xl' },
+      inputAttributes: {
+        maxlength: '1',
+        style: 'text-transform: uppercase; font-weight: 800; text-align: center; font-size: 1.5rem;'
+      },
+      didOpen: () => {
+        const inputEl = Swal.getInput();
+        if (inputEl) {
+          inputEl.oninput = () => {
+            inputEl.value = inputEl.value.replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 1);
+          };
+        }
+      },
       inputValidator: (value) => {
         if (!value || value.trim() === '') {
-          return 'Division name cannot be empty!';
+          return 'Division letter cannot be empty!';
         }
-        if (!/^[A-Za-z]$/.test(value.trim())) {
-          return 'Division must be a single letter (A-Z)!';
+        const clean = value.trim().toUpperCase();
+        if (!/^[A-Z]$/.test(clean)) {
+          return 'Division must be a single capital letter (A-Z) only!';
         }
       }
     });
 
-    if (!newDivName || newDivName.trim() === '' || newDivName.trim() === oldDiv) return;
+    if (!newDivName || newDivName.trim() === '' || newDivName.trim().toUpperCase() === oldDiv) return;
 
     const cleanNewDiv = newDivName.trim().toUpperCase();
 
@@ -1299,6 +1315,8 @@ const StudentManagementPage: React.FC = () => {
       confirmButtonColor: '#d33',
       confirmButtonText: 'Proceed',
       cancelButtonColor: '#000000',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
       customClass: {
         popup: 'rounded-3xl shadow-xl'
       }
@@ -1314,6 +1332,8 @@ const StudentManagementPage: React.FC = () => {
       confirmButtonColor: '#dc2626',
       confirmButtonText: 'Yes, Delete Permanently!',
       cancelButtonColor: '#000000',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
       customClass: {
         popup: 'rounded-3xl shadow-2xl border border-red-100'
       }
@@ -1359,18 +1379,33 @@ const StudentManagementPage: React.FC = () => {
     const { value: divName } = await Swal.fire({
       title: 'New Division',
       input: 'text',
-      inputLabel: `Enter new division name for Class ${selectedStandard} (e.g. A, B, C)`,
-      inputPlaceholder: 'Division Name',
+      inputLabel: `Enter new division for Class ${selectedStandard} (Single Capital Letter A-Z only):`,
+      inputPlaceholder: 'A',
       showCancelButton: true,
       confirmButtonColor: '#4f46e5',
       confirmButtonText: 'Create Division',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
       customClass: { popup: 'rounded-3xl shadow-xl' },
+      inputAttributes: {
+        maxlength: '1',
+        style: 'text-transform: uppercase; font-weight: 800; text-align: center; font-size: 1.5rem;'
+      },
+      didOpen: () => {
+        const inputEl = Swal.getInput();
+        if (inputEl) {
+          inputEl.oninput = () => {
+            inputEl.value = inputEl.value.replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 1);
+          };
+        }
+      },
       inputValidator: (value) => {
         if (!value || value.trim() === '') {
-          return 'Division name cannot be empty!';
+          return 'Division letter cannot be empty!';
         }
-        if (!/^[A-Za-z]$/.test(value.trim())) {
-          return 'Division must be a single letter (A-Z)!';
+        const clean = value.trim().toUpperCase();
+        if (!/^[A-Z]$/.test(clean)) {
+          return 'Division must be a single capital letter (A-Z) only!';
         }
       }
     });
@@ -2736,200 +2771,22 @@ className="flex items-center justify-between px-8 py-5 cursor-pointer hover:bg-b
         </Modal>
       )}
 
-      {/* MODAL 2: Bulk CSV/Text Paste spreadsheet loader */}
+      {/* Enterprise Student Bulk Import Wizard */}
       {showImportModal && (
-        <Modal isOpen={showImportModal} onClose={() => setShowImportModal(false)} disableOutsideClick={true}>
-          <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
-            {/* Header */}
-            <div className="px-8 py-6 bg-gray-50 border-b border-gray-100 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <Upload size={20} className="text-gray-500" />
-                <div>
-                  <h2 className="text-md font-black text-black uppercase tracking-tight">
-                    {bulkOverrideDivision && selectedStandard && selectedDivision
-                      ? `Import — Class ${selectedStandard}${selectedDivision}`
-                      : 'Import Spreadsheet Stream'}
-                  </h2>
-                  {bulkOverrideDivision && selectedStandard && selectedDivision && (
-                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider mt-0.5">
-                      All students will be added to Division {selectedStandard}${selectedDivision} · {bulkAcademicYear}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setShowImportModal(false);
-                  setBulkOverrideDivision(false);
-                  setParsedImportRows([]);
-                  setBulkText('');
-                }}
-                className="p-1 hover:bg-slate-100 rounded-full text-gray-400 transition-all"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-8">
-              <div className="mb-6">
-                <label className="text-[10px] uppercase font-bold text-gray-400 block mb-1">Target Academic Year (Mandatory)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 2026-27"
-                  value={bulkAcademicYear}
-                  onChange={e => setBulkAcademicYear(e.target.value)}
-                  className="w-full px-4 py-2 rounded-xl border border-gray-200 text-xs font-medium focus:border-black focus:ring-1 focus:ring-black outline-none"
-                  required
-                />
-              </div>
-
-              {/* Division context indicator — shown when importing from a specific division */}
-              {currentView === 'STUDENTS' && selectedStandard && selectedDivision && (
-                <div className="mb-5 p-3 rounded-xl bg-indigo-50 border border-indigo-100 flex items-start gap-3">
-                  <div className="flex-1">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-indigo-700">
-                      Importing into: Class {selectedStandard}${selectedDivision} · {bulkAcademicYear || '—'}
-                    </p>
-                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={bulkOverrideDivision}
-                        onChange={e => setBulkOverrideDivision(e.target.checked)}
-                        className="accent-indigo-600 w-3.5 h-3.5"
-                      />
-                      <span className="text-[10px] font-bold text-indigo-800 uppercase tracking-wide">
-                        Force all rows → Class {selectedStandard}, Division {selectedDivision}
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-[10px] uppercase font-bold text-gray-400">Import Format & Template</span>
-                <button
-                  type="button"
-                  onClick={downloadTemplate}
-                  className="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
-                >
-                  <Download size={12} />
-                  Template CSV
-                </button>
-              </div>
-
-              <p className="text-[11px] text-gray-500 leading-relaxed font-semibold mb-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
-                You can download the template above or paste/upload a file with headers.
-                Even if columns are in different orders, the system will auto-match headers:<br />
-                <code className="text-[10px] text-blue-600 font-bold block mt-1">
-                  Admission no, Full name, Gender, Date of birth, Class, Division, Category
-                </code>
-              </p>
-
-              <div className="flex gap-2 border-b border-gray-100 pb-3 mb-4">
-                <button
-                  onClick={() => setBulkSourceOption('paste')}
-                  className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${bulkSourceOption === 'paste' ? 'bg-blue-600 text-white dark:bg-[#1f6feb]' : 'text-gray-400 hover:text-black'}`}
-                >
-                  📝 Direct Paste (Text)
-                </button>
-                <button
-                  onClick={() => setBulkSourceOption('file')}
-                  className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${bulkSourceOption === 'file' ? 'bg-emerald-600 text-white' : 'text-gray-400 hover:text-black'}`}
-                >
-                  📁 Excel / CSV File
-                </button>
-              </div>
-
-              {bulkSourceOption === 'paste' ? (
-                <textarea
-                  rows={5}
-                  placeholder="Paste CSV records here..."
-                  value={bulkText}
-                  onChange={e => handleParseBulkInput(e.target.value)}
-                  className="w-full text-xs font-mono p-3 border border-gray-200 rounded-xl focus:border-black focus:ring-1 focus:ring-black outline-none leading-relaxed"
-                />
-              ) : (
-                <div className="border border-dashed border-gray-200 hover:border-black rounded-xl p-8 text-center transition-colors relative cursor-pointer group">
-                  <input
-                    type="file"
-                    accept=".csv,.txt,.xls,.xlsx"
-                    onChange={handleBulkFileChange}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                  />
-                  <FileText className="mx-auto text-emerald-500 group-hover:text-emerald-700 transition-colors mb-2" size={32} />
-                  <p className="text-sm font-bold uppercase text-gray-700">Upload Excel or CSV File</p>
-                  <p className="text-xs text-gray-500 mt-1">.xls, .xlsx will be automatically converted to CSV.</p>
-                </div>
-              )}
-
-              {/* Progress UI */}
-              {importStage !== 'idle' && importStage !== 'completed' && (
-                <div className="space-y-3 mt-4 pt-4 border-t border-gray-100 text-center py-6">
-                  <div className="animate-spin inline-block w-8 h-8 border-[3px] border-emerald-600 border-t-transparent rounded-full mb-3" />
-                  <p className="text-sm font-bold text-gray-700 uppercase tracking-widest">
-                    {importStage === 'reading' && "Reading File..."}
-                    {importStage === 'cleaning' && "Cleaning Data..."}
-                    {importStage === 'validating' && "Validating..."}
-                    {importStage === 'saving' && "Saving Students..."}
-                  </p>
-                </div>
-              )}
-
-              {/* Validation Error UI */}
-              {importStage === 'completed' && importValidationErrors.length > 0 && (
-                <div className="mt-4 border border-rose-200 rounded-xl bg-rose-50 overflow-hidden">
-                  <div className="bg-rose-100 text-rose-800 px-4 py-3 text-xs font-black uppercase tracking-wider flex items-center gap-2">
-                    <AlertCircle size={16} />
-                    Import Validation Failed ({importValidationErrors.length} Errors Found)
-                  </div>
-                  <div className="max-h-[250px] overflow-y-auto p-4 space-y-4">
-                    {importValidationErrors.map((err, i) => (
-                      <div key={i} className="border-b border-rose-100 pb-3 last:border-0 last:pb-0 text-xs">
-                        <div className="font-bold text-rose-700 mb-1">Row {err.row} : {err.field}</div>
-                        <div className="grid grid-cols-2 gap-2 mt-1">
-                          <div className="bg-white px-2 py-1.5 rounded text-gray-600 border border-rose-100">
-                            <span className="text-[9px] text-gray-400 block mb-0.5 uppercase tracking-wider">Found</span>
-                            <span className="font-mono text-rose-600 break-all">{err.found}</span>
-                          </div>
-                          <div className="bg-white px-2 py-1.5 rounded text-gray-600 border border-emerald-100">
-                            <span className="text-[9px] text-gray-400 block mb-0.5 uppercase tracking-wider">Expected</span>
-                            <span className="font-mono text-emerald-600">{err.expected}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Success UI before saving */}
-              {importStage === 'completed' && importValidationErrors.length === 0 && parsedImportRows.length > 0 && (
-                <div className="mt-4 border border-emerald-200 rounded-xl bg-emerald-50 overflow-hidden">
-                  <div className="bg-emerald-100 text-emerald-800 px-4 py-3 text-xs font-black uppercase tracking-wider flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 size={16} />
-                      All {parsedImportRows.length} Records Validated Successfully
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Footer / Action Area */}
-            {importStage === 'completed' && parsedImportRows.length > 0 && (
-              <div className="px-8 py-5 border-t border-gray-100 bg-gray-50 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleExecuteBulkImport}
-                  disabled={isBulkImporting || importValidationErrors.length > 0}
-                  className={`w-full py-3 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md active:scale-95 ${importValidationErrors.length > 0 ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                >
-                  {isBulkImporting ? "Saving..." : importValidationErrors.length > 0 ? "Fix Errors to Import" : "Import Students"}
-                </button>
-              </div>
-            )}
-          </div>
-        </Modal>
+        <StudentBulkImportWizard
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          activeSchoolId={activeSchoolId}
+          activeSchoolCode={activeSchoolCode}
+          currentAcademicYear={currentAcademicYear}
+          selectedStandard={selectedStandard}
+          selectedDivision={selectedDivision}
+          onSuccess={async () => {
+            await loadStudents();
+            emitRefresh('students-updated');
+            emitRefresh('data-updated');
+          }}
+        />
       )}
 
       {/* Student Bulk Diagnostics Summary Modal */}
