@@ -65,16 +65,16 @@ interface MediumSubjectGroup {
 }
 
 const PAPER_CODE_LABELS: Record<string, string> = {
-  P01: 'First Language Paper I',
-  P02: 'First Language Paper II',
-  P03: 'Second Language (English)',
-  P04: 'Third Language (Hindi)',
+  P01: 'Language Paper I',
+  P02: 'Language Paper II',
+  P03: 'Second Language',
+  P04: 'Third Language',
   P05: 'Social Science',
   P06: 'Physics',
   P07: 'Chemistry',
   P08: 'Biology',
   P09: 'Mathematics',
-  P10: 'ICT / Information Technology',
+  P10: 'ICT',
 };
 
 interface School {
@@ -173,7 +173,7 @@ const ExamManagementPage: React.FC = () => {
       [...(group.p01 || []), ...(group.p02 || []), ...(group.p03 || []), ...(group.p04 || []), ...(group.core || [])].forEach(sub => {
         const subId = (sub._id || sub.id) as string;
         const code = getSubjectCode(sub);
-        const baseMarks = updatedCodeMarks[code] || (code === 'P01' ? (updatedCodeMarks['P01'] || 100) : 100);
+        const baseMarks = updatedCodeMarks[code] ?? (code === 'P01' ? (updatedCodeMarks['P01'] ?? 100) : 100);
         nextMarks[subId] = withCE ? Math.round(baseMarks * 1.25) : baseMarks;
       });
     });
@@ -181,7 +181,13 @@ const ExamManagementPage: React.FC = () => {
   };
 
   const handleCodeMarksChange = (code: string, value: string) => {
-    const num = parseInt(value);
+    if (value === '') {
+      const updated = { ...codeMarks, [code]: 0 };
+      setCodeMarks(updated);
+      applyCodeMarksToSubjects(updated, includeCEMarks);
+      return;
+    }
+    const num = parseInt(value, 10);
     if (isNaN(num) || num < 0 || num > 999) return;
     const updated = { ...codeMarks, [code]: num };
     setCodeMarks(updated);
@@ -191,7 +197,7 @@ const ExamManagementPage: React.FC = () => {
   const applyMarksToAllCodes = () => {
     const firstCode = availableCodes[0];
     if (!firstCode) return;
-    const marks = codeMarks[firstCode] || 100;
+    const marks = codeMarks[firstCode] ?? 100;
     const updated: Record<string, number> = {};
     availableCodes.forEach(code => { updated[code] = marks; });
     setCodeMarks(updated);
@@ -640,7 +646,7 @@ const ExamManagementPage: React.FC = () => {
                                     type="number" 
                                     min="0"
                                     max="200"
-                                    value={newExamMaxMarks[subId] || ''}
+                                    value={newExamMaxMarks[subId] ?? ''}
                                     onChange={e => {
                                       const val = e.target.value;
                                       setNewExamMaxMarks(prev => {
@@ -723,7 +729,7 @@ const ExamManagementPage: React.FC = () => {
                                     type="number" 
                                     min="0"
                                     max="200"
-                                    value={newExamMaxMarks[subId] || ''}
+                                    value={newExamMaxMarks[subId] ?? ''}
                                     onChange={e => {
                                       const val = e.target.value;
                                       setNewExamMaxMarks(prev => {
@@ -762,7 +768,7 @@ const ExamManagementPage: React.FC = () => {
                                     type="number" 
                                     min="0"
                                     max="200"
-                                    value={newExamMaxMarks[subId] || ''}
+                                    value={newExamMaxMarks[subId] ?? ''}
                                     onChange={e => {
                                       const val = e.target.value;
                                       setNewExamMaxMarks(prev => {
@@ -801,7 +807,7 @@ const ExamManagementPage: React.FC = () => {
                                     type="number" 
                                     min="0"
                                     max="200"
-                                    value={newExamMaxMarks[subId] || ''}
+                                    value={newExamMaxMarks[subId] ?? ''}
                                     onChange={e => {
                                       const val = e.target.value;
                                       setNewExamMaxMarks(prev => {
@@ -913,10 +919,17 @@ const ExamManagementPage: React.FC = () => {
                         
                         // Parse maxMarks mapping - keys are subject IDs from DB
                         const parsedMaxMarks: Record<string, number> = {};
+                        const loadedCodeMarks: Record<string, number> = { P01: 100, P02: 100, P03: 100, P04: 100, P05: 100, P06: 100, P07: 100, P08: 100, P09: 100, P10: 100 };
                         if (ex.maxMarks && Object.keys(ex.maxMarks).length > 0) {
                           Object.assign(parsedMaxMarks, ex.maxMarks);
+                          ['P01', 'P02', 'P03', 'P04', 'P05', 'P06', 'P07', 'P08', 'P09', 'P10'].forEach(c => {
+                            if (ex.maxMarks[c] !== undefined && ex.maxMarks[c] !== null) {
+                              loadedCodeMarks[c] = Number(ex.maxMarks[c]);
+                            }
+                          });
                         }
                         setNewExamMaxMarks(parsedMaxMarks);
+                        setCodeMarks(loadedCodeMarks);
                         
                         setSelectedExamId(ex.id);
                       }}

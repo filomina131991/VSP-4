@@ -29,7 +29,12 @@ const ICON_MAP: Record<string, any> = {
   FileText
 };
 
-export const WorkflowDiagram: React.FC = () => {
+interface WorkflowDiagramProps {
+  inlineErrors?: boolean;
+  onErrorClick?: (id: string) => void;
+}
+
+export const WorkflowDiagram: React.FC<WorkflowDiagramProps> = ({ inlineErrors, onErrorClick }) => {
   const [selectedNodeId, setSelectedNodeId] = useState<string>('wf-1-login');
 
   const selectedNode = WORKFLOW_NODES_DATA.find(n => n.id === selectedNodeId) || WORKFLOW_NODES_DATA[0];
@@ -134,14 +139,25 @@ export const WorkflowDiagram: React.FC = () => {
               <div className="flex flex-wrap gap-1.5">
                 {selectedNode.commonErrorIds.length > 0 ? (
                   selectedNode.commonErrorIds.map(errId => (
-                    <Link
-                      key={errId}
-                      to={`/help/errors/${errId}`}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors"
-                    >
-                      <AlertTriangle className="w-3 h-3 text-amber-500" />
-                      <span>{errId}</span>
-                    </Link>
+                    inlineErrors ? (
+                      <button
+                        key={errId}
+                        onClick={() => onErrorClick && onErrorClick(errId)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors"
+                      >
+                        <AlertTriangle className="w-3 h-3 text-amber-500" />
+                        <span>{errId}</span>
+                      </button>
+                    ) : (
+                      <Link
+                        key={errId}
+                        to={`/help/errors/${errId}`}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-colors"
+                      >
+                        <AlertTriangle className="w-3 h-3 text-amber-500" />
+                        <span>{errId}</span>
+                      </Link>
+                    )
                   ))
                 ) : (
                   <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">No high severity errors reported at this stage.</span>

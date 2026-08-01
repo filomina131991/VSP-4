@@ -4396,10 +4396,48 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
       const actualFemaleStudents = await Student.countDocuments({ ...liveFilter, gender: { $regex: /^(female|girl)$/i } });
 
       if (actualTotalStudents > 0 || effectiveSchoolId) {
-        // Calculate how many marks were actually entered according to the old stale stats
-        const staleTotal = statsData.totalStudents || 0;
-        const staleNotEntered = statsData.notEntered || 0;
-        const actualEnteredMarksCount = Math.max(0, staleTotal - staleNotEntered);
+        // --- NEW MARKS ENTRY COUNT LOGICS (Total Collection markentries read and divided by Subjects) ---
+        let actualEnteredMarksCount = 0;
+        try {
+          const activeSubjects = await Subject.find({ active: { $ne: false } }).lean();
+          const examMaxMarks = selectedExam?.maxMarks || new Map();
+          
+          const uniqueSubjectCodes = new Set();
+          const validSubjectIds: string[] = [];
+          
+          for (const subject of activeSubjects) {
+            let maxM = 0;
+            if (examMaxMarks instanceof Map) {
+              maxM = examMaxMarks.get(subject.id) || examMaxMarks.get(subject._id?.toString()) || examMaxMarks.get(subject.code) || 0;
+            } else if (typeof examMaxMarks === 'object') {
+              maxM = (examMaxMarks as any)[subject.id] || (examMaxMarks as any)[subject._id?.toString()] || (examMaxMarks as any)[subject.code] || 0;
+            }
+            if (maxM > 0) {
+              if (subject.code) uniqueSubjectCodes.add(subject.code);
+              validSubjectIds.push(subject.id);
+              if (subject._id) validSubjectIds.push(subject._id.toString());
+            }
+          }
+          
+          const validSubjectsCount = uniqueSubjectCodes.size;
+          
+          if (validSubjectsCount > 0) {
+            const markFilter: any = { examId: activeExamId };
+            if (liveFilter.$or) {
+               markFilter.$or = liveFilter.$or;
+            }
+            
+            const subjectObjectIds = validSubjectIds.filter(id => mongoose.Types.ObjectId.isValid(id)).map(id => new mongoose.Types.ObjectId(id));
+            markFilter.subjectId = { $in: [...validSubjectIds, ...subjectObjectIds] };
+            
+            const totalCollectionMarkEntries = await Mark.countDocuments(markFilter);
+            
+            // total collection / subjects = count total (count total only round numbers only. muset round digit number)
+            actualEnteredMarksCount = Math.round(totalCollectionMarkEntries / validSubjectsCount);
+          }
+        } catch (err) {
+          console.error("Error calculating Marks Entry count logics:", err);
+        }
 
         // Update with live total
         statsData.totalStudents = actualTotalStudents;
@@ -4931,7 +4969,10 @@ app.get("/api/dashboard/entry-eagle-view", async (req: any, res) => {
 
     let validSubjects = [];
     if (exam && exam.maxMarks) {
-      const examSubjectIds = Object.keys(exam.maxMarks).filter(id => exam.maxMarks[id] > 0);
+      const examSubjectIds = Object.keys(exam.maxMarks).filter(id => {
+        const mark = (exam.maxMarks as any)[id];
+        return mark !== undefined && mark !== null && Number(mark) > 0;
+      });
       validSubjects = examSubjectIds.map(id => idToCode[id] || id).filter(Boolean);
       validSubjects = [...new Set(validSubjects)].sort();
     } else {

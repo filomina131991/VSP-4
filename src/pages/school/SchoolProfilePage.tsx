@@ -380,7 +380,7 @@ const SchoolProfilePage: React.FC = () => {
                 <span className="text-sm font-black text-gray-900 dark:text-white">{regionNames.revenueDistrict}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-xs font-bold text-gray-400 uppercase">AEO</span>
+                <span className="text-xs font-bold text-gray-400 uppercase">Sub-District</span>
                 <span className="text-sm font-black text-gray-900 dark:text-white">{regionNames.eduDistrict}</span>
               </div>
             </div>

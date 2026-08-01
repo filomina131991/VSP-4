@@ -38,6 +38,7 @@ import { apiClient } from '../../lib/apiClient';
 import PageTransition from '../common/PageTransition';
 import FirstTimePasswordModal from '../common/FirstTimePasswordModal';
 import FloatingHelpButton from '../common/FloatingHelpButton';
+import { SchoolWorkflowModal } from './SchoolWorkflowModal';
 
 const stripHtml = (html: string) => {
   if (!html) return '';
@@ -208,6 +209,7 @@ const DashboardLayout: React.FC = () => {
   const navRef = React.useRef<HTMLElement>(null);
   const [showUpArrow, setShowUpArrow] = React.useState(false);
   const [showDownArrow, setShowDownArrow] = React.useState(false);
+  const [isWorkflowModalOpen, setIsWorkflowModalOpen] = React.useState(false);
 
   const checkScroll = React.useCallback(() => {
     const el = navRef.current;
@@ -376,6 +378,16 @@ const DashboardLayout: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center space-x-2 sm:space-x-2.5 pr-2 sm:pr-4">
+            {/* Workflow Modal Trigger */}
+            <button
+              onClick={() => setIsWorkflowModalOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 text-blue-600 dark:text-blue-400 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 transition-colors rounded-lg font-bold text-xs shrink-0"
+              title="System Workflow"
+            >
+              <FileText size={16} />
+              <span className="hidden sm:inline">Workflow</span>
+            </button>
+
             {/* Quick Dark Mode Toggle */}
             <button
               onClick={() => {
@@ -443,8 +455,15 @@ const DashboardLayout: React.FC = () => {
             </div>
 
             <div className="flex flex-col items-end hidden sm:flex pl-1">
-              <p className="text-xs font-bold text-gray-900 dark:text-white leading-none single-line-label max-w-[120px]">{user?.displayName}</p>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1 single-line-label max-w-[120px]">{user?.role}</p>
+              <p className="text-xs font-bold text-gray-900 dark:text-white leading-none single-line-label max-w-[120px]">{user?.displayName || user?.name || user?.username}</p>
+              <p className={cn(
+                "text-[10px] font-bold uppercase tracking-wider mt-1 single-line-label max-w-[120px]",
+                user?.role === 'SCHOOL'
+                  ? "bg-gradient-to-r from-pink-500 to-purple-600 dark:from-pink-400 dark:to-purple-500 bg-clip-text text-transparent"
+                  : "text-gray-400"
+              )}>
+                {user?.role === 'SCHOOL' && (user?.schoolCode || user?.username) ? `${user?.schoolCode || user?.username} • ${user.role}` : user?.role}
+              </p>
             </div>
             <div className="relative shrink-0">
               <button 
@@ -458,7 +477,14 @@ const DashboardLayout: React.FC = () => {
                 <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-[#161b22] rounded-2xl shadow-xl border border-gray-100 dark:border-[#30363d] overflow-hidden z-50 animate-scale-in origin-top-right">
                   <div className="p-4 border-b border-gray-50 dark:border-[#30363d] flex flex-col bg-slate-50/50 dark:bg-[#1f242c]">
                     <span className="font-black text-gray-900 dark:text-white text-sm truncate">{user?.displayName || user?.name || user?.username}</span>
-                    <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mt-0.5">{user?.role}</span>
+                    <span className={cn(
+                      "text-[10px] font-black uppercase tracking-wider mt-0.5",
+                      user?.role === 'SCHOOL'
+                        ? "bg-gradient-to-r from-pink-500 to-purple-600 dark:from-pink-400 dark:to-purple-500 bg-clip-text text-transparent"
+                        : "text-indigo-600 dark:text-indigo-400"
+                    )}>
+                      {user?.role === 'SCHOOL' && (user?.schoolCode || user?.username) ? `${user?.schoolCode || user?.username} • ${user.role}` : user?.role}
+                    </span>
                     {(user?.phone || user?.email) ? (
                       <div className="mt-2 pt-2 border-t border-gray-200/60 dark:border-gray-700/60 text-xs font-bold text-gray-600 dark:text-gray-300 space-y-1">
                         {user?.phone && <div className="truncate flex items-center gap-1.5"><span className="text-gray-400 font-normal">📱</span> {user.phone}</div>}
@@ -572,6 +598,10 @@ const DashboardLayout: React.FC = () => {
 
       <FirstTimePasswordModal isOpen={user?.passwordChanged === false} />
       <FloatingHelpButton />
+      <SchoolWorkflowModal 
+        isOpen={isWorkflowModalOpen} 
+        onClose={() => setIsWorkflowModalOpen(false)} 
+      />
     </div>
   );
 };

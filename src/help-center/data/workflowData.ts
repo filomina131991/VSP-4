@@ -10,18 +10,18 @@ export const WORKFLOW_NODES_DATA: WorkflowNode[] = [
     prerequisites: ["Valid School Code", "Internet / Local PWA Cache"],
     nextSteps: ["wf-2-profile"],
     icon: "LogIn",
-    commonErrorIds: ["sys-net-15"]
+    commonErrorIds: ["auth-school-pwd-forget", "auth-teacher-pwd-forget"]
   },
   {
     id: "wf-2-profile",
     title: "Profile Configuration",
     malayalamTitle: "പ്രൊഫൈൽ ക്രമീകരിക്കൽ",
     role: "SCHOOL",
-    description: "Verify School UDISE, HM Name, Mobile, and active Mediums.",
+    description: "Verify School and active Mediums, HM Name, HM Mobile, Vijayasree Coordinator Mobile and Email.",
     prerequisites: ["wf-1-login"],
     nextSteps: ["wf-3-students"],
     icon: "Building",
-    commonErrorIds: ["medium-missing"]
+    commonErrorIds: ["medium-missing", "teacher-class-subject-config"]
   },
   {
     id: "wf-3-students",

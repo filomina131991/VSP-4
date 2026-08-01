@@ -717,7 +717,7 @@ const TeacherProfilePage: React.FC = () => {
                 <span className="font-black text-gray-900 dark:text-white">{regionNames.revenueDistrict}</span>
               </div>
               <div className="flex justify-between items-center border-t border-gray-200/60 dark:border-gray-800 pt-2">
-                <span className="font-bold text-gray-500 uppercase">AEO / Sub District</span>
+                <span className="font-bold text-gray-500 uppercase">Sub-District</span>
                 <span className="font-black text-gray-900 dark:text-white">{regionNames.eduDistrict}</span>
               </div>
             </div>

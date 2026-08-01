@@ -2,6 +2,82 @@ import { ErrorRecord, ErrorCategory, RoleCategory } from '../types';
 
 export const ERRORS_DATABASE: ErrorRecord[] = [
   {
+    id: "auth-school-pwd-forget",
+    title: "School User Forgot Password",
+    category: "SYSTEM_NETWORK",
+    roles: ["SCHOOL"],
+    severity: "HIGH",
+    keywords: ["password", "forgot", "reset", "login", "school", "email"],
+    symptoms: [
+      "School user is unable to log in to the portal.",
+      "Incorrect password or forgotten password error."
+    ],
+    causes: [
+      "User has forgotten their registered password."
+    ],
+    solution: [
+      "Go to the School Login page.",
+      "Click on the 'Forgot Password?' link in the login form.",
+      "Enter your registered School Email ID.",
+      "Check your email inbox for the password reset instructions and link.",
+      "Click the link to create a new password and log in."
+    ],
+    malayalamSolution: [
+      "സ്കൂൾ ലോഗിൻ പേജിൽ പോവുക.",
+      "'Forgot Password?' ലിങ്കിൽ ക്ലിക്ക് ചെയ്യുക.",
+      "സ്കൂളിന്റെ രജിസ്റ്റർ ചെയ്ത ഇമെയിൽ നൽകി പാസ്സ്‌വേർഡ് റീസെറ്റ് ചെയ്യാം."
+    ]
+  },
+  {
+    id: "auth-teacher-pwd-forget",
+    title: "Teacher User Forgot Password",
+    category: "SYSTEM_NETWORK",
+    roles: ["TEACHER", "SCHOOL"],
+    severity: "HIGH",
+    keywords: ["password", "forgot", "reset", "login", "teacher", "management"],
+    symptoms: [
+      "Teacher user is unable to log in to the portal.",
+      "Incorrect password or forgotten password error for teacher."
+    ],
+    causes: [
+      "Teacher has forgotten their password."
+    ],
+    solution: [
+      "The Teacher cannot reset their password directly from the login page.",
+      "Contact the School Admin to reset your password.",
+      "School Admin must log in and navigate to the 'Teacher Management' page.",
+      "Find the respective teacher and click on 'Edit'.",
+      "Use the 'Reset Password?' option in the edit form to assign a new password for the teacher."
+    ],
+    malayalamSolution: [
+      "അധ്യാപകർക്ക് ലോഗിൻ പേജിൽ നിന്ന് നേരിട്ട് പാസ്സ്‌വേർഡ് മാറ്റാൻ സാധിക്കില്ല.",
+      "സ്കൂൾ ലോഗിൻ വഴി Teacher Management പേജിൽ പോയി, പ്രസ്തുത അധ്യാപകനെ എഡിറ്റ് ചെയ്തു 'Reset Password?' നൽകി പാസ്സ്‌വേർഡ് മാറ്റാവുന്നതാണ്."
+    ]
+  },
+  {
+    id: "teacher-class-subject-config",
+    title: "Teacher Class & Subject Config Error",
+    category: "TEACHER_PROFILE",
+    roles: ["TEACHER", "SCHOOL"],
+    severity: "HIGH",
+    keywords: ["teacher", "subject", "config", "class", "medium", "language", "paper"],
+    symptoms: [
+      "Teacher profile page does not show the correct subjects.",
+      "Class medium-wise subjects are missing or misconfigured for the teacher."
+    ],
+    causes: [
+      "Student Management mediums and language papers are not properly assigned before configuring the teacher."
+    ],
+    solution: [
+      "First, go to the Student Management module.",
+      "Assign the proper medium for the students.",
+      "Assign Language Paper I, Paper II, and Second & Third Language correctly.",
+      "Then, go to the Teacher Profile page and assign your class.",
+      "The medium-wise subjects will now show properly.",
+      "If any issue persists, contact the Admin."
+    ]
+  },
+  {
     id: "language-validation",
     title: "Language Validation Error",
     category: "LANGUAGE_VALIDATION",
@@ -340,7 +416,9 @@ export const ERRORS_DATABASE: ErrorRecord[] = [
     ],
     solution: [
       "Open Student Management -> Select Division.",
-      "Locate student and select First Language Paper 1 (e.g., Malayalam-AT / Malayalam-BT).",
+      "Locate student and select First Language Paper I.",
+      "(First Language Paper I is Malayalam AT, Tamil AT, Arabic, Urdu, Sanskrit, Special English)",
+      "(First Language Paper II is Malayalam BT, Tamil BT, Arabic, Urdu, Sanskrit, Special English)",
       "Save changes and refresh Marks Entry."
     ],
     malayalamSolution: [
@@ -364,8 +442,9 @@ export const ERRORS_DATABASE: ErrorRecord[] = [
     ],
     solution: [
       "Open Student Management -> Bulk Edit Languages.",
-      "Filter by Malayalam Medium candidates.",
-      "Set First Language Paper 2 = 'Malayalam BT' for all candidates and click 'Save All'."
+      "Filter by medium candidates.",
+      "Set First Language Paper II for all candidates and click 'Save All'.",
+      "(First Language Paper II is Malayalam BT, Tamil BT, Arabic, Urdu, Sanskrit, Special English)"
     ],
     malayalamSolution: [
       "Student Management -> Bulk Edit Languages വഴി മലയാളം മീഡിയം കുട്ടികൾക്ക് Paper 2 'Malayalam BT' എന്ന് നൽകുക."

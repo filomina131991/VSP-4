@@ -33,21 +33,21 @@ interface CodeMarksEntry {
 }
 
 const PAPER_CODE_LABELS: Record<string, string> = {
-  P01: 'First Language Paper I',
-  P02: 'First Language Paper II',
-  P03: 'Second Language (English)',
-  P04: 'Third Language (Hindi)',
+  P01: 'Language Paper I',
+  P02: 'Language Paper II',
+  P03: 'Second Language',
+  P04: 'Third Language',
   P05: 'Social Science',
   P06: 'Physics',
   P07: 'Chemistry',
   P08: 'Biology',
   P09: 'Mathematics',
-  P10: 'ICT / Information Technology',
+  P10: 'ICT',
 };
 
 const DEFAULT_CODE_MARKS: Record<string, number> = {
-  P01: 100, P02: 100, P03: 100, P04: 100, P05: 100,
-  P06: 100, P07: 100, P08: 100, P09: 100, P10: 100,
+  P01: 40, P02: 40, P03: 80, P04: 40, P05: 80,
+  P06: 40, P07: 40, P08: 40, P09: 80, P10: 40,
 };
 
 const getMediumKey = (medium: string) => {
@@ -467,7 +467,7 @@ const SchoolExamConfigModal: React.FC<SchoolExamConfigModalProps> = ({ onClose, 
                               </p>
                               {(sub.code || sub.paperType) && (
                                 <span className="text-[9px] font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">
-                                  {sub.code || sub.paperType} &middot; {codeMarks[(sub.code || sub.paperType || '').toUpperCase()] || 100} marks
+                                  {sub.code || sub.paperType} &middot; {codeMarks[(sub.code || sub.paperType || '').toUpperCase()] ?? 100} marks
                                 </span>
                               )}
                             </div>

@@ -1905,8 +1905,8 @@ const MarksEntry2Page: React.FC = () => {
                           if (e.target.checked) {
                             const validSubjects = availableSubjects.filter(s => {
                               const subCode = s.code || ((`${s.shortName || ''} ${s.name || ''}`.toUpperCase().match(/P\d{2}/)?.[0] || s.shortName));
-                              const subjectMaxMarks = selectedExamObj?.maxMarks?.[s.id] || (subCode && selectedExamObj?.maxMarks?.[subCode]);
-                              return !!subjectMaxMarks;
+                              const subjectMaxMarks = selectedExamObj?.maxMarks?.[s.id] ?? (subCode && selectedExamObj?.maxMarks?.[subCode]);
+                              return subjectMaxMarks !== undefined && subjectMaxMarks !== null;
                             });
                             if (validSubjects.length < availableSubjects.length) {
                                 toast.error('Some subjects are not allowed for this exam configuration and were skipped.');
