@@ -31,30 +31,47 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setToken(existingToken);
         try {
           const res = await apiClient.get('/auth/me');
-          if (!cancelled) setUser(res.data);
+          if (!cancelled) {
+            setUser(res.data);
+            localStorage.setItem('has_session', 'true');
+          }
         } catch (error) {
           if (!cancelled) {
             setUser(null);
             setToken(null);
             setAccessToken(null);
+            localStorage.setItem('has_session', 'false');
           }
         } finally {
           if (!cancelled) setIsLoading(false);
         }
       } else {
-        // No in-memory token — try to refresh from httpOnly cookie using deduplicated refreshAccessToken
+        const hasSessionHint = localStorage.getItem('has_session') !== 'false';
+        if (!hasSessionHint) {
+          if (!cancelled) {
+            setUser(null);
+            setToken(null);
+            setAccessToken(null);
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        // Try to refresh from httpOnly cookie using deduplicated refreshAccessToken
         try {
           const newToken = await refreshAccessToken();
           if (cancelled) return; // StrictMode second run — discard result
           setToken(newToken);
+          localStorage.setItem('has_session', 'true');
           const meRes = await apiClient.get('/auth/me');
           if (!cancelled) setUser(meRes.data);
         } catch (error: any) {
           if (!cancelled) {
-            // 401 = no valid session, not an unexpected error — stay silent
+            // 401 = no valid session, set hint to false so subsequent reloads don't retry
             setUser(null);
             setToken(null);
             setAccessToken(null);
+            localStorage.setItem('has_session', 'false');
           }
         } finally {
           if (!cancelled) setIsLoading(false);
@@ -64,9 +81,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     checkAuth();
 
+    const handleSessionExpired = () => {
+      setUser(null);
+      setToken(null);
+      setAccessToken(null);
+      localStorage.setItem('has_session', 'false');
+    };
+
+    window.addEventListener('auth:session-expired', handleSessionExpired);
+
     // Cleanup: mark as cancelled so the StrictMode second mount's async
     // callbacks don't update state after the first unmount.
-    return () => { cancelled = true; };
+    return () => { 
+      cancelled = true; 
+      window.removeEventListener('auth:session-expired', handleSessionExpired);
+    };
   }, []);
 
   const login = async (username: string, password: string) => {
@@ -75,6 +104,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setAccessToken(newToken);
     setToken(newToken);
     setUser(userData);
+    localStorage.setItem('has_session', 'true');
   };
 
   const updateUser = (updatedUser: User) => {
@@ -90,6 +120,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setToken(null);
     setUser(null);
     setAccessToken(null);
+    localStorage.setItem('has_session', 'false');
   };
 
   return (

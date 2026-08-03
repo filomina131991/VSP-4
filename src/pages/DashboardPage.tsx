@@ -188,6 +188,34 @@ const DashboardPage: React.FC = () => {
     fetchInitialData();
   }, []);
 
+  const adminMediumPieData = useMemo(() => {
+    if (!subjectCounts?.mediumCounts) return [];
+    return subjectCounts.mediumCounts.map((m: any) => ({ 
+      name: m.name.replace(' Medium', ''), 
+      value: m.total,
+      male: m.male,
+      female: m.female
+    })).filter((d: any) => d.value > 0);
+  }, [subjectCounts]);
+
+  const adminLangPieData = useMemo(() => {
+    if (!subjectCounts?.firstLanguages) return [];
+    const list: any[] = [];
+    subjectCounts.firstLanguages.forEach((slot: any) => {
+      slot.data?.forEach((lang: any) => {
+        const existing = list.find(l => l.language === lang._id);
+        if (existing) {
+          existing.count += lang.count;
+          existing.male += lang.male || 0;
+          existing.female += lang.female || 0;
+        } else {
+          list.push({ language: lang._id, count: lang.count, slot: slot.code, male: lang.male || 0, female: lang.female || 0 });
+        }
+      });
+    });
+    return list.sort((a, b) => b.count - a.count).slice(0, 9).map(l => ({ name: `${l.language} (${l.slot})`, value: l.count }));
+  }, [subjectCounts]);
+
   // Sync role-based scope restrictions
   useEffect(() => {
     if (user?.role === 'SCHOOL' && (user.schoolId || user.id)) {
@@ -251,6 +279,13 @@ const DashboardPage: React.FC = () => {
     };
     fetchSchoolAnalysis();
   }, [selectedExamId, selectedSchoolId, user, refreshKey]);
+
+  // Scroll to top automatically when a school is selected in the Admin dashboard
+  useEffect(() => {
+    if (selectedSchoolId && user?.role !== 'SCHOOL') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [selectedSchoolId, user?.role]);
 
   const handleForceRefreshStats = async () => {
     const isSchool = user?.role === 'SCHOOL' || !!selectedSchoolId;
@@ -473,7 +508,9 @@ const DashboardPage: React.FC = () => {
 
   const handleBarClick = (item: any) => {
     if (user?.role === 'SCHOOL') return; // schools have static grade distribution charts
-    if (!selectedEduId) {
+    if ((user?.role === 'WEBMASTER' || user?.role === 'DIET') && selectedDistrict === 'ALL') {
+      setSelectedDistrict(item.id);
+    } else if (!selectedEduId) {
       setSelectedEduId(item.id);
     } else if (!selectedSchoolId) {
       setSelectedSchoolId(item.id);
@@ -493,6 +530,8 @@ const DashboardPage: React.FC = () => {
       setSelectedSchoolId(null);
     } else if (selectedEduId && !user?.subDistrictId) {
       setSelectedEduId(null);
+    } else if ((user?.role === 'WEBMASTER' || user?.role === 'DIET') && selectedDistrict !== 'ALL') {
+      setSelectedDistrict('ALL');
     }
   };
 
@@ -681,20 +720,24 @@ const DashboardPage: React.FC = () => {
             <h1 className="text-2xl sm:text-3xl font-black text-black tracking-tight uppercase leading-none flex items-center gap-2 animate-in fade-in duration-300 w-full overflow-hidden whitespace-nowrap">
               <span 
                 onClick={() => {
-                  if (user?.role !== 'SCHOOL' && !user?.subDistrictId && (selectedEduId || selectedSchoolId)) {
-                    setSelectedEduId(null);
-                    setSelectedSchoolId(null);
+                  if (user?.role !== 'SCHOOL' && !user?.subDistrictId) {
+                    if (selectedEduId || selectedSchoolId) {
+                      setSelectedEduId(null);
+                      setSelectedSchoolId(null);
+                    } else if ((user?.role === 'WEBMASTER' || user?.role === 'DIET') && selectedDistrict !== 'ALL') {
+                      setSelectedDistrict('ALL');
+                    }
                   }
                 }}
                 className={cn(
                   "shrink-0",
-                  user?.role !== 'SCHOOL' && !user?.subDistrictId && (selectedEduId || selectedSchoolId)
+                  user?.role !== 'SCHOOL' && !user?.subDistrictId && (selectedEduId || selectedSchoolId || ((user?.role === 'WEBMASTER' || user?.role === 'DIET') && selectedDistrict !== 'ALL'))
                     ? "cursor-pointer hover:underline transition-all"
                     : ""
                 )}
-                title={user?.role !== 'SCHOOL' && !user?.subDistrictId && (selectedEduId || selectedSchoolId) ? "Back to District View" : undefined}
+                title={user?.role !== 'SCHOOL' && !user?.subDistrictId && (selectedEduId || selectedSchoolId || selectedDistrict !== 'ALL') ? "Back to State / Top View" : undefined}
               >
-                District: {data?.districtName || 'Palakkad'}
+                {selectedDistrict === 'ALL' ? 'All Districts' : `District: ${data?.districtName || 'Palakkad'}`}
               </span>
               {showEduName && (
                 <>
@@ -1915,6 +1958,142 @@ const DashboardPage: React.FC = () => {
 
           </div>
         </>
+      )}
+
+      {/* ======== ROW 2.5: MEDIUM & LANGUAGE DISTRIBUTIONS (ADMIN) ======== */}
+      {user?.role !== 'SCHOOL' && !selectedSchoolId && (adminMediumPieData.length > 0 || adminLangPieData.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch mb-5 animate-in slide-in-from-bottom duration-500 delay-50">
+          {/* Admin Medium Pie */}
+          <div className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-2xl p-4 shadow-xs">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Users size={16} className="text-pink-500" />
+                <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">Medium & Gender Distribution</h3>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-2">
+                <div className="h-[180px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart margin={{ top: 25, right: 25, bottom: 25, left: 25 }}>
+                      <Pie 
+                        data={adminMediumPieData} 
+                        cx="50%" 
+                        cy="50%" 
+                        innerRadius={28} 
+                        outerRadius={46} 
+                        paddingAngle={3} 
+                        dataKey="value"
+                        label={({ cx, cy, midAngle, outerRadius, value, index }) => {
+                          if (!value) return null;
+                          const MED_COLORS = ['#f97316', '#3b82f6', '#22c55e', '#8b5cf6', '#ec4899', '#14b8a6'];
+                          const RADIAN = Math.PI / 180;
+                          const radius = outerRadius + 18;
+                          const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                          const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                          return (
+                            <text
+                              x={x}
+                              y={y}
+                              fill={MED_COLORS[index % MED_COLORS.length]}
+                              textAnchor={x > cx ? 'start' : x < cx ? 'end' : 'middle'}
+                              dominantBaseline="central"
+                              style={{ fontSize: '13px', fontWeight: 900 }}
+                            >
+                              {value}
+                            </text>
+                          );
+                        }}
+                        labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}
+                      >
+                        {adminMediumPieData.map((entry, index) => {
+                          const MED_COLORS = ['#f97316', '#3b82f6', '#22c55e', '#8b5cf6', '#ec4899', '#14b8a6'];
+                          return <Cell key={`cell-${index}`} fill={MED_COLORS[index % MED_COLORS.length]} />;
+                        })}
+                      </Pie>
+                      <Tooltip contentStyle={{ borderRadius: 8, border: 'none', fontSize: 11, fontWeight: 700 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="space-y-1.5">
+                  {adminMediumPieData.map((m: any, i: number) => {
+                    const dotColors = ['bg-orange-500', 'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 'bg-teal-500'];
+                    return (
+                      <div key={m.name} className="flex items-center gap-1.5">
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotColors[i % dotColors.length]}`} />
+                        <span className="text-[11px] font-bold text-gray-500 uppercase flex-1">{m.name}</span>
+                        <span className="text-[11px] font-black text-gray-900 dark:text-white">{m.value}</span>
+                        <span className="text-[10px] font-bold text-gray-400">(M:{m.male} F:{m.female})</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex flex-col justify-center gap-2">
+                <div className="border-t border-gray-100 dark:border-gray-800 pt-1.5 mt-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
+                    <span className="text-[11px] font-bold text-gray-500 uppercase flex-1">Male Total</span>
+                    <span className="text-[11px] font-black text-blue-600">{data?.maleCount ?? 0}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-pink-400" />
+                    <span className="text-[11px] font-bold text-gray-500 uppercase flex-1">Female Total</span>
+                    <span className="text-[11px] font-black text-pink-600">{data?.femaleCount ?? 0}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Admin Language Pie */}
+          <div className="bg-white dark:bg-[#161b22] border border-gray-100 dark:border-[#30363d] rounded-2xl p-4 shadow-xs flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Languages size={16} className="text-cyan-500" />
+                <h3 className="text-xs font-black uppercase tracking-wider text-gray-900 dark:text-white">Language Distribution</h3>
+              </div>
+            </div>
+            <div className="flex-1 flex items-center justify-center min-h-[120px]">
+              {adminLangPieData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-gray-300 text-[11px] font-bold uppercase">No data</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart margin={{ top: 25, right: 25, bottom: 25, left: 25 }}>
+                    <Pie 
+                      data={adminLangPieData} 
+                      cx="50%" 
+                      cy="50%" 
+                      innerRadius={30} 
+                      outerRadius={55} 
+                      paddingAngle={2} 
+                      dataKey="value"
+                      label={({ cx, cy, midAngle, outerRadius, value, name, index }) => {
+                        const LANG_COLORS = ['#06b6d4','#8b5cf6','#f43f5e','#10b981','#f59e0b','#6366f1','#ec4899','#14b8a6','#f97316'];
+                        const RADIAN = Math.PI / 180;
+                        const radius = outerRadius + 22;
+                        const x = cx + radius * Math.cos(-midAngle * RADIAN);
+                        const y = cy + radius * Math.sin(-midAngle * RADIAN);
+                        return (
+                          <text x={x} y={y} fill={LANG_COLORS[index % LANG_COLORS.length]} textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" style={{ fontSize: '10px', fontWeight: 800 }}>
+                            {name} ({value})
+                          </text>
+                        );
+                      }}
+                      labelLine={{ stroke: '#94a3b8', strokeWidth: 1 }}
+                    >
+                      {adminLangPieData.map((entry, index) => {
+                        const LANG_COLORS = ['#06b6d4','#8b5cf6','#f43f5e','#10b981','#f59e0b','#6366f1','#ec4899','#14b8a6','#f97316'];
+                        return <Cell key={`cell-${index}`} fill={LANG_COLORS[index % LANG_COLORS.length]} />;
+                      })}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: 8, border: 'none', fontSize: 11, fontWeight: 700 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ======== ADMIN: FIRST LANGUAGES (P01 - P04) DISTRIBUTION ======== */}

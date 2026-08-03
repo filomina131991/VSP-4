@@ -3983,7 +3983,7 @@ async function rebuildRegionAnalytics(examId: string, className: string = '10') 
   }
 }
 
-app.get("/api/dashboard/stats", async (req: any, res) => {
+app.get("/api/dashboard/stats", optionalAuth, async (req: any, res) => {
   try {
     const districtId = req.query.districtId as string | undefined;
     const eduId = req.query.eduId as string | undefined;
@@ -4110,7 +4110,7 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
 
       chartData = schoolsInEdu.map(s => {
         const sSummary = schoolSummaries.find((ss: any) => ss.schoolId === s._id.toString());
-        const sResults = sSummary ? sSummary.stats : { appeared: 0, fullAPlus: 0, pass: 0, victoryPercentage: 0 };
+        const sResults = sSummary ? sSummary.stats : { appeared: 0, fullAPlus: 0, pass: 0, victoryPercentage: 0, totalStudents: 0 };
         const isConfirmed = selectedExam ? (selectedExam.confirmedSchools || []).includes(s._id.toString()) : false;
         return {
           id: s._id.toString(),
@@ -4119,6 +4119,7 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
           appeared: sResults.appeared || 0,
           fullAPlus: sResults.fullAPlus || 0,
           pass: sResults.pass || 0,
+          totalStudents: sResults.totalStudents || 0,
           confirmed: isConfirmed
         };
       });
@@ -4143,7 +4144,13 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
       });
       const eduIds = eduDistricts.map(e => e.id);
 
-      const schools = await School.find({ subDistrictId: { $in: eduIds }, role: "SCHOOL" });
+      const schools = await School.find({
+        $or: [
+          { districtId: effectiveDistrictId },
+          { subDistrictId: { $in: eduIds } }
+        ],
+        role: "SCHOOL"
+      });
       schoolsCount = schools.length;
       eduScopeSchoolIds = schools.map(s => s._id.toString());
 
@@ -4245,7 +4252,7 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
 
       chartData = districts.map(d => {
         const dEdus = allEdus.filter(e => e.districtId === d.id).map(e => e.id);
-        const dSchools = schools.filter(s => dEdus.includes(s.subDistrictId));
+        const dSchools = schools.filter(s => s.districtId === d.id || dEdus.includes(s.subDistrictId));
         const dSchoolIds = dSchools.map(s => s._id.toString());
 
         let dSummary = distSummaries.find((ds: any) => ds.refId === d.id);
@@ -4380,7 +4387,13 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
         } else {
           const rawEdus = await EducationalDistrict.find({ districtId: effectiveDistrictId }).lean();
           const eduIds = rawEdus.map((e: any) => e.id);
-          const schoolsInDist = await School.find({ subDistrictId: { $in: eduIds }, role: "SCHOOL" }).lean();
+          const schoolsInDist = await School.find({
+            $or: [
+              { districtId: effectiveDistrictId },
+              { subDistrictId: { $in: eduIds } }
+            ],
+            role: "SCHOOL"
+          }).lean();
           sIds = schoolsInDist.map((s: any) => s._id.toString());
         }
         
@@ -4472,14 +4485,34 @@ app.get("/api/dashboard/stats", async (req: any, res) => {
 });
 
 // ─── Dashboard: Subject-wise Counts (First Languages P01-P04 & Medium-wise Unique Subjects) ───
-app.get("/api/dashboard/subject-counts", async (req: any, res) => {
+app.get("/api/dashboard/subject-counts", optionalAuth, async (req: any, res) => {
   try {
     const examId = req.query.examId as string || 'exam-1';
-    const districtId = req.query.districtId as string | undefined;
-    const eduId = req.query.eduId as string | undefined;
+    let districtId = req.query.districtId as string | undefined;
+    let eduId = req.query.eduId as string | undefined;
     const schoolId = req.query.schoolId as string | undefined;
 
-    const cacheKey = `subject_counts_${schoolId || 'none'}_${eduId || 'none'}_${districtId || 'none'}_${examId}`;
+    let effectiveEduId = eduId;
+    let effectiveDistrictId = districtId;
+
+    if (req.user) {
+      if (req.user.role === 'DEO' || req.user.role === 'DIET') {
+        const deoEdu = req.user.role === 'DEO' ? (req.user.subDistrictId || req.user.eduDistrictId || req.user.eduId) : null;
+        if (deoEdu) {
+          effectiveEduId = deoEdu;
+        } else if (eduId && eduId !== 'ALL') {
+          effectiveEduId = eduId;
+        } else {
+          effectiveDistrictId = req.user.districtId || districtId || 'dist-9';
+          effectiveEduId = undefined;
+        }
+      } else if (req.user.role === 'WEBMASTER') {
+        effectiveEduId = eduId && eduId !== 'ALL' ? eduId : undefined;
+        effectiveDistrictId = districtId && districtId !== 'ALL' ? districtId : undefined;
+      }
+    }
+
+    const cacheKey = `subject_counts_${schoolId || 'none'}_${effectiveEduId || 'none'}_${effectiveDistrictId || 'none'}_${examId}`;
     const cached = analyticsCache.get(cacheKey);
     if (cached) return res.json(cached);
 
@@ -4487,7 +4520,10 @@ app.get("/api/dashboard/subject-counts", async (req: any, res) => {
     const examClass = exam?.standard || '10';
 
     let scopeSchoolIds: string[] = [];
+    let isSpecificScope = false;
+
     if (schoolId) {
+      isSpecificScope = true;
       let school = null;
       if (mongoose.Types.ObjectId.isValid(schoolId)) {
         school = await School.findById(schoolId);
@@ -4496,13 +4532,21 @@ app.get("/api/dashboard/subject-counts", async (req: any, res) => {
         school = await School.findOne({ $or: [{ id: schoolId }, { code: schoolId }, { schoolCode: schoolId }, { username: schoolId }] });
       }
       if (school) scopeSchoolIds = [school._id.toString()];
-    } else if (eduId) {
-      const schoolsInEdu = await School.find({ subDistrictId: eduId, role: "SCHOOL" }).lean();
+    } else if (effectiveEduId) {
+      isSpecificScope = true;
+      const schoolsInEdu = await School.find({ subDistrictId: effectiveEduId, role: "SCHOOL" }).lean();
       scopeSchoolIds = schoolsInEdu.map(s => s._id.toString());
-    } else if (districtId && districtId !== 'ALL') {
-      const rawEduDistricts = await EducationalDistrict.find({ districtId }).lean();
+    } else if (effectiveDistrictId && effectiveDistrictId !== 'ALL') {
+      isSpecificScope = true;
+      const rawEduDistricts = await EducationalDistrict.find({ districtId: effectiveDistrictId }).lean();
       const eduIds = rawEduDistricts.map((e: any) => e.id);
-      const schoolsInDist = await School.find({ subDistrictId: { $in: eduIds }, role: "SCHOOL" }).lean();
+      const schoolsInDist = await School.find({
+        $or: [
+          { districtId: effectiveDistrictId },
+          { subDistrictId: { $in: eduIds } }
+        ],
+        role: "SCHOOL"
+      }).lean();
       scopeSchoolIds = schoolsInDist.map(s => s._id.toString());
     } else {
       const allSchoolsList = await School.find({ role: "SCHOOL" }).lean();
@@ -4510,11 +4554,22 @@ app.get("/api/dashboard/subject-counts", async (req: any, res) => {
     }
 
     const matchFilter: any = { className: examClass, active: true };
-    if (scopeSchoolIds.length > 0) {
-      matchFilter.$or = [
-        { schoolId: { $in: scopeSchoolIds } },
-        { schoolCode: { $in: scopeSchoolIds } }
-      ];
+    if (isSpecificScope) {
+      if (scopeSchoolIds.length > 0) {
+        matchFilter.$or = [
+          { schoolId: { $in: scopeSchoolIds } },
+          { schoolCode: { $in: scopeSchoolIds } }
+        ];
+      } else {
+        // If specific scope was requested but no schools found, return empty data
+        return res.json({
+          totalStudents: 0,
+          maleCount: 0,
+          femaleCount: 0,
+          firstLanguages: [],
+          mediumCounts: []
+        });
+      }
     }
 
     const students = await Student.find(matchFilter).lean();
@@ -4769,7 +4824,13 @@ app.get("/api/dashboard/school-type-counts", async (req: any, res) => {
     } else if (districtId && districtId !== 'ALL') {
       const rawEduDistricts = await EducationalDistrict.find({ districtId }).lean();
       const eduIds = rawEduDistricts.map((e: any) => e.id);
-      schoolsList = await School.find({ subDistrictId: { $in: eduIds }, role: "SCHOOL" }).lean();
+      schoolsList = await School.find({
+        $or: [
+          { districtId },
+          { subDistrictId: { $in: eduIds } }
+        ],
+        role: "SCHOOL"
+      }).lean();
     } else {
       schoolsList = await School.find({ role: "SCHOOL" }).lean();
     }
@@ -5523,19 +5584,30 @@ app.get("/api/school/language-validation", authenticateToken, async (req: any, r
     const schoolId = req.user.schoolId || req.query.schoolId;
     if (!schoolId) return res.status(400).json({ message: 'School ID required' });
 
+    const valCacheKey = `lang-validation-${schoolId}`;
+    const isForceRefresh = req.query.force === 'true' || req.query.refresh === 'true';
+    if (!isForceRefresh) {
+      const cached = analyticsCache.get(valCacheKey);
+      if (cached) return res.json(cached);
+    }
+
     const VALID_SLOTS = ['P01', 'P02', 'P03', 'P04'] as const;
     const SLOT_LABELS: Record<string, string> = { P01: 'First Lang Paper 1 (AT)', P02: 'First Lang Paper 2 (BT)', P03: 'Second Language', P04: 'Third Language' };
 
-    const students = await Student.find({ schoolId, active: { $ne: false } }).lean();
+    const students = await Student.find({ schoolId, active: { $ne: false } })
+      .select('name medium mediumId firstLangPaper1SubjectId firstLangPaper2SubjectId secondLanguageSubjectId thirdLanguageSubjectId thirdLang active schoolId')
+      .lean();
     const totalStudents = students.length;
 
     if (totalStudents === 0) {
-      return res.json({
+      const emptyResult = {
         isValid: true, totalStudents: 0, totalLanguages: 0, expectedTotal: 0, difference: 0,
         perSlot: {}, missingMediumStudents: 0, missingPaper1Students: 0, missingPaper2Students: 0,
         missingSecondLangStudents: 0, missingThirdLangStudents: 0, alerts: [], alertMessage: '',
         missingSamples: { noMedium: [], noPaper1: [], noPaper2: [], noSecondLang: [], noThirdLang: [] }
-      });
+      };
+      analyticsCache.set(valCacheKey, emptyResult, 300);
+      return res.json(emptyResult);
     }
 
     // ── 1. Count languages per slot directly from student ID fields ──
@@ -5546,8 +5618,8 @@ app.get("/api/school/language-validation", authenticateToken, async (req: any, r
     const noMediumSamples: string[] = [], noPaper1Samples: string[] = [], noPaper2Samples: string[] = [];
     const noSecondLangSamples: string[] = [], noThirdLangSamples: string[] = [];
 
-    const allSubjects = await Subject.find().lean();
-    const subjectMap = new Map(allSubjects.map(s => [s._id.toString(), s.name.toUpperCase().replace(/\s*\([EMTK]M\)\s*/g, '').trim()]));
+    const allSubjects = await Subject.find().select('_id name').lean();
+    const subjectMap = new Map(allSubjects.map((s: any) => [s._id.toString(), s.name.toUpperCase().replace(/\s*\([EMTK]M\)\s*/g, '').trim()]));
 
     students.forEach((st: any) => {
       const stName = st.name || 'Unknown';
@@ -5735,7 +5807,6 @@ app.get("/api/school/language-validation", authenticateToken, async (req: any, r
       }
     };
 
-    const valCacheKey = `lang-validation-${schoolId}`;
     analyticsCache.set(valCacheKey, result, 300);
 
     res.json(result);
@@ -12150,11 +12221,12 @@ app.delete("/api/chapters/:id", requireRole('WEBMASTER', 'SUBJECT_EXPERT'), asyn
 });
 
 // ─── Teacher Management API ──────────────────────────────────────────────────
-app.get("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: any) => {
+app.get("/api/school/teachers", requireRole('SCHOOL', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
   try {
+    const targetSchoolId = (req.user.role !== 'SCHOOL' && req.query.schoolId) ? req.query.schoolId : (req.user.schoolId || req.user.id);
     const teachers = await User.find({
       role: { $in: ['TEACHER', 'RESOURCE_PERSON'] },
-      schoolId: req.user.id
+      schoolId: targetSchoolId
     }).lean();
 
     const allMediums = await Medium.find().lean();
@@ -12199,9 +12271,10 @@ app.get("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: any
   }
 });
 
-app.post("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: any) => {
+app.post("/api/school/teachers", requireRole('SCHOOL', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
   try {
-    const { name, penNumber, designation, teachingSubjectIds, assignedSubjects, mediumIds, teacherAssignments } = req.body;
+    const { name, penNumber, designation, teachingSubjectIds, assignedSubjects, mediumIds, teacherAssignments, schoolId } = req.body;
+    const targetSchoolId = (req.user.role !== 'SCHOOL' && schoolId) ? schoolId : (req.user.schoolId || req.user.id);
 
     // Sanitize penNumber
     const sanitizedPenNumber = typeof penNumber === 'string' ? penNumber.trim() : penNumber;
@@ -12210,6 +12283,8 @@ app.post("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: an
     // username and password are PEN number
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(sanitizedPenNumber, salt);
+
+    const schoolDoc = await User.findById(targetSchoolId);
 
     const newTeacher = new User({
       username: sanitizedPenNumber,
@@ -12223,8 +12298,8 @@ app.post("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: an
       assignedSubjects,
       mediumIds,
       teacherAssignments: teacherAssignments || [],
-      schoolId: req.user.id,
-      schoolCode: req.user.schoolCode
+      schoolId: targetSchoolId,
+      schoolCode: schoolDoc?.schoolCode || req.user.schoolCode || ''
     });
     await newTeacher.save();
     res.json({ message: "Teacher added successfully", teacher: newTeacher });
@@ -12233,7 +12308,7 @@ app.post("/api/school/teachers", requireRole('SCHOOL'), async (req: any, res: an
   }
 });
 
-app.put("/api/school/teachers/:id", requireRole('SCHOOL'), async (req: any, res: any) => {
+app.put("/api/school/teachers/:id", requireRole('SCHOOL', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
   try {
     const { name, penNumber, designation, teachingSubjectIds, assignedSubjects, mediumIds, teacherAssignments } = req.body;
     const sanitizedPenNumber = typeof penNumber === 'string' ? penNumber.trim() : penNumber;
@@ -12249,8 +12324,11 @@ app.put("/api/school/teachers/:id", requireRole('SCHOOL'), async (req: any, res:
       teacherAssignments: teacherAssignments ?? [],
     };
 
+    const filterQuery: any = { _id: req.params.id, role: { $in: ['TEACHER', 'RESOURCE_PERSON'] } };
+    if (req.user.role === 'SCHOOL') filterQuery.schoolId = req.user.id;
+
     const teacher = await User.findOneAndUpdate(
-      { _id: req.params.id, schoolId: req.user.id, role: { $in: ['TEACHER', 'RESOURCE_PERSON'] } },
+      filterQuery,
       { $set: updateFields },
       { new: true }
     );
@@ -12261,9 +12339,11 @@ app.put("/api/school/teachers/:id", requireRole('SCHOOL'), async (req: any, res:
   }
 });
 
-app.put("/api/school/teachers/:id/reset-password", requireRole('SCHOOL'), async (req: any, res: any) => {
+app.put("/api/school/teachers/:id/reset-password", requireRole('SCHOOL', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
   try {
-    const teacher = await User.findOne({ _id: req.params.id, schoolId: req.user.id, role: { $in: ['TEACHER', 'RESOURCE_PERSON'] } });
+    const filterQuery: any = { _id: req.params.id, role: { $in: ['TEACHER', 'RESOURCE_PERSON'] } };
+    if (req.user.role === 'SCHOOL') filterQuery.schoolId = req.user.id;
+    const teacher = await User.findOne(filterQuery);
     if (!teacher) return res.status(404).json({ message: "Teacher not found" });
 
     const salt = await bcrypt.genSalt(10);
@@ -12281,9 +12361,11 @@ app.put("/api/school/teachers/:id/reset-password", requireRole('SCHOOL'), async 
   }
 });
 
-app.delete("/api/school/teachers/:id", requireRole('SCHOOL'), async (req: any, res: any) => {
+app.delete("/api/school/teachers/:id", requireRole('SCHOOL', 'WEBMASTER', 'DEO', 'DIET'), async (req: any, res: any) => {
   try {
-    await User.findOneAndDelete({ _id: req.params.id, schoolId: req.user.id, role: 'TEACHER' });
+    const filterQuery: any = { _id: req.params.id, role: { $in: ['TEACHER', 'RESOURCE_PERSON'] } };
+    if (req.user.role === 'SCHOOL') filterQuery.schoolId = req.user.id;
+    await User.findOneAndDelete(filterQuery);
     res.json({ message: "Teacher deleted" });
   } catch (err: any) {
     res.status(500).json({ message: err.message });

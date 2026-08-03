@@ -30,6 +30,13 @@ export const refreshAccessToken = async (): Promise<string> => {
   return refreshPromise;
 };
 
+// Helper to notify the app when authentication session has expired
+export const notifySessionExpired = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('auth:session-expired'));
+  }
+};
+
 export const apiClient = axios.create({
   baseURL: API_BASE,
   timeout: 30000,
@@ -63,6 +70,9 @@ apiClient.interceptors.response.use(
       // If the 401 comes from an auth endpoint itself, reject cleanly without retry or window redirect
       if (isAuthEndpoint) {
         _accessToken = null;
+        if (originalRequest?.url?.includes('/auth/refresh')) {
+          notifySessionExpired();
+        }
         return Promise.reject(error);
       }
 
@@ -76,14 +86,17 @@ apiClient.interceptors.response.use(
           return apiClient(originalRequest);
         } catch (refreshError) {
           _accessToken = null;
+          notifySessionExpired();
           return Promise.reject(refreshError);
         }
       } else {
         _accessToken = null;
+        notifySessionExpired();
       }
     }
 
     return Promise.reject(error);
   }
 );
+
 

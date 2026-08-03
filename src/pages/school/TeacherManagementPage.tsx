@@ -5,6 +5,7 @@ import { apiClient } from '../../lib/apiClient';
 import { resolveMediumId } from '../../lib/mediumUtils';
 import Modal from '../../components/common/Modal';
 import Dropdown from '../../components/common/Dropdown';
+import SearchableSelect from '../../components/common/SearchableSelect';
 import { Plus, Search, Edit2, Trash2, Users, ChevronDown, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Swal from 'sweetalert2';
@@ -74,6 +75,23 @@ export default function TeacherManagementPage() {
   const [classDivisionsData, setClassDivisionsData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Admin School Selector state
+  const [schools, setSchools] = useState<any[]>([]);
+  const [selectedSchId, setSelectedSchId] = useState<string>('');
+
+  useEffect(() => {
+    if (user?.role !== 'SCHOOL') {
+      apiClient.get('/management/schools').then(res => {
+        setSchools(res.data);
+        if (res.data && res.data.length > 0) {
+          setSelectedSchId(res.data[0].id);
+        }
+      }).catch(err => console.error("Error fetching schools for teacher management:", err));
+    }
+  }, [user]);
+
+  const activeSchoolId = user?.role === 'SCHOOL' ? (user.id || '') : selectedSchId;
+
   // Modal State
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -86,18 +104,16 @@ export default function TeacherManagementPage() {
     teacherAssignments: [] as Array<{ mediumId: string, className: string, subjectId: string }>
   });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = React.useCallback(async () => {
+    if (user?.role !== 'SCHOOL' && !activeSchoolId) return;
     try {
       setLoading(true);
       const timestamp = Date.now();
+      const schoolParam = activeSchoolId ? `&schoolId=${activeSchoolId}` : '';
       const [tRes, sRes, cRes] = await Promise.all([
-        apiClient.get(`/school/teachers?_t=${timestamp}`),
-        apiClient.get(`/school/teachers/stats?_t=${timestamp}`),
-        apiClient.get(`/school/classes-divisions?_t=${timestamp}`)
+        apiClient.get(`/school/teachers?_t=${timestamp}${schoolParam}`),
+        apiClient.get(`/school/teachers/stats?_t=${timestamp}${schoolParam}`),
+        apiClient.get(`/school/classes-divisions?_t=${timestamp}${schoolParam}`)
       ]);
       setTeachers(tRes.data);
       setStats(sRes.data);
@@ -111,7 +127,11 @@ export default function TeacherManagementPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeSchoolId, user]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const getStatsForTeacher = (username: string) => {
     const s = stats.find(st => st._id === username);
@@ -194,7 +214,8 @@ export default function TeacherManagementPage() {
         penNumber: trimmedPen,
         mediumIds,
         assignedSubjects,
-        teachingSubjectIds
+        teachingSubjectIds,
+        schoolId: activeSchoolId
       };
 
       if (editingId) {
@@ -298,29 +319,49 @@ export default function TeacherManagementPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto flex-1 h-full overflow-y-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <Users size={24} /> Teacher Management
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage teachers and supervise their question contributions.</p>
         </div>
-        <button
-          onClick={() => {
-            setEditingId(null);
-            setFormData({
-              name: '',
-              penNumber: '',
-              designation: DESIGNATIONS[0],
-              teacherAssignments: []
-            });
-            setShowModal(true);
-          }}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow flex items-center gap-2 transition-colors font-medium whitespace-nowrap"
-        >
-          <Plus size={18} />
-          Add Teacher
-        </button>
+        <div className="flex items-center gap-3">
+          {user?.role !== 'SCHOOL' && (
+            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-xl shadow-sm">
+              <span className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400 shrink-0">Select School:</span>
+              <SearchableSelect
+                value={selectedSchId}
+                onChange={(v) => setSelectedSchId(v)}
+                options={schools.map(s => ({
+                  value: s.id,
+                  label: `${s.name} (${s.code || s.schoolCode || ''})`,
+                  subLabel: `Code: ${s.code || s.schoolCode || ''}`,
+                  searchTerms: `${s.name} ${s.code || s.schoolCode || ''} ${s.username || ''}`
+                }))}
+                placeholder="Select school..."
+                searchPlaceholder="Search school by name or code..."
+                minWidth={280}
+              />
+            </div>
+          )}
+          <button
+            onClick={() => {
+              setEditingId(null);
+              setFormData({
+                name: '',
+                penNumber: '',
+                designation: DESIGNATIONS[0],
+                teacherAssignments: []
+              });
+              setShowModal(true);
+            }}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow flex items-center gap-2 transition-colors font-medium whitespace-nowrap"
+          >
+            <Plus size={18} />
+            Add Teacher
+          </button>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">

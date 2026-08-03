@@ -28,6 +28,7 @@ import { apiClient } from '../../lib/apiClient';
 import { emitRefresh } from '../../lib/eventBus';
 import Modal from '../../components/common/Modal';
 import Dropdown from '../../components/common/Dropdown';
+import SearchableSelect from '../../components/common/SearchableSelect';
 import toast from 'react-hot-toast';
 import Swal from 'sweetalert2';
 import PageLoader from '../../components/common/PageLoader';
@@ -1604,11 +1605,19 @@ const StudentManagementPage: React.FC = () => {
         <div className="flex items-center gap-2">
           {user?.role !== 'SCHOOL' && (
             <div className="flex items-center gap-2 bg-white border border-gray-200 px-3 py-1.5 rounded-xl shadow-sm mr-2">
-              <span className="text-[10px] uppercase font-bold text-amber-600">Admin Mode (Select School):</span>
-              <Dropdown
+              <span className="text-[10px] uppercase font-bold text-amber-600">Select School:</span>
+              <SearchableSelect
                 value={selectedSchId}
                 onChange={(v) => setSelectedSchId(v)}
-                options={schools.map(s => ({ value: s.id, label: `${s.name} (${s.code})` }))}
+                options={schools.map(s => ({
+                  value: s.id,
+                  label: `${s.name} (${s.code || s.schoolCode || ''})`,
+                  subLabel: `Code: ${s.code || s.schoolCode || ''}`,
+                  searchTerms: `${s.name} ${s.code || s.schoolCode || ''} ${s.username || ''}`
+                }))}
+                placeholder="Select school..."
+                searchPlaceholder="Search school by name or code..."
+                minWidth={280}
               />
             </div>
           )}

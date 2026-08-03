@@ -23,6 +23,7 @@ import { onRefresh } from '../../lib/eventBus';
 import toast from 'react-hot-toast';
 import { cn } from '../../lib/utils';
 import PageLoader from '../../components/common/PageLoader';
+import { SearchableSelect } from '../../components/common/SearchableSelect';
 import ExamSelect from '../../components/common/ExamSelect';
 import { getStudentResult } from '../../lib/resultClassification';
 import { sortSubjects as sortSubjectsUtil, getSubjectPCode } from '../../lib/subjectUtils';
@@ -1280,17 +1281,17 @@ const ReportsPage: React.FC = () => {
 
             <div className="flex flex-wrap items-center gap-3">
               {user?.role !== 'SCHOOL' && (
-                <div className="flex items-center bg-white dark:bg-[#161b22] border-l-2 border-l-indigo-500 px-3.5 py-2.5 rounded-2xl shadow-sm min-w-[140px]">
-                  <span className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400">Simulate School:</span>
-                  <select
-                    value={selectedSchId}
-                    onChange={e => setSelectedSchId(e.target.value)}
-                    className="bg-transparent border-none text-xs font-black uppercase text-black dark:text-white focus:ring-0 cursor-pointer outline-none w-full native-select single-line-label"
-                  >
-                    {schools.map(s => (
-                      <option key={s.id} value={s.id} className="dark:bg-[#161b22] px-3 py-1.5 text-xs font-bold">{s.name} ({s.code})</option>
-                    ))}
-                  </select>
+                <div className="flex items-center bg-white dark:bg-[#161b22] border-l-2 border-l-indigo-500 px-3.5 py-2.5 rounded-2xl shadow-sm min-w-[250px]">
+                  <span className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400 mr-2 shrink-0">Simulate School:</span>
+                  <div className="flex-1">
+                    <SearchableSelect
+                      options={schools.map(s => ({ value: s.id, label: s.name, subLabel: s.code, searchTerms: s.code }))}
+                      value={selectedSchId}
+                      onChange={setSelectedSchId}
+                      placeholder="Select a School..."
+                      searchPlaceholder="Search school by name or code..."
+                    />
+                  </div>
                 </div>
               )}
 
@@ -1591,18 +1592,20 @@ const ReportsPage: React.FC = () => {
 
               {/* simulated school dropdown also visible for admin on subject analysis tab if they want school-level details */}
               {user?.role !== 'SCHOOL' && activeSchoolId && (
-                <div className="flex items-center bg-white dark:bg-[#161b22] border-l-2 border-l-indigo-500 px-3.5 py-2.5 rounded-2xl shadow-sm min-w-[140px]">
-                  <span className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400">School:</span>
-                  <select
-                    value={selectedSchId}
-                    onChange={e => setSelectedSchId(e.target.value)}
-                    className="bg-transparent border-none text-xs font-black uppercase text-black dark:text-white focus:ring-0 cursor-pointer outline-none w-full native-select single-line-label"
-                  >
-                    <option value="" className="dark:bg-[#161b22] px-3 py-1.5 text-xs font-bold">All District</option>
-                    {schools.map(s => (
-                      <option key={s.id} value={s.id} className="dark:bg-[#161b22] px-3 py-1.5 text-xs font-bold">{s.name} ({s.code})</option>
-                    ))}
-                  </select>
+                <div className="flex items-center bg-white dark:bg-[#161b22] border-l-2 border-l-indigo-500 px-3.5 py-2.5 rounded-2xl shadow-sm min-w-[250px]">
+                  <span className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400 mr-2 shrink-0">School:</span>
+                  <div className="flex-1">
+                    <SearchableSelect
+                      options={[
+                        { value: '', label: 'All District' },
+                        ...schools.map(s => ({ value: s.id, label: s.name, subLabel: s.code, searchTerms: s.code }))
+                      ]}
+                      value={selectedSchId}
+                      onChange={setSelectedSchId}
+                      placeholder="Select a School..."
+                      searchPlaceholder="Search school by name or code..."
+                    />
+                  </div>
                 </div>
               )}
 
